@@ -17,6 +17,7 @@ public class CommandPalette : UserControl
     private readonly TextBox _input;
     private readonly TextBlock _prefix;
     private readonly ListBox _list;
+    private readonly TextBlock _noResults;
 
     private List<PaletteCommand> _commands = [];
     private List<PaletteOption>? _currentOptions;
@@ -30,7 +31,7 @@ public class CommandPalette : UserControl
     {
         IsVisibleChanged += (_, _) =>
         {
-            if (IsVisible) _input.Focus();
+            if (IsVisible) Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => { if (_input != null) Keyboard.Focus(_input); });
         };
 
         // -- Overlay (semi-transparent dark background) --
@@ -62,6 +63,7 @@ public class CommandPalette : UserControl
             Background = Brushes.Transparent,
         };
         _input.SetResourceReference(ForegroundProperty, "ThemeTextFg");
+        _input.SetResourceReference(TextBox.CaretBrushProperty, "ThemeTextFg");
         _input.TextChanged += OnInputTextChanged;
 
         var inputRow = new DockPanel { Margin = new Thickness(10, 8, 10, 8) };
@@ -84,6 +86,16 @@ public class CommandPalette : UserControl
         };
         _list.SetResourceReference(ListBox.BackgroundProperty, "ThemeMenuPopupBg");
 
+        _noResults = new TextBlock
+        {
+            Text = "No matching commands",
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 13,
+            Margin = new Thickness(12, 8, 12, 8),
+            Visibility = Visibility.Collapsed,
+        };
+        _noResults.SetResourceReference(TextBlock.ForegroundProperty, "ThemeTextFgMuted");
+
         // -- Panel --
         var stack = new StackPanel();
         stack.Children.Add(inputBorder);
@@ -91,6 +103,7 @@ public class CommandPalette : UserControl
         var separatorBorder = (Border)stack.Children[1];
         separatorBorder.SetResourceReference(Border.BackgroundProperty, "ThemeMenuPopupBorder");
         stack.Children.Add(_list);
+        stack.Children.Add(_noResults);
 
         _panel = new Border
         {
@@ -129,7 +142,7 @@ public class CommandPalette : UserControl
         _selectedIndex = -1;
         Visibility = Visibility.Visible;
         RefreshList();
-        _input.Focus();
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => Keyboard.Focus(_input));
     }
 
     public void Cancel()
@@ -324,6 +337,10 @@ public class CommandPalette : UserControl
                 _list.Items.Add(item);
             }
         }
+
+        bool empty = _list.Items.Count == 0 && _input.Text.Trim().Length > 0;
+        _noResults.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+        _list.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
 
         if (_selectedIndex >= 0 && _selectedIndex < _list.Items.Count)
             UpdateListSelection();
