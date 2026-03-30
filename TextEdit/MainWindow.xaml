@@ -95,6 +95,7 @@
             </Setter>
         </Style>
     </Window.Resources>
+    <Grid>
     <DockPanel>
         <!-- Custom title bar -->
         <Grid x:Name="TitleBar" DockPanel.Dock="Top" Background="{DynamicResource ThemeChromeBrush}" Height="32"
@@ -218,4 +219,8 @@
             <local:EditorControl x:Name="Editor" />
         </ScrollViewer>
     </DockPanel>
+
+    <!-- Command palette overlay -->
+    <local:CommandPalette x:Name="CmdPalette" />
+    </Grid>
 </Window>
