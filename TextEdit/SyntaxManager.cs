@@ -85,6 +85,9 @@ public static class SyntaxManager
     private static readonly Regex InterpolationRegex = new(
         @"(?<!\\)[\$@]\{?[\w:]+\}?", RegexOptions.Compiled);
 
+    private static readonly Regex EscapeRegex = new(
+        @"\\(?:[abefnrt\\'""]|0[0-7]*|x[0-9a-fA-F]{1,2}|u[0-9a-fA-F]{4}|N\{[^}]+\}|.)", RegexOptions.Compiled);
+
     private static List<SyntaxToken> ExpandInterpolation(List<SyntaxToken> tokens, string line)
     {
         var result = new List<SyntaxToken>(tokens.Count);
@@ -96,7 +99,7 @@ public static class SyntaxManager
                 continue;
             }
 
-            // Only interpolate double-quoted strings (starts with ")
+            // Only expand double-quoted strings (starts with ")
             char quote = line[token.Start];
             if (quote != '"')
             {
@@ -104,31 +107,48 @@ public static class SyntaxManager
                 continue;
             }
 
-            // Find interpolated variables within the string (skip the quotes)
+            // Find interpolated variables and escape sequences within the string (skip the quotes)
             int innerStart = token.Start + 1;
             int innerEnd = token.Start + token.Length - 1;
             string inner = line[innerStart..innerEnd];
 
-            var matches = InterpolationRegex.Matches(inner);
-            if (matches.Count == 0)
+            // Collect all sub-tokens (variables and escapes) sorted by position
+            var subTokens = new List<(int Start, int Length, string Scope)>();
+
+            foreach (Match m in InterpolationRegex.Matches(inner))
+                subTokens.Add((innerStart + m.Index, m.Length, "variable"));
+
+            foreach (Match m in EscapeRegex.Matches(inner))
+                subTokens.Add((innerStart + m.Index, m.Length, "escape"));
+
+            if (subTokens.Count == 0)
             {
                 result.Add(token);
                 continue;
             }
 
-            // Split the string token around interpolated variables
-            int pos = token.Start;
-            foreach (Match m in matches)
+            subTokens.Sort((a, b) => a.Start.CompareTo(b.Start));
+
+            // Remove overlapping sub-tokens (first one wins)
+            var filtered = new List<(int Start, int Length, string Scope)>();
+            int lastEnd = 0;
+            foreach (var st in subTokens)
             {
-                int varStart = innerStart + m.Index;
-                // String portion before this variable
-                if (varStart > pos)
-                    result.Add(new SyntaxToken(pos, varStart - pos, "string"));
-                // The interpolated variable
-                result.Add(new SyntaxToken(varStart, m.Length, "variable"));
-                pos = varStart + m.Length;
+                if (st.Start < lastEnd) continue;
+                filtered.Add(st);
+                lastEnd = st.Start + st.Length;
             }
-            // Remaining string portion after last variable
+
+            // Split the string token around sub-tokens
+            int pos = token.Start;
+            foreach (var (start, length, scope) in filtered)
+            {
+                if (start > pos)
+                    result.Add(new SyntaxToken(pos, start - pos, "string"));
+                result.Add(new SyntaxToken(start, length, scope));
+                pos = start + length;
+            }
+            // Remaining string portion
             int tokenEnd = token.Start + token.Length;
             if (pos < tokenEnd)
                 result.Add(new SyntaxToken(pos, tokenEnd - pos, "string"));

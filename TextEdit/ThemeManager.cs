@@ -186,7 +186,8 @@ public static class ThemeManager
             "regex": "#D16969",
             "type": "#4EC9B0",
             "function": "#DCDCAA",
-            "hashkey": "#92C5F7"
+            "hashkey": "#92C5F7",
+            "escape": "#D7BA7D"
           }
         }
         """;
@@ -234,7 +235,8 @@ public static class ThemeManager
             "regex": "#811F3F",
             "type": "#267F99",
             "function": "#795E26",
-            "hashkey": "#2B6CB0"
+            "hashkey": "#2B6CB0",
+            "escape": "#A1260D"
           }
         }
         """;
@@ -282,7 +284,8 @@ public static class ThemeManager
             "regex": "#FABD2F",
             "type": "#8EC07C",
             "function": "#FABD2F",
-            "hashkey": "#D3869B"
+            "hashkey": "#D3869B",
+            "escape": "#FE8019"
           }
         }
         """;
