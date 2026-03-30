@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 using Microsoft.Win32;
@@ -9,6 +10,10 @@ public partial class MainWindow : Window
 {
     private string? _filePath;
     private AppSettings _settings;
+
+    private static readonly double[] PaletteFontSizes = [8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 36];
+    private static readonly int[] PaletteTabSizes = [2, 4, 8];
+    private static readonly string[] PaletteFontWeights = ["Thin", "ExtraLight", "Light", "Normal", "Medium", "SemiBold", "Bold", "ExtraBold", "Black"];
 
     public MainWindow()
     {
@@ -252,8 +257,81 @@ public partial class MainWindow : Window
 
         if (ctrl && e.Key == Key.N) { OnNew(this, new RoutedEventArgs()); e.Handled = true; }
         else if (ctrl && e.Key == Key.O) { OnOpen(this, new RoutedEventArgs()); e.Handled = true; }
+        else if (ctrl && shift && e.Key == Key.P) { OpenCommandPalette(); e.Handled = true; }
         else if (ctrl && shift && e.Key == Key.S) { OnSaveAs(this, new RoutedEventArgs()); e.Handled = true; }
         else if (ctrl && e.Key == Key.S) { OnSave(this, new RoutedEventArgs()); e.Handled = true; }
         else base.OnKeyDown(e);
+    }
+
+    private void OpenCommandPalette()
+    {
+        var commands = new List<PaletteCommand>
+        {
+            new("Change Theme", GetOptions: () =>
+            {
+                var original = _settings.ColorTheme;
+                return ThemeManager.GetAvailableThemes().Select(name => new PaletteOption(
+                    name,
+                    ApplyPreview: () => ThemeManager.Apply(name),
+                    Commit: () => { _settings.ColorTheme = name; _settings.Save(); },
+                    Revert: () => ThemeManager.Apply(original)
+                )).ToList();
+            }),
+
+            new("Change Font Size", GetOptions: () =>
+            {
+                var original = Editor.EditorFontSize;
+                return PaletteFontSizes.Select(size => new PaletteOption(
+                    size.ToString(),
+                    ApplyPreview: () => Editor.EditorFontSize = size,
+                    Commit: () => { _settings.FontSize = size; _settings.Save(); },
+                    Revert: () => Editor.EditorFontSize = original
+                )).ToList();
+            }),
+
+            new("Change Font Family", GetOptions: () =>
+            {
+                var original = Editor.FontFamilyName;
+                return EditorControl.GetMonospaceFonts().Select(name => new PaletteOption(
+                    name,
+                    ApplyPreview: () => Editor.FontFamilyName = name,
+                    Commit: () => { _settings.FontFamily = name; _settings.Save(); },
+                    Revert: () => Editor.FontFamilyName = original
+                )).ToList();
+            }),
+
+            new("Change Font Weight", GetOptions: () =>
+            {
+                var original = Editor.EditorFontWeight;
+                return PaletteFontWeights.Select(w => new PaletteOption(
+                    w,
+                    ApplyPreview: () => Editor.EditorFontWeight = w,
+                    Commit: () => { _settings.FontWeight = w; _settings.Save(); },
+                    Revert: () => Editor.EditorFontWeight = original
+                )).ToList();
+            }),
+
+            new("Change Tab Size", GetOptions: () =>
+            {
+                var original = Editor.TabSize;
+                return PaletteTabSizes.Select(size => new PaletteOption(
+                    size.ToString(),
+                    ApplyPreview: () => { Editor.TabSize = size; Editor.InvalidateVisual(); },
+                    Commit: () => { _settings.TabSize = size; _settings.Save(); },
+                    Revert: () => { Editor.TabSize = original; Editor.InvalidateVisual(); }
+                )).ToList();
+            }),
+
+            new("Toggle Block Caret", Toggle: () =>
+            {
+                _settings.BlockCaret = !_settings.BlockCaret;
+                Editor.BlockCaret = _settings.BlockCaret;
+                _settings.Save();
+                Editor.InvalidateVisual();
+            }),
+        };
+
+        CmdPalette.SetCommands(commands);
+        CmdPalette.Open();
     }
 }
