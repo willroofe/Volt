@@ -88,9 +88,12 @@ All inline string-slicing mutations in `EditorControl` (`OnTextInput`, `HandleRe
 
 Fine for now, but if you ever want large file support, a piece table or rope structure would be more appropriate. Not worth changing unless you hit performance walls.
 
-### 10. Missing input validation at boundaries
+### ~~10. Missing input validation at boundaries~~ ✅ Done
 
-There are several places where `_caretCol` and `_caretLine` are used to index into `_lines` without bounds checking. The code generally keeps these in sync, but defensive guards on public entry points (SetContent, etc.) would prevent subtle bugs.
+Added defensive bounds clamping at key boundary points:
+
+- **`ClampCaret()`** helper in `EditorControl` — clamps `_caretLine` and `_caretCol` to valid buffer ranges. Called at the start of `OnRender`, after `Undo`/`Redo` (where restored positions could be stale), and in `FindMatchingBracket` (which indexes `_buffer[_caretLine]` directly).
+- **`ClampToBuffer()`** helper in `SelectionManager` — clamps both anchor and caret positions against the buffer. Called at the start of `GetSelectedText` and `DeleteSelection` before any indexing.
 
 ## What's Good (keep doing this)
 
