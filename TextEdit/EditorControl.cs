@@ -84,10 +84,18 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // OnRender draws only bg/selection/brackets (cheap rectangles).
     // Text and gutter live in separate DrawingVisuals so caret-only
     // movements skip the expensive text redraw entirely.
+    // Text/gutter are drawn at absolute document positions and scroll
+    // is handled by transforms (avoids expensive DrawText on scroll).
     private readonly DrawingVisual _textVisual = new();
     private readonly DrawingVisual _gutterVisual = new();
     private readonly DrawingVisual _caretVisual = new();
+    private readonly TranslateTransform _textTransform = new();
+    private readonly TranslateTransform _gutterTransform = new();
+    private readonly RectangleGeometry _textClipGeom = new();
     private bool _textVisualDirty = true;
+    private int _renderedFirstLine = -1;
+    private int _renderedLastLine = -1;
+    private const int RenderBufferLines = 20;
 
     public string FontFamilyName
     {
@@ -239,6 +247,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
             UpdateCaretVisual();
         };
 
+        _textVisual.Transform = _textTransform;
+        _textVisual.Clip = _textClipGeom;
+        _gutterVisual.Transform = _gutterTransform;
         AddVisualChild(_textVisual);
         AddVisualChild(_gutterVisual);
         AddVisualChild(_caretVisual);
@@ -277,6 +288,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void InvalidateText()
     {
         _textVisualDirty = true;
+        _renderedFirstLine = -1;
+        _renderedLastLine = -1;
         InvalidateVisual();
     }
 
@@ -929,8 +942,21 @@ public class EditorControl : FrameworkElement, IScrollInfo
             }
         }
 
-        // Update child visual layers
-        if (_textVisualDirty)
+        // Update transforms for scroll offset (cheap — no re-render)
+        _textTransform.X = -_offset.X;
+        _textTransform.Y = -_offset.Y;
+        _gutterTransform.Y = -_offset.Y;
+
+        // Update text clip (prevents text bleeding into gutter area).
+        // Clip is in the visual's local (absolute) coordinate space.
+        _textClipGeom.Rect = new Rect(
+            _gutterWidth + _offset.X, _offset.Y,
+            Math.Max(0, ActualWidth - _gutterWidth), ActualHeight);
+
+        // Re-render text only if needed (new lines visible beyond buffer, or content changed)
+        if (_textVisualDirty
+            || firstLine < _renderedFirstLine
+            || lastLine > _renderedLastLine)
         {
             RenderTextVisual(firstLine, lastLine);
             _textVisualDirty = false;
@@ -940,23 +966,24 @@ public class EditorControl : FrameworkElement, IScrollInfo
     }
 
     // ──────────────────────────────────────────────────────────────────
-    //  Text layer — all visible line text (expensive, only when dirty)
+    //  Text layer — drawn at absolute document positions.
+    //  Scroll is handled by TranslateTransform on the visual, so this
+    //  only re-renders when new lines enter the buffered region or
+    //  content/font/theme changes.
     // ──────────────────────────────────────────────────────────────────
     private void RenderTextVisual(int firstLine, int lastLine)
     {
         double dpi = _dpi;
+        int drawFirst = Math.Max(0, firstLine - RenderBufferLines);
+        int drawLast = Math.Min(_lines.Count - 1, lastLine + RenderBufferLines);
+
         using var dc = _textVisual.RenderOpen();
 
-        // Clip to text area (right of gutter)
-        dc.PushClip(new RectangleGeometry(
-            new Rect(_gutterWidth, 0,
-                     Math.Max(0, ActualWidth - _gutterWidth), ActualHeight)));
-
-        EnsureLineStates(lastLine);
-        for (int i = firstLine; i <= lastLine; i++)
+        EnsureLineStates(drawLast);
+        for (int i = drawFirst; i <= drawLast; i++)
         {
             if (_lines[i].Length == 0) continue;
-            double y = i * _lineHeight - _offset.Y;
+            double y = i * _lineHeight; // absolute position
 
             var inState = i < _lineStates.Count ? _lineStates[i] : SyntaxManager.DefaultState;
             if (!_ftCache.TryGetValue(i, out var cached)
@@ -974,16 +1001,18 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 cached = _ftCache[i];
             }
             dc.DrawText(cached.ft,
-                new Point(_gutterWidth + GutterPadding - _offset.X, y));
+                new Point(_gutterWidth + GutterPadding, y)); // absolute X
         }
-        dc.Pop(); // clip
 
-        // Prune caches of entries far from the visible region
-        if (_ftCache.Count > (lastLine - firstLine + 1) * 3)
+        _renderedFirstLine = drawFirst;
+        _renderedLastLine = drawLast;
+
+        // Prune caches of entries far from the rendered region
+        if (_ftCache.Count > (drawLast - drawFirst + 1) * 3)
         {
-            int margin = lastLine - firstLine + 1;
-            int pruneBelow = firstLine - margin;
-            int pruneAbove = lastLine + margin;
+            int margin = drawLast - drawFirst + 1;
+            int pruneBelow = drawFirst - margin;
+            int pruneAbove = drawLast + margin;
             var keysToRemove = new List<int>();
             foreach (var key in _ftCache.Keys)
                 if (key < pruneBelow || key > pruneAbove)
@@ -1004,14 +1033,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
         double dpi = _dpi;
         using var dc = _gutterVisual.RenderOpen();
 
+        // Gutter background must cover the viewport. In absolute coords,
+        // the visible vertical range is [_offset.Y .. _offset.Y + ActualHeight].
         dc.DrawRectangle(ThemeManager.EditorBg, null,
-            new Rect(0, 0, _gutterWidth, ActualHeight));
+            new Rect(0, _offset.Y, _gutterWidth, ActualHeight));
         dc.DrawLine(_gutterSepPen,
-            new Point(_gutterWidth, 0), new Point(_gutterWidth, ActualHeight));
+            new Point(_gutterWidth, _offset.Y), new Point(_gutterWidth, _offset.Y + ActualHeight));
 
         for (int i = firstLine; i <= lastLine; i++)
         {
-            double y = i * _lineHeight - _offset.Y;
+            double y = i * _lineHeight; // absolute position
             var brush = i == _caretLine
                 ? ThemeManager.ActiveLineNumberFg : ThemeManager.GutterFg;
             if (!_lineNumCache.TryGetValue(i, out var lnCached)
@@ -1596,7 +1627,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (Math.Abs(offset - _offset.X) < 0.01) return;
         _offset.X = offset;
         ScrollOwner?.InvalidateScrollInfo();
-        InvalidateText();
+        // Transforms handle scroll — only InvalidateVisual for bg layer.
+        // Text re-render is gated by buffer check in OnRender.
+        InvalidateVisual();
     }
 
     public void SetVerticalOffset(double offset)
@@ -1605,7 +1638,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (Math.Abs(offset - _offset.Y) < 0.01) return;
         _offset.Y = offset;
         ScrollOwner?.InvalidateScrollInfo();
-        InvalidateText();
+        InvalidateVisual();
     }
 
     public Rect MakeVisible(Visual visual, Rect rectangle) => rectangle;
