@@ -93,9 +93,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private readonly TranslateTransform _gutterTransform = new();
     private readonly RectangleGeometry _textClipGeom = new();
     private bool _textVisualDirty = true;
+    private bool _gutterVisualDirty = true;
     private int _renderedFirstLine = -1;
     private int _renderedLastLine = -1;
-    private const int RenderBufferLines = 20;
+    private int _gutterRenderedFirstLine = -1;
+    private int _gutterRenderedLastLine = -1;
+    private const int RenderBufferLines = 50;
 
     public string FontFamilyName
     {
@@ -288,8 +291,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void InvalidateText()
     {
         _textVisualDirty = true;
+        _gutterVisualDirty = true;
         _renderedFirstLine = -1;
         _renderedLastLine = -1;
+        _gutterRenderedFirstLine = -1;
+        _gutterRenderedLastLine = -1;
         InvalidateVisual();
     }
 
@@ -751,12 +757,19 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private void ResetPreferredCol() => _preferredCol = -1;
 
+    private int _prevCaretLine = -1;
+
     private void ResetCaret()
     {
         _caretVisible = true;
         _blinkTimer.Stop();
         if (_caretBlinkMs > 0) _blinkTimer.Start();
         _bracketMatchDirty = true;
+        if (_caretLine != _prevCaretLine)
+        {
+            _gutterVisualDirty = true;
+            _prevCaretLine = _caretLine;
+        }
         InvalidateVisual();
         CaretMoved?.Invoke(this, EventArgs.Empty);
     }
@@ -961,7 +974,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
             RenderTextVisual(firstLine, lastLine);
             _textVisualDirty = false;
         }
-        RenderGutterVisual(firstLine, lastLine);
+        if (_gutterVisualDirty
+            || firstLine < _gutterRenderedFirstLine
+            || lastLine > _gutterRenderedLastLine)
+        {
+            RenderGutterVisual(firstLine, lastLine);
+            _gutterVisualDirty = false;
+        }
         UpdateCaretVisual();
     }
 
@@ -1031,16 +1050,20 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void RenderGutterVisual(int firstLine, int lastLine)
     {
         double dpi = _dpi;
+        int drawFirst = Math.Max(0, firstLine - RenderBufferLines);
+        int drawLast = Math.Min(_lines.Count - 1, lastLine + RenderBufferLines);
+
         using var dc = _gutterVisual.RenderOpen();
 
-        // Gutter background must cover the viewport. In absolute coords,
-        // the visible vertical range is [_offset.Y .. _offset.Y + ActualHeight].
+        // Gutter background covers the full buffered range plus padding
+        double bgTop = drawFirst * _lineHeight;
+        double bgBottom = (drawLast + 1) * _lineHeight;
         dc.DrawRectangle(ThemeManager.EditorBg, null,
-            new Rect(0, _offset.Y, _gutterWidth, ActualHeight));
+            new Rect(0, bgTop, _gutterWidth, bgBottom - bgTop));
         dc.DrawLine(_gutterSepPen,
-            new Point(_gutterWidth, _offset.Y), new Point(_gutterWidth, _offset.Y + ActualHeight));
+            new Point(_gutterWidth, bgTop), new Point(_gutterWidth, bgBottom));
 
-        for (int i = firstLine; i <= lastLine; i++)
+        for (int i = drawFirst; i <= drawLast; i++)
         {
             double y = i * _lineHeight; // absolute position
             var brush = i == _caretLine
@@ -1057,6 +1080,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
             dc.DrawText(lnCached.ft,
                 new Point(_gutterWidth - lnCached.ft.WidthIncludingTrailingWhitespace - 4, y));
         }
+
+        _gutterRenderedFirstLine = drawFirst;
+        _gutterRenderedLastLine = drawLast;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -1665,6 +1691,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             || Math.Abs(availableSize.Height - _viewport.Height) > 0.5)
         {
             _textVisualDirty = true;
+            _gutterVisualDirty = true;
         }
         _viewport = availableSize;
         UpdateExtent();
@@ -1679,6 +1706,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (viewportChanged)
         {
             _textVisualDirty = true; // more/fewer lines may be visible
+            _gutterVisualDirty = true;
             ScrollOwner?.InvalidateScrollInfo();
         }
         return finalSize;
@@ -1695,7 +1723,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _lineEnding = DetectLineEnding(text);
 
         _lines.Clear();
-        var rawLines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+        // Split on line endings without intermediate full-string copies
+        var rawLines = text.Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
         for (int i = 0; i < rawLines.Length; i++)
             rawLines[i] = ExpandTabs(rawLines[i]);
         _lines.AddRange(rawLines);
