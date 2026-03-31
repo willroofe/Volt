@@ -381,11 +381,17 @@ public class SyntaxManager
         Directory.CreateDirectory(GrammarsDir);
 
         // Always overwrite built-in grammars so embedded fixes take effect
-        var perlPath = Path.Combine(GrammarsDir, "perl.json");
-        using var stream = Assembly.GetExecutingAssembly()
-            .GetManifestResourceStream("TextEdit.Resources.Grammars.perl.json");
-        if (stream == null) return;
-        using var reader = new StreamReader(stream);
-        File.WriteAllText(perlPath, reader.ReadToEnd());
+        var asm = Assembly.GetExecutingAssembly();
+        foreach (var name in asm.GetManifestResourceNames())
+        {
+            if (!name.StartsWith("TextEdit.Resources.Grammars.") || !name.EndsWith(".json"))
+                continue;
+            var fileName = name["TextEdit.Resources.Grammars.".Length..];
+            var destPath = Path.Combine(GrammarsDir, fileName);
+            using var stream = asm.GetManifestResourceStream(name);
+            if (stream == null) continue;
+            using var reader = new StreamReader(stream);
+            File.WriteAllText(destPath, reader.ReadToEnd());
+        }
     }
 }
