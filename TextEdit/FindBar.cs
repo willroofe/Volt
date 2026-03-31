@@ -209,6 +209,15 @@ public class FindBar : UserControl
         _editor = editor;
     }
 
+    public void SetPosition(string position)
+    {
+        bool top = position == "Top";
+        VerticalAlignment = top ? VerticalAlignment.Top : VerticalAlignment.Bottom;
+        Margin = top ? new Thickness(0, 33, 0, 0) : new Thickness(0, 0, 0, 44);
+        _panel.VerticalAlignment = top ? VerticalAlignment.Top : VerticalAlignment.Bottom;
+        _panel.Margin = new Thickness(0, 8, 0, 8);
+    }
+
     public void Open(bool showReplace = false)
     {
         Visibility = Visibility.Visible;

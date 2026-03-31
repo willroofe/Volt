@@ -11,12 +11,14 @@ public partial class SettingsWindow : Window
     public double SelectedFontSize { get; private set; }
     public string SelectedFontWeight { get; private set; }
     public string ColorThemeName { get; private set; }
+    public string FindBarPosition { get; private set; }
 
     private readonly List<string> _themeNames;
     private readonly List<string> _fontNames;
 
     public SettingsWindow(int currentTabSize, bool blockCaret, int caretBlinkMs,
-        string currentFontFamily, double currentFontSize, string currentFontWeight, string currentColorTheme)
+        string currentFontFamily, double currentFontSize, string currentFontWeight, string currentColorTheme,
+        string findBarPosition)
     {
         InitializeComponent();
         TabSize = currentTabSize;
@@ -26,11 +28,13 @@ public partial class SettingsWindow : Window
         SelectedFontSize = currentFontSize;
         SelectedFontWeight = currentFontWeight;
         ColorThemeName = currentColorTheme;
+        FindBarPosition = findBarPosition;
 
         int index = Array.IndexOf(AppSettings.TabSizeOptions, currentTabSize);
         TabSizeBox.SelectedIndex = index >= 0 ? index : 1;
         CaretStyleBox.SelectedIndex = blockCaret ? 1 : 0;
         CaretBlinkSlider.Value = caretBlinkMs;
+        FindBarPosBox.SelectedIndex = findBarPosition == "Top" ? 0 : 1;
 
         // Populate font family dropdown
         _fontNames = EditorControl.GetMonospaceFonts();
@@ -80,6 +84,7 @@ public partial class SettingsWindow : Window
         SelectedFontSize = AppSettings.FontSizeOptions[FontSizeBox.SelectedIndex];
         SelectedFontWeight = AppSettings.FontWeightOptions[FontWeightBox.SelectedIndex];
         ColorThemeName = _themeNames[ColorThemeBox.SelectedIndex];
+        FindBarPosition = FindBarPosBox.SelectedIndex == 0 ? "Top" : "Bottom";
         DialogResult = true;
     }
 

@@ -92,6 +92,7 @@ public partial class MainWindow : Window
         if (_settings.FontFamily != null) Editor.FontFamilyName = _settings.FontFamily;
         Editor.EditorFontSize = _settings.FontSize;
         Editor.EditorFontWeight = _settings.FontWeight;
+        FindBarControl.SetPosition(_settings.FindBarPosition);
     }
 
     private void RestoreWindowPosition()
@@ -313,7 +314,8 @@ public partial class MainWindow : Window
     private void OnSettings(object sender, RoutedEventArgs e)
     {
         var dlg = new SettingsWindow(Editor.TabSize, _settings.BlockCaret, _settings.CaretBlinkMs,
-            Editor.FontFamilyName, Editor.EditorFontSize, Editor.EditorFontWeight, _settings.ColorTheme) { Owner = this };
+            Editor.FontFamilyName, Editor.EditorFontSize, Editor.EditorFontWeight, _settings.ColorTheme,
+            _settings.FindBarPosition) { Owner = this };
         if (dlg.ShowDialog() == true)
         {
             _settings.TabSize = dlg.TabSize;
@@ -323,6 +325,7 @@ public partial class MainWindow : Window
             _settings.FontSize = dlg.SelectedFontSize;
             _settings.FontWeight = dlg.SelectedFontWeight;
             _settings.ColorTheme = dlg.ColorThemeName;
+            _settings.FindBarPosition = dlg.FindBarPosition;
             _settings.Save();
             ApplySettings();
             ThemeManager.Apply(dlg.ColorThemeName);
@@ -442,6 +445,17 @@ public partial class MainWindow : Window
                 Editor.BlockCaret = _settings.BlockCaret;
                 _settings.Save();
                 Editor.InvalidateVisual();
+            }),
+
+            new("Find Bar Position", GetOptions: () =>
+            {
+                var original = _settings.FindBarPosition;
+                return AppSettings.FindBarPositionOptions.Select(pos => new PaletteOption(
+                    pos,
+                    ApplyPreview: () => FindBarControl.SetPosition(pos),
+                    Commit: () => { _settings.FindBarPosition = pos; _settings.Save(); },
+                    Revert: () => FindBarControl.SetPosition(original)
+                )).ToList();
             }),
         };
 
