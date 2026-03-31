@@ -18,6 +18,7 @@ public class CommandPalette : UserControl
     private readonly TextBlock _prefix;
     private readonly ListBox _list;
     private readonly TextBlock _noResults;
+    private readonly TextBlock _placeholder;
 
     private List<PaletteCommand> _commands = [];
     private List<PaletteOption>? _currentOptions;
@@ -96,6 +97,17 @@ public class CommandPalette : UserControl
         };
         _noResults.SetResourceReference(TextBlock.ForegroundProperty, "ThemeTextFgMuted");
 
+        _placeholder = new TextBlock
+        {
+            Text = "Type to search...",
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 13,
+            FontStyle = FontStyles.Italic,
+            Margin = new Thickness(12, 8, 12, 8),
+            Visibility = Visibility.Collapsed,
+        };
+        _placeholder.SetResourceReference(TextBlock.ForegroundProperty, "ThemeTextFgMuted");
+
         // -- Panel --
         var stack = new StackPanel();
         stack.Children.Add(inputBorder);
@@ -104,6 +116,7 @@ public class CommandPalette : UserControl
         separatorBorder.SetResourceReference(Border.BackgroundProperty, "ThemeMenuPopupBorder");
         stack.Children.Add(_list);
         stack.Children.Add(_noResults);
+        stack.Children.Add(_placeholder);
 
         _panel = new Border
         {
@@ -111,7 +124,8 @@ public class CommandPalette : UserControl
             CornerRadius = new CornerRadius(6),
             BorderThickness = new Thickness(1),
             HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 50, 0, 0),
             Child = stack,
             Effect = new DropShadowEffect { BlurRadius = 16, Opacity = 0.3, ShadowDepth = 2 },
         };
@@ -320,6 +334,19 @@ public class CommandPalette : UserControl
     private void RefreshList()
     {
         _list.Items.Clear();
+        var filter = _input.Text.Trim();
+        bool belowThreshold = _currentOptions == null && filter.Length < 3;
+
+        if (belowThreshold)
+        {
+            // Not enough characters — show placeholder instead of list
+            _list.Visibility = Visibility.Collapsed;
+            _noResults.Visibility = Visibility.Collapsed;
+            _placeholder.Visibility = Visibility.Visible;
+            return;
+        }
+
+        _placeholder.Visibility = Visibility.Collapsed;
 
         if (_currentOptions == null)
         {
@@ -338,7 +365,7 @@ public class CommandPalette : UserControl
             }
         }
 
-        bool empty = _list.Items.Count == 0 && _input.Text.Trim().Length > 0;
+        bool empty = _list.Items.Count == 0 && filter.Length > 0;
         _noResults.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         _list.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
 
