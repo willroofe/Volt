@@ -186,7 +186,8 @@
         <ScrollViewer HorizontalScrollBarVisibility="Visible"
                       VerticalScrollBarVisibility="Visible"
                       CanContentScroll="True"
-                      Template="{StaticResource ThemedScrollViewer}">
+                      Template="{StaticResource ThemedScrollViewer}"
+                      WindowChrome.IsHitTestVisibleInChrome="True">
             <local:EditorControl x:Name="Editor" />
         </ScrollViewer>
     </DockPanel>
