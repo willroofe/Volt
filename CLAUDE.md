@@ -24,16 +24,16 @@ No test framework is configured. The running app must be closed before rebuildin
 The core of the application — a custom `FrameworkElement` implementing `IScrollInfo`. Everything about editing lives here:
 
 - **Text buffer**: `List<string>` line-based storage
-- **Rendering**: Custom `OnRender` using `FormattedText` and `DrawingContext` — no WPF TextBox/RichTextBox. Only visible lines are drawn (viewport-culled). Text is clipped to the area right of the gutter so horizontal scrolling doesn't bleed into line numbers. Syntax tokens are applied per-line via `FormattedText.SetForegroundBrush()`.
+- **Rendering**: Custom layered rendering via `DrawingContext` — no WPF TextBox/RichTextBox. Uses direct `GlyphRun`/`DrawGlyphRun` calls that bypass the expensive DWrite shaping pipeline (since we use monospace fonts with pre-expanded tabs). Three `DrawingVisual` layers: `_textVisual` (editor text), `_gutterVisual` (line numbers), `_caretVisual` (cursor). `OnRender` itself only draws cheap background rectangles (current line, selection, find matches, bracket highlights). Text is clipped to the area right of the gutter so horizontal scrolling doesn't bleed into line numbers.
 - **Input**: `OnKeyDown`/`OnTextInput` for keyboard; mouse handlers for click, drag, double-click word selection
 - **Scrolling**: `IScrollInfo` implementation, hosted inside a `ScrollViewer` with a custom `ThemedScrollViewer` template (defined in `App.xaml`)
 - **Undo/redo**: Full-snapshot-based (copies entire `List<string>` per operation) via `UndoEntry` record
 - **Selection**: Anchor/caret model with shift-click and drag support
-- **Font**: Configurable font family (monospace only) and size. Instance fields `_monoTypeface`, `_fontSize`, `_charWidth`, `_lineHeight` — recomputed via `ApplyFont()`. `GetMonospaceFonts()` discovers system monospace fonts by comparing `i` vs `M` width.
-- **Caret**: Supports bar (1px) and block (full character width) styles. Block caret draws the character underneath in `EditorBg` color. Blink rate configurable (0 = off).
+- **Font**: Configurable font family (monospace only) and size. Instance fields `_monoTypeface`, `_glyphTypeface`, `_fontSize`, `_charWidth`, `_lineHeight`, `_glyphBaseline` — recomputed via `ApplyFont()`. `ApplyFont` obtains a `GlyphTypeface` for direct GlyphRun rendering (graceful fallback: keeps previous GlyphTypeface if the new font doesn't yield one). `GetMonospaceFonts()` discovers system monospace fonts by comparing `i` vs `M` width.
+- **Caret**: Supports bar (1px) and block (full character width) styles. Block caret draws the character underneath in `EditorBg` color via GlyphRun. Blink rate configurable (0 = off).
 - **Colours**: All brush/pen references read from `ThemeManager` static properties (not local fields). Subscribes to `ThemeManager.ThemeChanged` to `InvalidateVisual()`.
 - **Smart editing**: Auto-close brackets/quotes (suppressed inside strings via `IsCaretInsideString()`), backspace deletes both characters of a pair, smart Enter increases indent after `{`/`(`/`[`, smart backspace snaps to tab stops in leading whitespace.
-- **Performance**: `FormattedText` objects and line-number texts are cached per line index (`_ftCache`, `_lineNumCache`), pruned to a window around the viewport after each render. DPI is cached and updated via `OnDpiChanged`. `UpdateExtent` guards against redundant `ScrollOwner.InvalidateScrollInfo()` calls. `OnMouseMove` early-outs when the caret hasn't moved to avoid redundant renders during drag.
+- **Performance**: Syntax tokens cached per line index (`_tokenCache`), pruned to a window around the viewport after each render. Text and gutter visuals use a render buffer (±50 lines beyond viewport) — scroll within the buffer is handled by `TranslateTransform` with no re-render. `DrawGlyphRun` helper maps chars to glyph indices, sets uniform `_charWidth` advance widths, and snaps origins to pixel grid for sharp ClearType rendering. `TextRenderingMode.ClearType` and `TextHintingMode.Fixed` set on text/gutter visuals. DPI is cached and updated via `OnDpiChanged`. `UpdateExtent` guards against redundant `ScrollOwner.InvalidateScrollInfo()` calls. `OnMouseMove` early-outs when the caret hasn't moved to avoid redundant renders during drag.
 - **Public API**: `SetContent(string)`, `GetContent()`, `MarkClean()`, `InvalidateSyntax()`, properties `IsDirty`/`CaretLine`/`CaretCol`/`TabSize`/`BlockCaret`/`CaretBlinkMs`/`FontFamilyName`/`EditorFontSize`/`EditorFontWeight`, events `DirtyChanged`/`CaretMoved`
 
 ### Theming System
@@ -85,17 +85,27 @@ Code-behind-only `UserControl` (no XAML) — builds UI in constructor. Supports 
 - Opened via `Ctrl+Shift+P` in `MainWindow.OnKeyDown`.
 - Commands defined in `MainWindow.OpenCommandPalette()`: Change Theme, Font Size, Font Family, Font Weight, Tab Size, Toggle Block Caret.
 
+### FindBar (`TextEdit/FindBar.cs`)
+
+Code-behind-only `UserControl` (no XAML) — bottom overlay for search:
+- Search input with themed case-sensitivity checkbox and nav buttons (custom `ControlTemplate` with themed hover/pressed states)
+- Match count display, navigation via Shift+Enter / Enter, close via Escape
+- Integrates with EditorControl's find APIs (`SetFindMatches`, `FindNext`, `FindPrevious`, `ClearFindMatches`)
+- `RefreshSearch()` re-runs the current query (called after file open/new to update matches for new content)
+- Restores search highlights when reopened (calls `UpdateSearch` in `Open()`)
+
 ### MainWindow (`TextEdit/MainWindow.xaml` + `.cs`)
 
 UI shell providing:
 - Custom `WindowChrome` title bar with File menu (New/Open/Save/Save As/Settings)
 - Status bar with file type detection and caret position
-- Keyboard shortcuts (Ctrl+N/O/S, Ctrl+Shift+S, Ctrl+Shift+P for command palette)
+- Keyboard shortcuts (Ctrl+N/O/S, Ctrl+Shift+S, Ctrl+Shift+P for command palette, Ctrl+F for find)
 - Dirty-state tracking with save prompts
 - Calls `SyntaxManager.SetLanguageByExtension()` then `Editor.InvalidateSyntax()` when file type changes
 - Maximized-window padding compensation via `StateChanged` handler
 - Window chrome buttons use Segoe MDL2 Assets icon font
 - Window position/size persisted in settings and restored on startup
+- **DWM theming**: Uses `DwmSetWindowAttribute` to set `DWMWA_USE_IMMERSIVE_DARK_MODE`, `DWMWA_CAPTION_COLOR`, and `DWMWA_BORDER_COLOR` to match the active theme — eliminates white flash during window resize on dark themes. Applied on `SourceInitialized` and `ThemeManager.ThemeChanged`.
 
 ### Settings (`TextEdit/AppSettings.cs` + `SettingsWindow.xaml`)
 
@@ -122,4 +132,5 @@ Defines:
 - **Syntax tokenization uses `LineState` for multi-line strings** — unclosed quotes carry state across lines via `EnsureLineStates()`. Other token types (comments, etc.) are per-line only. String interpolation and escape sequences are handled as a post-processing step on double-quoted string tokens.
 - **Default theme files in `%AppData%` are only written if absent** — if you change an embedded default theme string in `ThemeManager.cs`, users must delete the old file for changes to take effect.
 - **Startup order** (`App.OnStartup`): `ThemeManager.Initialize()` → `SyntaxManager.Initialize()` → `AppSettings.Load()` → `ThemeManager.Apply()` → async monospace font cache warm-up at idle priority.
-- **Performance-sensitive code paths**: `OnRender`, `OnKeyDown`/`OnTextInput`, `OnMouseMove` during drag, and `UpdateExtent` are called frequently. Avoid allocating `FormattedText` outside of rendering, avoid unconditional `InvalidateVisual()` or `ScrollOwner.InvalidateScrollInfo()` calls, and always guard with change-detection before triggering layout/render cycles.
+- **GlyphRun rendering**: All text drawing uses `DrawGlyphRun` (not `FormattedText`/`DrawText`). This bypasses DWrite's script analysis, itemization, and shaping — critical for scroll performance. The `DrawGlyphRun` helper maps characters to glyph indices via `GlyphTypeface.CharacterToGlyphMap`, sets uniform advance widths, and pixel-snaps the origin. When drawing syntax-highlighted lines, gaps between tokens must be filled with `EditorFg` (tokens don't cover the full line).
+- **Performance-sensitive code paths**: `OnRender`, `OnKeyDown`/`OnTextInput`, `OnMouseMove` during drag, and `UpdateExtent` are called frequently. Never use `FormattedText` in rendering loops (use `DrawGlyphRun`). Avoid unconditional `InvalidateVisual()` or `ScrollOwner.InvalidateScrollInfo()` calls, and always guard with change-detection before triggering layout/render cycles.
