@@ -28,6 +28,8 @@ public static class ThemeManager
     public static Brush ActiveLineNumberFg { get; private set; } = Brushes.DarkGray;
     public static Brush MatchingBracketBrush { get; private set; } = null!;
     public static Pen MatchingBracketPen { get; private set; } = null!;
+    public static Brush FindMatchBrush { get; private set; } = null!;
+    public static Brush FindMatchCurrentBrush { get; private set; } = null!;
 
     // Syntax highlight scope → brush
     private static readonly Dictionary<string, Brush> _scopeBrushes = new();
@@ -100,6 +102,8 @@ public static class ThemeManager
         ActiveLineNumberFg = ColorTheme.ParseBrush(e.ActiveLineNumber);
         MatchingBracketBrush = ColorTheme.ParseBrush(e.MatchingBracket);
         MatchingBracketPen = ColorTheme.ParsePen(e.MatchingBracketBorder, 1);
+        FindMatchBrush = ColorTheme.ParseBrush(e.FindMatch);
+        FindMatchCurrentBrush = ColorTheme.ParseBrush(e.FindMatchCurrent);
     }
 
     private static void UpdateScopeBrushes()
@@ -164,7 +168,9 @@ public static class ThemeManager
             "selection": "#80264F78",
             "currentLine": "#2A2A2A",
             "matchingBracket": "#3A3A3A",
-            "matchingBracketBorder": "#888888"
+            "matchingBracketBorder": "#888888",
+            "findMatch": "#60FFFF00",
+            "findMatchCurrent": "#80FF8C00"
           },
           "chrome": {
             "titleBar": "#2D2D2D",
@@ -213,7 +219,9 @@ public static class ThemeManager
             "selection": "#60339900",
             "currentLine": "#F0F0F0",
             "matchingBracket": "#DBDBDB",
-            "matchingBracketBorder": "#999999"
+            "matchingBracketBorder": "#999999",
+            "findMatch": "#60FFFF00",
+            "findMatchCurrent": "#80FF8C00"
           },
           "chrome": {
             "titleBar": "#E8E8E8",
@@ -262,7 +270,9 @@ public static class ThemeManager
             "selection": "#60458588",
             "currentLine": "#32302F",
             "matchingBracket": "#3C3836",
-            "matchingBracketBorder": "#928374"
+            "matchingBracketBorder": "#928374",
+            "findMatch": "#60FABD2F",
+            "findMatchCurrent": "#80FE8019"
           },
           "chrome": {
             "titleBar": "#1D2021",

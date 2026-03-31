@@ -23,6 +23,8 @@ public partial class MainWindow : Window
         Editor.DirtyChanged += (_, _) => UpdateTitle();
         Editor.CaretMoved += (_, _) => UpdateCaretPos();
         CmdPalette.Closed += (_, _) => Keyboard.Focus(Editor);
+        FindBarControl.SetEditor(Editor);
+        FindBarControl.Closed += (_, _) => Keyboard.Focus(Editor);
         StateChanged += OnStateChanged;
         Closing += OnWindowClosing;
     }
@@ -315,6 +317,7 @@ public partial class MainWindow : Window
 
         if (ctrl && !shift && e.Key == Key.N) { OnNew(this, new RoutedEventArgs()); e.Handled = true; }
         else if (ctrl && !shift && e.Key == Key.O) { OnOpen(this, new RoutedEventArgs()); e.Handled = true; }
+        else if (ctrl && !shift && e.Key == Key.F) { FindBarControl.Open(); e.Handled = true; }
         else if (ctrl && shift && e.Key == Key.P) { OpenCommandPalette(); e.Handled = true; }
         else if (ctrl && shift && e.Key == Key.S) { OnSaveAs(this, new RoutedEventArgs()); e.Handled = true; }
         else if (ctrl && !shift && e.Key == Key.S) { OnSave(this, new RoutedEventArgs()); e.Handled = true; }

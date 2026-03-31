@@ -199,6 +199,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
         BracketPairs.ToDictionary(kv => kv.Value, kv => kv.Key);
     private static readonly HashSet<char> AutoCloseQuotes = ['\'', '"', '`'];
 
+    // ── Find matches ──────────────────────────────────────────────────
+    private List<(int Line, int Col, int Length)> _findMatches = [];
+    private int _currentMatchIndex = -1;
+
     // ── Mouse drag ───────────────────────────────────────────────────
     private bool _isDragging;
 
@@ -717,6 +721,21 @@ public class EditorControl : FrameworkElement, IScrollInfo
             SetHorizontalOffset(caretX - _viewport.Width + _charWidth * 2);
     }
 
+    /// <summary>Measure the pixel X offset of a buffer column using FormattedText (handles tabs correctly).</summary>
+    private double ColToPixelX(string line, int col)
+    {
+        if (col <= 0) return 0;
+        int end = Math.Min(col, line.Length);
+        var sub = line[..end];
+        var ft = new FormattedText(sub, CultureInfo.InvariantCulture,
+            FlowDirection.LeftToRight, _monoTypeface, _fontSize, Brushes.White, _dpi);
+        double w = ft.WidthIncludingTrailingWhitespace;
+        // If col extends past end of line, add remaining as charWidth each
+        if (col > line.Length)
+            w += (col - line.Length) * _charWidth;
+        return w;
+    }
+
     private void ResetPreferredCol() => _preferredCol = -1;
 
     private void ResetCaret()
@@ -864,6 +883,25 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     new Rect(Math.Max(x1, _gutterWidth + GutterPadding), y,
                              Math.Max(0, x2 - Math.Max(x1, _gutterWidth + GutterPadding)),
                              _lineHeight));
+            }
+        }
+
+        // Find match highlights
+        if (_findMatches.Count > 0)
+        {
+            for (int m = 0; m < _findMatches.Count; m++)
+            {
+                var (mLine, mCol, mLen) = _findMatches[m];
+                if (mLine < firstLine || mLine > lastLine) continue;
+                double pxStart = ColToPixelX(_lines[mLine], mCol);
+                double pxEnd = ColToPixelX(_lines[mLine], mCol + mLen);
+                double mx = _gutterWidth + GutterPadding + pxStart - _offset.X;
+                double my = mLine * _lineHeight - _offset.Y;
+                var brush = m == _currentMatchIndex
+                    ? ThemeManager.FindMatchCurrentBrush
+                    : ThemeManager.FindMatchBrush;
+                dc.DrawRectangle(brush, null,
+                    new Rect(mx, my, pxEnd - pxStart, _lineHeight));
             }
         }
 
@@ -1674,5 +1712,101 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public void MarkClean()
     {
         IsDirty = false;
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    //  Find support
+    // ──────────────────────────────────────────────────────────────────
+
+    public int FindMatchCount => _findMatches.Count;
+    public int CurrentMatchIndex => _currentMatchIndex;
+
+    public void SetFindMatches(string query, bool matchCase)
+    {
+        _findMatches.Clear();
+        _currentMatchIndex = -1;
+
+        if (string.IsNullOrEmpty(query))
+        {
+            InvalidateVisual();
+            return;
+        }
+
+        var comparison = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        for (int line = 0; line < _lines.Count; line++)
+        {
+            int pos = 0;
+            while (pos < _lines[line].Length)
+            {
+                int idx = _lines[line].IndexOf(query, pos, comparison);
+                if (idx < 0) break;
+                _findMatches.Add((line, idx, query.Length));
+                pos = idx + 1;
+            }
+        }
+
+        // Select the first match at or after the caret; wrap to start if none found
+        if (_findMatches.Count > 0)
+        {
+            _currentMatchIndex = 0; // default: wrap to first match
+            for (int i = 0; i < _findMatches.Count; i++)
+            {
+                var (ml, mc, _) = _findMatches[i];
+                if (ml > _caretLine || (ml == _caretLine && mc >= _caretCol))
+                {
+                    _currentMatchIndex = i;
+                    break;
+                }
+            }
+            NavigateToCurrentMatch();
+        }
+
+        InvalidateVisual();
+    }
+
+    public void ClearFindMatches()
+    {
+        _findMatches.Clear();
+        _currentMatchIndex = -1;
+        InvalidateVisual();
+    }
+
+    public void FindNext()
+    {
+        if (_findMatches.Count == 0) return;
+        _currentMatchIndex = (_currentMatchIndex + 1) % _findMatches.Count;
+        NavigateToCurrentMatch();
+        InvalidateVisual();
+    }
+
+    public void FindPrevious()
+    {
+        if (_findMatches.Count == 0) return;
+        _currentMatchIndex = (_currentMatchIndex - 1 + _findMatches.Count) % _findMatches.Count;
+        NavigateToCurrentMatch();
+        InvalidateVisual();
+    }
+
+    private void NavigateToCurrentMatch()
+    {
+        if (_currentMatchIndex < 0 || _currentMatchIndex >= _findMatches.Count) return;
+        var (line, col, _) = _findMatches[_currentMatchIndex];
+        _caretLine = line;
+        _caretCol = col;
+        ClearSelection();
+        CentreLineInViewport(line);
+        ResetCaret();
+    }
+
+    private void CentreLineInViewport(int line)
+    {
+        double targetY = line * _lineHeight - (_viewport.Height - _lineHeight) / 2;
+        SetVerticalOffset(targetY);
+
+        // Centre horizontally on the caret position
+        double caretX = _gutterWidth + GutterPadding + ColToPixelX(_lines[line], _caretCol);
+        double textAreaWidth = _viewport.Width - _gutterWidth - GutterPadding;
+        double targetX = caretX - _gutterWidth - GutterPadding - textAreaWidth / 2;
+        SetHorizontalOffset(targetX);
     }
 }
