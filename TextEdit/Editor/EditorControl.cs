@@ -59,12 +59,19 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private GlyphTypeface _glyphTypeface = null!;
     private double _fontSize = 14;
     private const double GutterPadding = 4;
+    private const double GutterRightMargin = 8;
+    private const double GutterSeparatorThickness = 0.5;
+    private const double HorizontalScrollPadding = 50;
+    private const double BarCaretWidth = 1;
+    private const double DefaultFontSize = 14;
+    private const double MouseWheelDeltaUnit = 120.0;
+    private const int ScrollWheelLines = 3;
     private double _charWidth;
     private double _lineHeight;
     private double _glyphBaseline;
 
     // ── Cached pens / metrics ───────────────────────────────────────
-    private Pen _gutterSepPen = new(Brushes.Gray, 0.5);
+    private Pen _gutterSepPen = new(Brushes.Gray, GutterSeparatorThickness);
     private int _gutterDigits;
     private double _dpi = 1.0;
 
@@ -167,9 +174,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
             {
                 var typeface = new Typeface(family, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
                 var narrow = new FormattedText("i", CultureInfo.InvariantCulture,
-                    FlowDirection.LeftToRight, typeface, 14, Brushes.White, dpi);
+                    FlowDirection.LeftToRight, typeface, DefaultFontSize, Brushes.White, dpi);
                 var wide = new FormattedText("M", CultureInfo.InvariantCulture,
-                    FlowDirection.LeftToRight, typeface, 14, Brushes.White, dpi);
+                    FlowDirection.LeftToRight, typeface, DefaultFontSize, Brushes.White, dpi);
                 if (Math.Abs(narrow.WidthIncludingTrailingWhitespace - wide.WidthIncludingTrailingWhitespace) < 0.01)
                     mono.Add(family.Source);
             }
@@ -237,7 +244,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     public EditorControl()
     {
-        ApplyFont(DefaultFontFamily(), 14, FontWeights.Normal);
+        ApplyFont(DefaultFontFamily(), DefaultFontSize, FontWeights.Normal);
         Focusable = true;
         FocusVisualStyle = null;
         Cursor = Cursors.IBeam;
@@ -322,7 +329,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             else
             {
                 dc.DrawRectangle(ThemeManager.CaretBrush, null,
-                    new Rect(caretX, caretY, 1, _lineHeight));
+                    new Rect(caretX, caretY, BarCaretWidth, _lineHeight));
             }
         }
     }
@@ -623,14 +630,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (digits != _gutterDigits)
         {
             _gutterDigits = digits;
-            _gutterWidth = digits * _charWidth + 8;
+            _gutterWidth = digits * _charWidth + GutterRightMargin;
         }
 
         // Use the fast path when possible, full recalc only when dirty
         int maxLen = _buffer.UpdateMaxForLine(_caretLine);
 
         var newExtent = new Size(
-            _gutterWidth + GutterPadding + maxLen * _charWidth + 50,
+            _gutterWidth + GutterPadding + maxLen * _charWidth + HorizontalScrollPadding,
             _buffer.Count * _lineHeight);
 
         if (Math.Abs(newExtent.Width - _extent.Width) > 0.5
@@ -706,7 +713,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private void RebuildGutterPen()
     {
-        _gutterSepPen = new Pen(ThemeManager.GutterFg, 0.5);
+        _gutterSepPen = new Pen(ThemeManager.GutterFg, GutterSeparatorThickness);
         _gutterSepPen.Freeze();
     }
 
@@ -976,7 +983,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             var numStr = (i + 1).ToString();
             double numWidth = numStr.Length * _charWidth;
             DrawGlyphRun(dc, numStr, 0, numStr.Length,
-                _gutterWidth - numWidth - 4, y, brush);
+                _gutterWidth - numWidth - GutterPadding, y, brush);
         }
 
         _gutterRenderedFirstLine = drawFirst;
@@ -1112,17 +1119,17 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         if (!insideString && e.Text.Length == 1 && BracketPairs.TryGetValue(ch, out char closer))
         {
-            _buffer[_caretLine] = currentLine[.._caretCol] + ch + closer + currentLine[_caretCol..];
+            _buffer.InsertAt(_caretLine, _caretCol, ch.ToString() + closer);
             _caretCol++;
         }
         else if (!insideString && e.Text.Length == 1 && AutoCloseQuotes.Contains(ch))
         {
-            _buffer[_caretLine] = currentLine[.._caretCol] + ch.ToString() + ch + currentLine[_caretCol..];
+            _buffer.InsertAt(_caretLine, _caretCol, ch.ToString() + ch);
             _caretCol++;
         }
         else
         {
-            _buffer[_caretLine] = currentLine[.._caretCol] + e.Text + currentLine[_caretCol..];
+            _buffer.InsertAt(_caretLine, _caretCol, e.Text);
             _caretCol += e.Text.Length;
         }
 
@@ -1230,8 +1237,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             (_caretLine, _caretCol) = _selection.DeleteSelection(_buffer, _caretLine, _caretCol);
 
         var indent = _buffer[_caretLine][..^(_buffer[_caretLine].TrimStart().Length)];
-        var rest = _buffer[_caretLine][_caretCol..];
-        _buffer[_caretLine] = _buffer[_caretLine][.._caretCol];
+        var rest = _buffer.TruncateAt(_caretLine, _caretCol);
 
         bool betweenBrackets = _caretCol > 0 && rest.Length > 0
             && BracketPairs.TryGetValue(_buffer[_caretLine][^1], out char expectedCloser)
@@ -1292,7 +1298,6 @@ public class EditorControl : FrameworkElement, IScrollInfo
         else if (_caretCol > 0)
         {
             var line = _buffer[_caretLine];
-            _buffer.NotifyLineChanging(_caretLine);
 
             bool deletedPair = false;
             if (_caretCol < line.Length)
@@ -1303,7 +1308,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                               || (AutoCloseQuotes.Contains(before) && after == before);
                 if (isPair)
                 {
-                    _buffer[_caretLine] = line[..(_caretCol - 1)] + line[(_caretCol + 1)..];
+                    _buffer.DeleteAt(_caretLine, _caretCol - 1, 2);
                     _caretCol--;
                     deletedPair = true;
                 }
@@ -1318,15 +1323,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     int prevStop = (_caretCol - 1) / TabSize * TabSize;
                     remove = _caretCol - prevStop;
                 }
-                _buffer[_caretLine] = line[..(_caretCol - remove)] + line[_caretCol..];
+                _buffer.DeleteAt(_caretLine, _caretCol - remove, remove);
                 _caretCol -= remove;
             }
         }
         else if (_caretLine > 0)
         {
             _caretCol = _buffer[_caretLine - 1].Length;
-            _buffer[_caretLine - 1] += _buffer[_caretLine];
-            _buffer.RemoveAt(_caretLine);
+            _buffer.JoinWithNext(_caretLine - 1);
             _caretLine--;
             _tokenCacheDirty = true;
         }
@@ -1358,13 +1362,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
         else if (_caretCol < _buffer[_caretLine].Length)
         {
-            _buffer.NotifyLineChanging(_caretLine);
-            _buffer[_caretLine] = _buffer[_caretLine][.._caretCol] + _buffer[_caretLine][(_caretCol + 1)..];
+            _buffer.DeleteAt(_caretLine, _caretCol, 1);
         }
         else if (_caretLine < _buffer.Count - 1)
         {
-            _buffer[_caretLine] += _buffer[_caretLine + 1];
-            _buffer.RemoveAt(_caretLine + 1);
+            _buffer.JoinWithNext(_caretLine);
             _tokenCacheDirty = true;
         }
         EndEdit(scope);
@@ -1398,14 +1400,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
                             remove++;
                         if (remove > 0)
                         {
-                            _buffer[i] = _buffer[i][remove..];
+                            _buffer.DeleteAt(i, 0, remove);
                             if (i == _caretLine) _caretCol = Math.Max(0, _caretCol - remove);
                             if (i == _selection.AnchorLine) _selection.AnchorCol = Math.Max(0, _selection.AnchorCol - remove);
                         }
                     }
                     else
                     {
-                        _buffer[i] = new string(' ', TabSize) + _buffer[i];
+                        _buffer.InsertAt(i, 0, new string(' ', TabSize));
                         if (i == _caretLine) _caretCol += TabSize;
                         if (i == _selection.AnchorLine) _selection.AnchorCol += TabSize;
                     }
@@ -1423,7 +1425,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             if (_selection.HasSelection)
                 (_caretLine, _caretCol) = _selection.DeleteSelection(_buffer, _caretLine, _caretCol);
             int spacesToInsert = TabSize - (_caretCol % TabSize);
-            _buffer[_caretLine] = _buffer[_caretLine][.._caretCol] + new string(' ', spacesToInsert) + _buffer[_caretLine][_caretCol..];
+            _buffer.InsertAt(_caretLine, _caretCol, new string(' ', spacesToInsert));
             _caretCol += spacesToInsert;
         }
         EndEdit(scope);
@@ -1590,13 +1592,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         if (pasteLines.Length == 1)
         {
-            _buffer[_caretLine] = _buffer[_caretLine][.._caretCol] + pasteLines[0] + _buffer[_caretLine][_caretCol..];
+            _buffer.InsertAt(_caretLine, _caretCol, pasteLines[0]);
             _caretCol += pasteLines[0].Length;
         }
         else
         {
-            var after = _buffer[_caretLine][_caretCol..];
-            _buffer[_caretLine] = _buffer[_caretLine][.._caretCol] + pasteLines[0];
+            var after = _buffer.TruncateAt(_caretLine, _caretCol);
+            _buffer[_caretLine] += pasteLines[0];
             for (int i = 1; i < pasteLines.Length; i++)
             {
                 _caretLine++;
@@ -1618,7 +1620,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     protected override void OnMouseWheel(MouseWheelEventArgs e)
     {
-        SetVerticalOffset(_offset.Y - e.Delta / 120.0 * _lineHeight * 3);
+        SetVerticalOffset(_offset.Y - e.Delta / MouseWheelDeltaUnit * _lineHeight * ScrollWheelLines);
         e.Handled = true;
     }
 
@@ -1810,7 +1812,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (_currentMatchIndex < 0 || _currentMatchIndex >= _findMatches.Count) return;
         var (line, col, len) = _findMatches[_currentMatchIndex];
         var scope = BeginEdit(line, line);
-        _buffer[line] = _buffer[line][..col] + replacement + _buffer[line][(col + len)..];
+        _buffer.ReplaceAt(line, col, len, replacement);
         EndEdit(scope);
         _buffer.InvalidateMaxLineLength();
         _gutterVisualDirty = true;
@@ -1826,7 +1828,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         for (int i = _findMatches.Count - 1; i >= 0; i--)
         {
             var (line, col, len) = _findMatches[i];
-            _buffer[line] = _buffer[line][..col] + replacement + _buffer[line][(col + len)..];
+            _buffer.ReplaceAt(line, col, len, replacement);
         }
         EndEdit(scope);
         _buffer.InvalidateMaxLineLength();
