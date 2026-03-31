@@ -85,9 +85,11 @@ public static class SyntaxManager
             ruleStart = len;
         }
 
-        // Apply regex rules to the (remaining) line
-        foreach (var rule in _activeGrammar.Rules)
+        // Collect all candidate matches with rule priority
+        var candidates = new List<(int Priority, int Start, int Length, string Scope)>();
+        for (int r = 0; r < _activeGrammar.Rules.Count; r++)
         {
+            var rule = _activeGrammar.Rules[r];
             if (rule.CompiledRegex == null) continue;
 
             MatchCollection matches;
@@ -98,23 +100,30 @@ public static class SyntaxManager
             {
                 foreach (Match match in matches)
                 {
-                    if (match.Length == 0) continue;
-                    if (match.Index < ruleStart) continue;
-
-                    bool overlap = false;
-                    for (int i = match.Index; i < match.Index + match.Length; i++)
-                    {
-                        if (claimed[i]) { overlap = true; break; }
-                    }
-                    if (overlap) continue;
-
-                    for (int i = match.Index; i < match.Index + match.Length; i++)
-                        claimed[i] = true;
-
-                    tokens.Add(new SyntaxToken(match.Index, match.Length, rule.Scope));
+                    if (match.Length == 0 || match.Index < ruleStart) continue;
+                    candidates.Add((r, match.Index, match.Length, rule.Scope));
                 }
             }
             catch (RegexMatchTimeoutException) { }
+        }
+
+        // Sort by position first, then by rule priority (earlier rule wins ties)
+        candidates.Sort((a, b) => a.Start != b.Start ? a.Start.CompareTo(b.Start) : a.Priority.CompareTo(b.Priority));
+
+        // Greedily claim left-to-right: earliest position wins, rule priority breaks ties
+        foreach (var (_, start, length, scope) in candidates)
+        {
+            bool overlap = false;
+            for (int i = start; i < start + length; i++)
+            {
+                if (claimed[i]) { overlap = true; break; }
+            }
+            if (overlap) continue;
+
+            for (int i = start; i < start + length; i++)
+                claimed[i] = true;
+
+            tokens.Add(new SyntaxToken(start, length, scope));
         }
 
         // Detect if the line ends with an unclosed string
@@ -193,7 +202,7 @@ public static class SyntaxManager
     }
 
     private static readonly Regex InterpolationRegex = new(
-        @"(?<!\\)[\$@]\{?[\w:]+\}?", RegexOptions.Compiled);
+        @"(?<!\\)[\$@](?:\{[\w:]+\}|[\w:]+)", RegexOptions.Compiled);
 
     private static readonly Regex EscapeRegex = new(
         @"\\(?:[abefnrt\\'""]|0[0-7]*|x[0-9a-fA-F]{1,2}|u[0-9a-fA-F]{4}|N\{[^}]+\}|.)", RegexOptions.Compiled);
@@ -288,11 +297,9 @@ public static class SyntaxManager
     {
         Directory.CreateDirectory(GrammarsDir);
 
+        // Always overwrite built-in grammars so embedded fixes take effect
         var perlPath = Path.Combine(GrammarsDir, "perl.json");
-        if (!File.Exists(perlPath))
-        {
-            File.WriteAllText(perlPath, DefaultPerlGrammar);
-        }
+        File.WriteAllText(perlPath, DefaultPerlGrammar);
     }
 
     private static readonly string DefaultPerlGrammar = """
@@ -333,7 +340,7 @@ public static class SyntaxManager
               "scope": "hashkey"
             },
             {
-              "pattern": "[\\$@%]\\{?[\\w:]+\\}?",
+              "pattern": "[\\$@%](?:\\{[\\w:]+\\}|[\\w:]+)",
               "scope": "variable"
             },
             {
