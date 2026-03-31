@@ -316,20 +316,24 @@ public partial class MainWindow : Window
         var dlg = new SettingsWindow(Editor.TabSize, _settings.Editor.Caret.BlockCaret, _settings.Editor.Caret.BlinkMs,
             Editor.FontFamilyName, Editor.EditorFontSize, Editor.EditorFontWeight, _settings.Application.ColorTheme,
             _settings.Editor.Find.BarPosition) { Owner = this };
+        dlg.Applied += (_, _) => ApplySettingsFromDialog(dlg);
         if (dlg.ShowDialog() == true)
-        {
-            _settings.Editor.TabSize = dlg.TabSize;
-            _settings.Editor.Caret.BlockCaret = dlg.BlockCaret;
-            _settings.Editor.Caret.BlinkMs = dlg.CaretBlinkMs;
-            _settings.Editor.Font.Family = dlg.SelectedFontFamily;
-            _settings.Editor.Font.Size = dlg.SelectedFontSize;
-            _settings.Editor.Font.Weight = dlg.SelectedFontWeight;
-            _settings.Application.ColorTheme = dlg.ColorThemeName;
-            _settings.Editor.Find.BarPosition = dlg.FindBarPosition;
-            _settings.Save();
-            ApplySettings();
-            ThemeManager.Apply(dlg.ColorThemeName);
-        }
+            ApplySettingsFromDialog(dlg);
+    }
+
+    private void ApplySettingsFromDialog(SettingsWindow dlg)
+    {
+        _settings.Editor.TabSize = dlg.TabSize;
+        _settings.Editor.Caret.BlockCaret = dlg.BlockCaret;
+        _settings.Editor.Caret.BlinkMs = dlg.CaretBlinkMs;
+        _settings.Editor.Font.Family = dlg.SelectedFontFamily;
+        _settings.Editor.Font.Size = dlg.SelectedFontSize;
+        _settings.Editor.Font.Weight = dlg.SelectedFontWeight;
+        _settings.Application.ColorTheme = dlg.ColorThemeName;
+        _settings.Editor.Find.BarPosition = dlg.FindBarPosition;
+        _settings.Save();
+        ApplySettings();
+        ThemeManager.Apply(dlg.ColorThemeName);
     }
 
     private void OnTitleBarMouseDown(object sender, MouseButtonEventArgs e)
