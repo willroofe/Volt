@@ -41,27 +41,16 @@ Converted both controls from code-behind-only to XAML + code-behind:
 - **FindBar** — UI tree moved to `FindBar.xaml`, class made `partial`. Constructor reduced from ~180 lines to `InitializeComponent()`. All button click handlers wired via XAML event attributes. Four static style-creation methods (`CreateNavButtonTemplate`, `CreateTextButtonTemplate`, `CreateMatchCaseButtonStyle`, `CreateRoundedTextBoxStyle`) and two static factory methods (`MakeNavButton`, `MakeTextButton`) eliminated entirely.
 - **Shared styles** added to `App.xaml`: `FindBarNavButton`, `FindBarTextButton`, `MatchCaseButton`, `RoundedTextBox` — replacing the programmatic `FrameworkElementFactory`-based templates with declarative XAML.
 
-### 5. No folder structure
+### ~~5. No folder structure~~ ✅ Done
 
-All 12 source files sit flat in one directory. A simple grouping would help:
+Source files organized into three subdirectories:
 
-```
-TextEdit/
-  Editor/
-    EditorControl.cs      (or the extracted pieces)
-    SyntaxManager.cs
-    SyntaxDefinition.cs
-  Theme/
-    ThemeManager.cs
-    ColorTheme.cs
-  UI/
-    MainWindow.xaml/.cs
-    CommandPalette.cs
-    FindBar.cs
-    SettingsWindow.xaml/.cs
-  AppSettings.cs
-  App.xaml/.cs
-```
+- **Editor/** — `EditorControl.cs`, `TextBuffer.cs`, `UndoManager.cs`, `SelectionManager.cs`, `SyntaxManager.cs`, `SyntaxDefinition.cs`
+- **Theme/** — `ThemeManager.cs`, `ColorTheme.cs`
+- **UI/** — `MainWindow.xaml/.cs`, `CommandPalette.xaml/.cs`, `FindBar.xaml/.cs`, `SettingsWindow.xaml/.cs`
+- **Root** — `App.xaml/.cs`, `AppSettings.cs`, `AssemblyInfo.cs`
+
+All classes remain in the `TextEdit` namespace — no code changes required, purely a file organization move.
 
 ### 6. Hardcoded default themes/grammars as string literals
 
@@ -104,6 +93,6 @@ If I were to tackle these in order:
 
 1. ~~Extract TextBuffer from EditorControl (biggest bang for maintainability)~~ ✅
 2. ~~Break OnKeyDown into smaller handler methods~~ ✅
-3. Add folder structure
+3. ~~Add folder structure~~ ✅
 4. Move embedded JSON to embedded resources
 5. ~~Convert CommandPalette/FindBar to XAML + code-behind~~ ✅
