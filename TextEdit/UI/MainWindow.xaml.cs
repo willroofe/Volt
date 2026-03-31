@@ -359,6 +359,7 @@ public partial class MainWindow : Window
     }
 
     private void OnClose(object sender, RoutedEventArgs e) => Close();
+    private void OnExit(object sender, RoutedEventArgs e) => Close();
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
