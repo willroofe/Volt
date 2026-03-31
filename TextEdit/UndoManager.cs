@@ -1,14 +1,20 @@
 namespace TextEdit;
 
 /// <summary>
-/// Manages undo/redo with full-snapshot-based entries.
-/// Each entry stores a complete copy of the text buffer and caret position.
+/// Manages undo/redo with region-based entries.
+/// Each entry stores only the affected line range (before and after),
+/// not a full copy of the entire buffer.
 /// </summary>
 public class UndoManager
 {
     private const int MaxEntries = 200;
 
-    public record UndoEntry(List<string> Snapshot, int CaretLine, int CaretCol);
+    public record UndoEntry(
+        int StartLine,
+        List<string> Before,
+        List<string> After,
+        int CaretLineBefore, int CaretColBefore,
+        int CaretLineAfter, int CaretColAfter);
 
     private readonly List<UndoEntry> _undoStack = [];
     private readonly List<UndoEntry> _redoStack = [];
@@ -17,40 +23,39 @@ public class UndoManager
     public bool CanRedo => _redoStack.Count > 0;
 
     /// <summary>
-    /// Push the current state onto the undo stack (call before making changes).
-    /// Clears the redo stack.
+    /// Push a region-based undo entry. Clears the redo stack.
     /// </summary>
-    public void Push(List<string> snapshot, int caretLine, int caretCol)
+    public void Push(UndoEntry entry)
     {
-        _undoStack.Add(new UndoEntry(snapshot, caretLine, caretCol));
+        _undoStack.Add(entry);
         if (_undoStack.Count > MaxEntries)
             _undoStack.RemoveAt(0);
         _redoStack.Clear();
     }
 
     /// <summary>
-    /// Undo: saves current state to redo stack, returns the previous state.
-    /// Returns null if nothing to undo.
+    /// Undo: pops the last entry, moves it to the redo stack, returns it.
+    /// The caller applies the reverse (replaces After with Before in the buffer).
     /// </summary>
-    public UndoEntry? Undo(List<string> currentSnapshot, int caretLine, int caretCol)
+    public UndoEntry? Undo()
     {
         if (_undoStack.Count == 0) return null;
-        _redoStack.Add(new UndoEntry(currentSnapshot, caretLine, caretCol));
         var entry = _undoStack[^1];
         _undoStack.RemoveAt(_undoStack.Count - 1);
+        _redoStack.Add(entry);
         return entry;
     }
 
     /// <summary>
-    /// Redo: saves current state to undo stack, returns the next state.
-    /// Returns null if nothing to redo.
+    /// Redo: pops the last redo entry, moves it back to the undo stack, returns it.
+    /// The caller applies the forward (replaces Before with After in the buffer).
     /// </summary>
-    public UndoEntry? Redo(List<string> currentSnapshot, int caretLine, int caretCol)
+    public UndoEntry? Redo()
     {
         if (_redoStack.Count == 0) return null;
-        _undoStack.Add(new UndoEntry(currentSnapshot, caretLine, caretCol));
         var entry = _redoStack[^1];
         _redoStack.RemoveAt(_redoStack.Count - 1);
+        _undoStack.Add(entry);
         return entry;
     }
 

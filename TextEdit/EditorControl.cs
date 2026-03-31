@@ -322,25 +322,51 @@ public class EditorControl : FrameworkElement, IScrollInfo
     }
 
     // ──────────────────────────────────────────────────────────────────
-    //  Undo / Redo helpers
+    //  Undo / Redo helpers (region-based)
     // ──────────────────────────────────────────────────────────────────
-    private void PushUndo()
+
+    /// <summary>Snapshot of the buffer region before an edit, used by BeginEdit/EndEdit.</summary>
+    private readonly record struct EditScope(
+        int StartLine, int LineCount, int BufferCount,
+        List<string> Before, int CaretLine, int CaretCol);
+
+    /// <summary>
+    /// Call before an edit. Snapshots the lines in [startLine, endLine] (inclusive)
+    /// and records the caret position and buffer size.
+    /// </summary>
+    private EditScope BeginEdit(int startLine, int endLine)
     {
+        int count = endLine - startLine + 1;
+        return new EditScope(startLine, count, _buffer.Count,
+            _buffer.GetLines(startLine, count), _caretLine, _caretCol);
+    }
+
+    /// <summary>
+    /// Call after an edit. Snapshots the new state of the affected region
+    /// and pushes a region-based undo entry.
+    /// </summary>
+    private void EndEdit(EditScope scope)
+    {
+        int lineDelta = _buffer.Count - scope.BufferCount;
+        int afterCount = scope.LineCount + lineDelta;
+        var after = _buffer.GetLines(scope.StartLine, afterCount);
+        _undoManager.Push(new UndoManager.UndoEntry(
+            scope.StartLine, scope.Before, after,
+            scope.CaretLine, scope.CaretCol, _caretLine, _caretCol));
+
         _textVisualDirty = true;
-        _undoManager.Push(_buffer.Snapshot(), _caretLine, _caretCol);
         _bracketMatchDirty = true;
-        int from = _selection.HasSelection ? Math.Min(_caretLine, _selection.AnchorLine) : _caretLine;
-        InvalidateLineStatesFrom(from);
+        InvalidateLineStatesFrom(scope.StartLine);
         _buffer.IsDirty = true;
     }
 
     private void Undo()
     {
-        var entry = _undoManager.Undo(_buffer.Snapshot(), _caretLine, _caretCol);
+        var entry = _undoManager.Undo();
         if (entry == null) return;
-        _buffer.Restore(entry.Snapshot);
-        _caretLine = entry.CaretLine;
-        _caretCol = entry.CaretCol;
+        _buffer.ReplaceLines(entry.StartLine, entry.After.Count, entry.Before);
+        _caretLine = entry.CaretLineBefore;
+        _caretCol = entry.CaretColBefore;
         _selection.Clear();
         _bracketMatchDirty = true;
         InvalidateLineStates();
@@ -350,11 +376,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private void Redo()
     {
-        var entry = _undoManager.Redo(_buffer.Snapshot(), _caretLine, _caretCol);
+        var entry = _undoManager.Redo();
         if (entry == null) return;
-        _buffer.Restore(entry.Snapshot);
-        _caretLine = entry.CaretLine;
-        _caretCol = entry.CaretCol;
+        _buffer.ReplaceLines(entry.StartLine, entry.Before.Count, entry.After);
+        _caretLine = entry.CaretLineAfter;
+        _caretCol = entry.CaretColAfter;
         _selection.Clear();
         _bracketMatchDirty = true;
         InvalidateLineStates();
@@ -1052,11 +1078,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
 
         ResetPreferredCol();
-        PushUndo();
+        int sl = _caretLine, el = _caretLine;
         if (_selection.HasSelection)
         {
-            (_caretLine, _caretCol) = _selection.DeleteSelection(_buffer, _caretLine, _caretCol);
+            var (s, _, e2, _) = _selection.GetOrdered(_caretLine, _caretCol);
+            sl = s; el = e2;
         }
+        var scope = BeginEdit(sl, el);
+
+        if (_selection.HasSelection)
+            (_caretLine, _caretCol) = _selection.DeleteSelection(_buffer, _caretLine, _caretCol);
 
         var currentLine = _buffer[_caretLine];
         bool insideString = IsCaretInsideString(currentLine, _caretCol);
@@ -1077,6 +1108,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _caretCol += e.Text.Length;
         }
 
+        EndEdit(scope);
         _selection.Clear();
         UpdateExtent();
         EnsureCaretVisible();
@@ -1169,7 +1201,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void HandleReturn()
     {
         ResetPreferredCol();
-        PushUndo();
+        int sl = _caretLine, el = _caretLine;
+        if (_selection.HasSelection)
+        {
+            var (s, _, e2, _) = _selection.GetOrdered(_caretLine, _caretCol);
+            sl = s; el = e2;
+        }
+        var scope = BeginEdit(sl, el);
         if (_selection.HasSelection)
             (_caretLine, _caretCol) = _selection.DeleteSelection(_buffer, _caretLine, _caretCol);
 
@@ -1206,6 +1244,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _caretCol = indent.Length;
         }
 
+        EndEdit(scope);
         _selection.Clear();
         _tokenCacheDirty = true;
         UpdateExtent();
@@ -1216,7 +1255,18 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void HandleBackspace()
     {
         ResetPreferredCol();
-        PushUndo();
+        int sl = _caretLine, el = _caretLine;
+        if (_selection.HasSelection)
+        {
+            var (s, _, e2, _) = _selection.GetOrdered(_caretLine, _caretCol);
+            sl = s; el = e2;
+        }
+        else if (_caretCol == 0 && _caretLine > 0)
+        {
+            sl = _caretLine - 1; // line join: affects previous + current
+        }
+        var scope = BeginEdit(sl, el);
+
         if (_selection.HasSelection)
         {
             (_caretLine, _caretCol) = _selection.DeleteSelection(_buffer, _caretLine, _caretCol);
@@ -1262,6 +1312,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _caretLine--;
             _tokenCacheDirty = true;
         }
+        EndEdit(scope);
         _selection.Clear();
         UpdateExtent();
         EnsureCaretVisible();
@@ -1271,7 +1322,18 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void HandleDelete()
     {
         ResetPreferredCol();
-        PushUndo();
+        int sl = _caretLine, el = _caretLine;
+        if (_selection.HasSelection)
+        {
+            var (s, _, e2, _) = _selection.GetOrdered(_caretLine, _caretCol);
+            sl = s; el = e2;
+        }
+        else if (_caretCol >= _buffer[_caretLine].Length && _caretLine < _buffer.Count - 1)
+        {
+            el = _caretLine + 1; // line join: affects current + next
+        }
+        var scope = BeginEdit(sl, el);
+
         if (_selection.HasSelection)
         {
             (_caretLine, _caretCol) = _selection.DeleteSelection(_buffer, _caretLine, _caretCol);
@@ -1287,6 +1349,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _buffer.RemoveAt(_caretLine + 1);
             _tokenCacheDirty = true;
         }
+        EndEdit(scope);
         _selection.Clear();
         UpdateExtent();
         EnsureCaretVisible();
@@ -1296,10 +1359,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void HandleTab(bool shift)
     {
         ResetPreferredCol();
-        PushUndo();
+        int sl = _caretLine, el = _caretLine;
         if (_selection.HasSelection)
         {
-            var (sl, _, el, _) = _selection.GetOrdered(_caretLine, _caretCol);
+            var (s, _, e2, _) = _selection.GetOrdered(_caretLine, _caretCol);
+            sl = s; el = e2;
+        }
+        var scope = BeginEdit(sl, el);
+
+        if (_selection.HasSelection)
+        {
             if (sl != el)
             {
                 for (int i = sl; i <= el; i++)
@@ -1323,6 +1392,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                         if (i == _selection.AnchorLine) _selection.AnchorCol += TabSize;
                     }
                 }
+                EndEdit(scope);
                 _selection.HasSelection = true;
                 UpdateExtent();
                 EnsureCaretVisible();
@@ -1338,6 +1408,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _buffer[_caretLine] = _buffer[_caretLine][.._caretCol] + new string(' ', spacesToInsert) + _buffer[_caretLine][_caretCol..];
             _caretCol += spacesToInsert;
         }
+        EndEdit(scope);
         _selection.Clear();
         UpdateExtent();
         EnsureCaretVisible();
@@ -1461,9 +1532,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
             if (_selection.HasSelection)
             {
                 ResetPreferredCol();
-                PushUndo();
+                var (sl, _, el, _) = _selection.GetOrdered(_caretLine, _caretCol);
+                var scope = BeginEdit(sl, el);
                 Clipboard.SetText(_selection.GetSelectedText(_buffer, _caretLine, _caretCol));
                 (_caretLine, _caretCol) = _selection.DeleteSelection(_buffer, _caretLine, _caretCol);
+                EndEdit(scope);
                 UpdateExtent();
                 EnsureCaretVisible();
                 ResetCaret();
@@ -1478,7 +1551,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
         catch (System.Runtime.InteropServices.ExternalException) { return; }
 
         ResetPreferredCol();
-        PushUndo();
+        int sl = _caretLine, el = _caretLine;
+        if (_selection.HasSelection)
+        {
+            var (s, _, e2, _) = _selection.GetOrdered(_caretLine, _caretCol);
+            sl = s; el = e2;
+        }
+        var scope = BeginEdit(sl, el);
+
         if (_selection.HasSelection)
             (_caretLine, _caretCol) = _selection.DeleteSelection(_buffer, _caretLine, _caretCol);
 
@@ -1508,6 +1588,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _buffer[_caretLine] += after;
             _tokenCacheDirty = true;
         }
+        EndEdit(scope);
         _selection.Clear();
         UpdateExtent();
         EnsureCaretVisible();
@@ -1708,11 +1789,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
     {
         if (_currentMatchIndex < 0 || _currentMatchIndex >= _findMatches.Count) return;
         var (line, col, len) = _findMatches[_currentMatchIndex];
-        PushUndo();
+        var scope = BeginEdit(line, line);
         _buffer[line] = _buffer[line][..col] + replacement + _buffer[line][(col + len)..];
+        EndEdit(scope);
         _buffer.InvalidateMaxLineLength();
-        InvalidateLineStatesFrom(line);
-        _textVisualDirty = true;
         _gutterVisualDirty = true;
         InvalidateVisual();
     }
@@ -1720,16 +1800,18 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public void ReplaceAll(string query, string replacement, bool matchCase)
     {
         if (_findMatches.Count == 0) return;
-        PushUndo();
+        int firstLine = _findMatches[0].Line;
+        int lastLine = _findMatches[^1].Line;
+        var scope = BeginEdit(firstLine, lastLine);
         for (int i = _findMatches.Count - 1; i >= 0; i--)
         {
             var (line, col, len) = _findMatches[i];
             _buffer[line] = _buffer[line][..col] + replacement + _buffer[line][(col + len)..];
         }
+        EndEdit(scope);
         _buffer.InvalidateMaxLineLength();
         _tokenCacheDirty = true;
         InvalidateLineStates();
-        _textVisualDirty = true;
         _gutterVisualDirty = true;
         InvalidateVisual();
     }
