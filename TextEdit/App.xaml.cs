@@ -10,7 +10,7 @@ public partial class App : Application
         ThemeManager.Initialize();
         SyntaxManager.Initialize();
         var settings = AppSettings.Load();
-        ThemeManager.Apply(settings.ColorTheme);
+        ThemeManager.Apply(settings.Application.ColorTheme);
         // Pre-warm monospace font cache at idle priority so it's ready
         // before the user opens settings or the command palette
         Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,

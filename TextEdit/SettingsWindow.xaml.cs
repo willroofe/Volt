@@ -65,15 +65,21 @@ public partial class SettingsWindow : Window
 
     private void SelectNav(string section)
     {
-        NavBehaviour.Style = (Style)FindResource(section == "Behaviour" ? "NavButtonActive" : "NavButton");
-        NavAppearance.Style = (Style)FindResource(section == "Appearance" ? "NavButtonActive" : "NavButton");
+        NavTheme.Style = (Style)FindResource(section == "Theme" ? "NavButtonActive" : "NavButton");
+        NavFont.Style = (Style)FindResource(section == "Font" ? "NavButtonActive" : "NavButton");
+        NavCaret.Style = (Style)FindResource(section == "Caret" ? "NavButtonActive" : "NavButton");
+        NavFind.Style = (Style)FindResource(section == "Find" ? "NavButtonActive" : "NavButton");
 
-        BehaviourScroller.Visibility = section == "Behaviour" ? Visibility.Visible : Visibility.Collapsed;
-        AppearanceScroller.Visibility = section == "Appearance" ? Visibility.Visible : Visibility.Collapsed;
+        ThemeScroller.Visibility = section == "Theme" ? Visibility.Visible : Visibility.Collapsed;
+        FontScroller.Visibility = section == "Font" ? Visibility.Visible : Visibility.Collapsed;
+        CaretScroller.Visibility = section == "Caret" ? Visibility.Visible : Visibility.Collapsed;
+        FindScroller.Visibility = section == "Find" ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void OnNavBehaviour(object sender, RoutedEventArgs e) => SelectNav("Behaviour");
-    private void OnNavAppearance(object sender, RoutedEventArgs e) => SelectNav("Appearance");
+    private void OnNavTheme(object sender, RoutedEventArgs e) => SelectNav("Theme");
+    private void OnNavFont(object sender, RoutedEventArgs e) => SelectNav("Font");
+    private void OnNavCaret(object sender, RoutedEventArgs e) => SelectNav("Caret");
+    private void OnNavFind(object sender, RoutedEventArgs e) => SelectNav("Find");
 
     private void OnOK(object sender, RoutedEventArgs e)
     {
