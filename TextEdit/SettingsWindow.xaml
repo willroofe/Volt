@@ -10,11 +10,18 @@
                       UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
     <Window.Resources>
+        <Style x:Key="NavHeader" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTextFgMuted}"/>
+            <Setter Property="Margin" Value="16,10,0,2"/>
+        </Style>
         <Style x:Key="NavButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
-            <Setter Property="Padding" Value="16,10"/>
+            <Setter Property="Padding" Value="24,5,16,5"/>
             <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Foreground" Value="{DynamicResource ThemeButtonFg}"/>
@@ -62,9 +69,9 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ToggleButton">
-                        <Border x:Name="Bd" Background="{DynamicResource ThemeNavActive}"
-                                BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="1"
-                                CornerRadius="3">
+                        <Border x:Name="Bd" Background="Transparent"
+                                BorderBrush="{DynamicResource ThemeMenuPopupBorder}" BorderThickness="1"
+                                CornerRadius="3" SnapsToDevicePixels="True">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
@@ -79,7 +86,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeNavHover}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeButtonHover}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -107,9 +114,9 @@
                                    AllowsTransparency="True" PopupAnimation="None">
                                 <Border Background="{DynamicResource ThemeMenuPopupBg}"
                                         BorderBrush="{DynamicResource ThemeMenuPopupBorder}"
-                                        BorderThickness="1" CornerRadius="2"
+                                        BorderThickness="1" CornerRadius="3"
                                         MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
-                                        Margin="0,1,4,4" Padding="0,2">
+                                        Margin="0,1,4,4" Padding="0">
                                     <Border.Effect>
                                         <DropShadowEffect ShadowDepth="1" Opacity="0.2" BlurRadius="4"/>
                                     </Border.Effect>
@@ -131,7 +138,8 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBoxItem">
-                        <Border x:Name="Bd" Background="Transparent" Padding="10,5">
+                        <Border x:Name="Bd" Background="Transparent" Padding="10,5"
+                                CornerRadius="3" Margin="3,0">
                             <ContentPresenter/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -155,7 +163,7 @@
                     <ControlTemplate TargetType="Thumb">
                         <Ellipse x:Name="Dot" Width="14" Height="14"
                                  Fill="{DynamicResource ThemeTextFg}"
-                                 Stroke="{DynamicResource ThemeBorderBrush}" StrokeThickness="1"/>
+                                 Stroke="{DynamicResource ThemeMenuPopupBorder}" StrokeThickness="1"/>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource ThemeTextFgStrong}"/>
@@ -171,7 +179,7 @@
                     <ControlTemplate TargetType="Slider">
                         <Grid>
                             <Border Height="3" VerticalAlignment="Center" CornerRadius="1.5"
-                                    Background="{DynamicResource ThemeNavActive}"/>
+                                    Background="{DynamicResource ThemeMenuPopupBorder}"/>
                             <Track x:Name="PART_Track">
                                 <Track.Thumb>
                                     <Thumb Style="{StaticResource SliderThumb}"/>
@@ -188,25 +196,24 @@
             <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Foreground" Value="{DynamicResource ThemeTextFg}"/>
-            <Setter Property="Background" Value="{DynamicResource ThemeNavActive}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="3" Padding="12,4">
+                        <Border x:Name="Bd" Background="Transparent"
+                                BorderBrush="{DynamicResource ThemeMenuPopupBorder}"
+                                BorderThickness="1"
+                                CornerRadius="3" Padding="12,4"
+                                SnapsToDevicePixels="True">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeNavHover}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeButtonHover}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeButtonHover}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeMenuItemHover}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -244,13 +251,22 @@
 
             <!-- Left nav -->
             <Border Grid.Column="0" Background="{DynamicResource ThemeNavBg}">
-                <StackPanel>
-                    <Button x:Name="NavBehaviour" Content="Behaviour"
+                <StackPanel Margin="0,4,0,0">
+                    <TextBlock Text="APPLICATION" Style="{StaticResource NavHeader}"/>
+                    <Button x:Name="NavTheme" Content="Theme"
                             Style="{StaticResource NavButtonActive}"
-                            Click="OnNavBehaviour"/>
-                    <Button x:Name="NavAppearance" Content="Appearance"
+                            Click="OnNavTheme"/>
+
+                    <TextBlock Text="EDITOR" Style="{StaticResource NavHeader}" Margin="16,12,0,2"/>
+                    <Button x:Name="NavFont" Content="Font"
                             Style="{StaticResource NavButton}"
-                            Click="OnNavAppearance"/>
+                            Click="OnNavFont"/>
+                    <Button x:Name="NavCaret" Content="Caret"
+                            Style="{StaticResource NavButton}"
+                            Click="OnNavCaret"/>
+                    <Button x:Name="NavFind" Content="Find"
+                            Style="{StaticResource NavButton}"
+                            Click="OnNavFind"/>
                 </StackPanel>
             </Border>
 
@@ -265,22 +281,55 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- Behaviour section -->
-                <ScrollViewer x:Name="BehaviourScroller" Grid.Row="0"
+                <!-- Theme section -->
+                <ScrollViewer x:Name="ThemeScroller" Grid.Row="0"
                               Template="{StaticResource ThemedScrollViewer}"
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel x:Name="BehaviourPanel" Margin="24,20">
-                        <TextBlock Text="Behaviour" Style="{StaticResource SectionHeader}"/>
+                    <StackPanel Margin="24,20">
+                        <TextBlock Text="Theme" Style="{StaticResource SectionHeader}"/>
 
-                        <TextBlock Text="Tab size" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
-                        <ComboBox x:Name="TabSizeBox" Width="70" Height="26"
+                        <TextBlock Text="Colour theme" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="ColorThemeBox" Width="200" Height="26"
                                   HorizontalAlignment="Left" Margin="0,0,0,16"
-                                  VerticalContentAlignment="Center" FontSize="13">
-                            <ComboBoxItem Content="2"/>
-                            <ComboBoxItem Content="4"/>
-                            <ComboBoxItem Content="8"/>
-                        </ComboBox>
+                                  VerticalContentAlignment="Center" FontSize="13"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Font section -->
+                <ScrollViewer x:Name="FontScroller" Grid.Row="0"
+                              Template="{StaticResource ThemedScrollViewer}"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Visibility="Collapsed">
+                    <StackPanel Margin="24,20">
+                        <TextBlock Text="Font" Style="{StaticResource SectionHeader}"/>
+
+                        <TextBlock Text="Font family" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="FontFamilyBox" Width="200" Height="26"
+                                  HorizontalAlignment="Left" Margin="0,0,0,16"
+                                  VerticalContentAlignment="Center" FontSize="13"/>
+
+                        <TextBlock Text="Font size" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="FontSizeBox" Width="80" Height="26"
+                                  HorizontalAlignment="Left" Margin="0,0,0,16"
+                                  VerticalContentAlignment="Center" FontSize="13"/>
+
+                        <TextBlock Text="Font weight" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="FontWeightBox" Width="140" Height="26"
+                                  HorizontalAlignment="Left" Margin="0,0,0,16"
+                                  VerticalContentAlignment="Center" FontSize="13"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Caret section -->
+                <ScrollViewer x:Name="CaretScroller" Grid.Row="0"
+                              Template="{StaticResource ThemedScrollViewer}"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Visibility="Collapsed">
+                    <StackPanel Margin="24,20">
+                        <TextBlock Text="Caret" Style="{StaticResource SectionHeader}"/>
 
                         <TextBlock Text="Caret style" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
                         <ComboBox x:Name="CaretStyleBox" Width="100" Height="26"
@@ -300,6 +349,26 @@
                                        Margin="10,0,0,0" Width="50"/>
                         </StackPanel>
 
+                        <TextBlock Text="Tab size" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="TabSizeBox" Width="70" Height="26"
+                                  HorizontalAlignment="Left" Margin="0,0,0,16"
+                                  VerticalContentAlignment="Center" FontSize="13">
+                            <ComboBoxItem Content="2"/>
+                            <ComboBoxItem Content="4"/>
+                            <ComboBoxItem Content="8"/>
+                        </ComboBox>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Find section -->
+                <ScrollViewer x:Name="FindScroller" Grid.Row="0"
+                              Template="{StaticResource ThemedScrollViewer}"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Visibility="Collapsed">
+                    <StackPanel Margin="24,20">
+                        <TextBlock Text="Find" Style="{StaticResource SectionHeader}"/>
+
                         <TextBlock Text="Find bar position" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
                         <ComboBox x:Name="FindBarPosBox" Width="100" Height="26"
                                   HorizontalAlignment="Left" Margin="0,0,0,16"
@@ -307,37 +376,6 @@
                             <ComboBoxItem Content="Top"/>
                             <ComboBoxItem Content="Bottom"/>
                         </ComboBox>
-                    </StackPanel>
-                </ScrollViewer>
-
-                <!-- Appearance section -->
-                <ScrollViewer x:Name="AppearanceScroller" Grid.Row="0"
-                              Template="{StaticResource ThemedScrollViewer}"
-                              VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled"
-                              Visibility="Collapsed">
-                    <StackPanel x:Name="AppearancePanel" Margin="24,20">
-                        <TextBlock Text="Appearance" Style="{StaticResource SectionHeader}"/>
-
-                        <TextBlock Text="Theme" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
-                        <ComboBox x:Name="ColorThemeBox" Width="200" Height="26"
-                                  HorizontalAlignment="Left" Margin="0,0,0,16"
-                                  VerticalContentAlignment="Center" FontSize="13"/>
-
-                        <TextBlock Text="Font" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
-                        <ComboBox x:Name="FontFamilyBox" Width="200" Height="26"
-                                  HorizontalAlignment="Left" Margin="0,0,0,16"
-                                  VerticalContentAlignment="Center" FontSize="13"/>
-
-                        <TextBlock Text="Font size" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
-                        <ComboBox x:Name="FontSizeBox" Width="80" Height="26"
-                                  HorizontalAlignment="Left" Margin="0,0,0,16"
-                                  VerticalContentAlignment="Center" FontSize="13"/>
-
-                        <TextBlock Text="Font weight" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
-                        <ComboBox x:Name="FontWeightBox" Width="140" Height="26"
-                                  HorizontalAlignment="Left" Margin="0,0,0,16"
-                                  VerticalContentAlignment="Center" FontSize="13"/>
                     </StackPanel>
                 </ScrollViewer>
 

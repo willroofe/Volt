@@ -86,13 +86,13 @@ public partial class MainWindow : Window
 
     private void ApplySettings()
     {
-        Editor.TabSize = _settings.TabSize;
-        Editor.BlockCaret = _settings.BlockCaret;
-        Editor.CaretBlinkMs = _settings.CaretBlinkMs;
-        if (_settings.FontFamily != null) Editor.FontFamilyName = _settings.FontFamily;
-        Editor.EditorFontSize = _settings.FontSize;
-        Editor.EditorFontWeight = _settings.FontWeight;
-        FindBarControl.SetPosition(_settings.FindBarPosition);
+        Editor.TabSize = _settings.Editor.TabSize;
+        Editor.BlockCaret = _settings.Editor.Caret.BlockCaret;
+        Editor.CaretBlinkMs = _settings.Editor.Caret.BlinkMs;
+        if (_settings.Editor.Font.Family != null) Editor.FontFamilyName = _settings.Editor.Font.Family;
+        Editor.EditorFontSize = _settings.Editor.Font.Size;
+        Editor.EditorFontWeight = _settings.Editor.Font.Weight;
+        FindBarControl.SetPosition(_settings.Editor.Find.BarPosition);
     }
 
     private void RestoreWindowPosition()
@@ -313,19 +313,19 @@ public partial class MainWindow : Window
 
     private void OnSettings(object sender, RoutedEventArgs e)
     {
-        var dlg = new SettingsWindow(Editor.TabSize, _settings.BlockCaret, _settings.CaretBlinkMs,
-            Editor.FontFamilyName, Editor.EditorFontSize, Editor.EditorFontWeight, _settings.ColorTheme,
-            _settings.FindBarPosition) { Owner = this };
+        var dlg = new SettingsWindow(Editor.TabSize, _settings.Editor.Caret.BlockCaret, _settings.Editor.Caret.BlinkMs,
+            Editor.FontFamilyName, Editor.EditorFontSize, Editor.EditorFontWeight, _settings.Application.ColorTheme,
+            _settings.Editor.Find.BarPosition) { Owner = this };
         if (dlg.ShowDialog() == true)
         {
-            _settings.TabSize = dlg.TabSize;
-            _settings.BlockCaret = dlg.BlockCaret;
-            _settings.CaretBlinkMs = dlg.CaretBlinkMs;
-            _settings.FontFamily = dlg.SelectedFontFamily;
-            _settings.FontSize = dlg.SelectedFontSize;
-            _settings.FontWeight = dlg.SelectedFontWeight;
-            _settings.ColorTheme = dlg.ColorThemeName;
-            _settings.FindBarPosition = dlg.FindBarPosition;
+            _settings.Editor.TabSize = dlg.TabSize;
+            _settings.Editor.Caret.BlockCaret = dlg.BlockCaret;
+            _settings.Editor.Caret.BlinkMs = dlg.CaretBlinkMs;
+            _settings.Editor.Font.Family = dlg.SelectedFontFamily;
+            _settings.Editor.Font.Size = dlg.SelectedFontSize;
+            _settings.Editor.Font.Weight = dlg.SelectedFontWeight;
+            _settings.Application.ColorTheme = dlg.ColorThemeName;
+            _settings.Editor.Find.BarPosition = dlg.FindBarPosition;
             _settings.Save();
             ApplySettings();
             ThemeManager.Apply(dlg.ColorThemeName);
@@ -376,7 +376,7 @@ public partial class MainWindow : Window
         int next = idx + direction;
         if (next < 0 || next >= sizes.Length) return;
         Editor.EditorFontSize = sizes[next];
-        _settings.FontSize = sizes[next];
+        _settings.Editor.Font.Size = sizes[next];
         _settings.Save();
     }
 
@@ -386,11 +386,11 @@ public partial class MainWindow : Window
         {
             new("Change Theme", GetOptions: () =>
             {
-                var original = _settings.ColorTheme;
+                var original = _settings.Application.ColorTheme;
                 return ThemeManager.GetAvailableThemes().Select(name => new PaletteOption(
                     name,
                     ApplyPreview: () => ThemeManager.Apply(name),
-                    Commit: () => { _settings.ColorTheme = name; _settings.Save(); },
+                    Commit: () => { _settings.Application.ColorTheme = name; _settings.Save(); },
                     Revert: () => ThemeManager.Apply(original)
                 )).ToList();
             }),
@@ -401,7 +401,7 @@ public partial class MainWindow : Window
                 return AppSettings.FontSizeOptions.Select(size => new PaletteOption(
                     size.ToString(),
                     ApplyPreview: () => Editor.EditorFontSize = size,
-                    Commit: () => { _settings.FontSize = size; _settings.Save(); },
+                    Commit: () => { _settings.Editor.Font.Size = size; _settings.Save(); },
                     Revert: () => Editor.EditorFontSize = original
                 )).ToList();
             }),
@@ -412,7 +412,7 @@ public partial class MainWindow : Window
                 return EditorControl.GetMonospaceFonts().Select(name => new PaletteOption(
                     name,
                     ApplyPreview: () => Editor.FontFamilyName = name,
-                    Commit: () => { _settings.FontFamily = name; _settings.Save(); },
+                    Commit: () => { _settings.Editor.Font.Family = name; _settings.Save(); },
                     Revert: () => Editor.FontFamilyName = original
                 )).ToList();
             }),
@@ -423,7 +423,7 @@ public partial class MainWindow : Window
                 return AppSettings.FontWeightOptions.Select(w => new PaletteOption(
                     w,
                     ApplyPreview: () => Editor.EditorFontWeight = w,
-                    Commit: () => { _settings.FontWeight = w; _settings.Save(); },
+                    Commit: () => { _settings.Editor.Font.Weight = w; _settings.Save(); },
                     Revert: () => Editor.EditorFontWeight = original
                 )).ToList();
             }),
@@ -434,26 +434,26 @@ public partial class MainWindow : Window
                 return AppSettings.TabSizeOptions.Select(size => new PaletteOption(
                     size.ToString(),
                     ApplyPreview: () => { Editor.TabSize = size; Editor.InvalidateVisual(); },
-                    Commit: () => { _settings.TabSize = size; _settings.Save(); },
+                    Commit: () => { _settings.Editor.TabSize = size; _settings.Save(); },
                     Revert: () => { Editor.TabSize = original; Editor.InvalidateVisual(); }
                 )).ToList();
             }),
 
             new("Toggle Block Caret", Toggle: () =>
             {
-                _settings.BlockCaret = !_settings.BlockCaret;
-                Editor.BlockCaret = _settings.BlockCaret;
+                _settings.Editor.Caret.BlockCaret = !_settings.Editor.Caret.BlockCaret;
+                Editor.BlockCaret = _settings.Editor.Caret.BlockCaret;
                 _settings.Save();
                 Editor.InvalidateVisual();
             }),
 
             new("Find Bar Position", GetOptions: () =>
             {
-                var original = _settings.FindBarPosition;
+                var original = _settings.Editor.Find.BarPosition;
                 return AppSettings.FindBarPositionOptions.Select(pos => new PaletteOption(
                     pos,
                     ApplyPreview: () => FindBarControl.SetPosition(pos),
-                    Commit: () => { _settings.FindBarPosition = pos; _settings.Save(); },
+                    Commit: () => { _settings.Editor.Find.BarPosition = pos; _settings.Save(); },
                     Revert: () => FindBarControl.SetPosition(original)
                 )).ToList();
             }),
