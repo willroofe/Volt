@@ -1921,6 +1921,39 @@ public class EditorControl : FrameworkElement, IScrollInfo
         InvalidateVisual();
     }
 
+    public void ReplaceCurrent(string replacement)
+    {
+        if (_currentMatchIndex < 0 || _currentMatchIndex >= _findMatches.Count) return;
+        var (line, col, len) = _findMatches[_currentMatchIndex];
+        PushUndo();
+        _lines[line] = _lines[line][..col] + replacement + _lines[line][(col + len)..];
+        if (_lines[line].Length >= _maxLineLength || _lines[line].Length + len - replacement.Length >= _maxLineLength)
+            _maxLineLengthDirty = true;
+        InvalidateLineStatesFrom(line);
+        _textVisualDirty = true;
+        _gutterVisualDirty = true;
+        InvalidateVisual();
+    }
+
+    public void ReplaceAll(string query, string replacement, bool matchCase)
+    {
+        if (_findMatches.Count == 0) return;
+        PushUndo();
+        var comparison = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        // Replace from bottom-right to top-left so indices stay valid
+        for (int i = _findMatches.Count - 1; i >= 0; i--)
+        {
+            var (line, col, len) = _findMatches[i];
+            _lines[line] = _lines[line][..col] + replacement + _lines[line][(col + len)..];
+        }
+        _maxLineLengthDirty = true;
+        _tokenCacheDirty = true;
+        InvalidateLineStates();
+        _textVisualDirty = true;
+        _gutterVisualDirty = true;
+        InvalidateVisual();
+    }
+
     private void NavigateToCurrentMatch()
     {
         if (_currentMatchIndex < 0 || _currentMatchIndex >= _findMatches.Count) return;
