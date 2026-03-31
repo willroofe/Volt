@@ -110,11 +110,29 @@ public class TextBuffer
     /// </summary>
     public void ReplaceLines(int start, int removeCount, List<string> newLines)
     {
+        bool removingMax = false;
+        if (!_maxLineLengthDirty)
+        {
+            for (int i = start; i < start + removeCount && i < _lines.Count; i++)
+            {
+                if (_lines[i].Length >= _maxLineLength) { removingMax = true; break; }
+            }
+        }
+
         if (removeCount > 0)
             _lines.RemoveRange(start, removeCount);
         _lines.InsertRange(start, newLines);
         if (_lines.Count == 0) _lines.Add("");
-        _maxLineLengthDirty = true;
+
+        if (_maxLineLengthDirty || removingMax)
+        {
+            _maxLineLengthDirty = true;
+        }
+        else
+        {
+            foreach (var line in newLines)
+                if (line.Length > _maxLineLength) _maxLineLength = line.Length;
+        }
     }
 
     // ── Inline text mutations ──────────────────────────────────────

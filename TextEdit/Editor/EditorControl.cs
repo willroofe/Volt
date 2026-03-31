@@ -391,7 +391,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         ClampCaret();
         _selection.Clear();
         _bracketMatchDirty = true;
-        InvalidateLineStates();
+        InvalidateLineStatesFrom(entry.StartLine);
         UpdateExtent();
         InvalidateText();
     }
@@ -406,7 +406,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         ClampCaret();
         _selection.Clear();
         _bracketMatchDirty = true;
-        InvalidateLineStates();
+        InvalidateLineStatesFrom(entry.StartLine);
         UpdateExtent();
         InvalidateText();
     }
@@ -778,6 +778,27 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void InvalidateLineStatesFrom(int lineIndex)
     {
         _lineStatesDirtyFrom = Math.Min(_lineStatesDirtyFrom, lineIndex);
+    }
+
+    // ── Background line state precomputation ───────────────────────
+    private int _precomputeGeneration;
+    private const int PrecomputeBatchSize = 5000;
+
+    private void PrecomputeLineStates()
+    {
+        int gen = ++_precomputeGeneration;
+
+        void ProcessBatch()
+        {
+            if (gen != _precomputeGeneration) return;
+            if (_lineStates.Count > _buffer.Count) return;
+            int target = Math.Min(_lineStates.Count + PrecomputeBatchSize - 1, _buffer.Count);
+            EnsureLineStates(target);
+            if (_lineStates.Count <= _buffer.Count)
+                Dispatcher.BeginInvoke(ProcessBatch, DispatcherPriority.ApplicationIdle);
+        }
+
+        Dispatcher.BeginInvoke(ProcessBatch, DispatcherPriority.ApplicationIdle);
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -1730,6 +1751,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         SetVerticalOffset(0);
         SetHorizontalOffset(0);
         InvalidateText();
+        PrecomputeLineStates();
     }
 
     public string GetContent() => _buffer.GetContent();
@@ -1739,6 +1761,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         InvalidateLineStates();
         _tokenCacheDirty = true;
         InvalidateText();
+        PrecomputeLineStates();
     }
 
     public void MarkClean()
