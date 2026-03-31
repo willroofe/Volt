@@ -5,38 +5,38 @@ using System.Windows.Media;
 
 namespace TextEdit;
 
-public static class ThemeManager
+public class ThemeManager
 {
-    public static event EventHandler? ThemeChanged;
+    public event EventHandler? ThemeChanged;
 
-    private static ColorTheme _colorTheme = new();
-    private static List<ColorTheme>? _themeCache;
+    private ColorTheme _colorTheme = new();
+    private List<ColorTheme>? _themeCache;
 
-    private static readonly string ThemesDir = Path.Combine(
+    private readonly string ThemesDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "TextEdit", "Themes");
 
-    public static string CurrentThemeName => _colorTheme.Name;
+    public string CurrentThemeName => _colorTheme.Name;
 
     // Editor colors (read directly by EditorControl.OnRender)
-    public static Brush EditorBg { get; private set; } = Brushes.White;
-    public static Brush EditorFg { get; private set; } = Brushes.Black;
-    public static Brush GutterFg { get; private set; } = Brushes.Gray;
-    public static Brush CaretBrush { get; private set; } = Brushes.Black;
-    public static Brush SelectionBrush { get; private set; } = null!;
-    public static Brush CurrentLineBrush { get; private set; } = null!;
-    public static Brush ActiveLineNumberFg { get; private set; } = Brushes.DarkGray;
-    public static Brush MatchingBracketBrush { get; private set; } = null!;
-    public static Pen MatchingBracketPen { get; private set; } = null!;
-    public static Brush FindMatchBrush { get; private set; } = null!;
-    public static Brush FindMatchCurrentBrush { get; private set; } = null!;
+    public Brush EditorBg { get; private set; } = Brushes.White;
+    public Brush EditorFg { get; private set; } = Brushes.Black;
+    public Brush GutterFg { get; private set; } = Brushes.Gray;
+    public Brush CaretBrush { get; private set; } = Brushes.Black;
+    public Brush SelectionBrush { get; private set; } = null!;
+    public Brush CurrentLineBrush { get; private set; } = null!;
+    public Brush ActiveLineNumberFg { get; private set; } = Brushes.DarkGray;
+    public Brush MatchingBracketBrush { get; private set; } = null!;
+    public Pen MatchingBracketPen { get; private set; } = null!;
+    public Brush FindMatchBrush { get; private set; } = null!;
+    public Brush FindMatchCurrentBrush { get; private set; } = null!;
 
     // Syntax highlight scope → brush
-    private static readonly Dictionary<string, Brush> _scopeBrushes = new();
+    private readonly Dictionary<string, Brush> _scopeBrushes = new();
 
-    private static bool _initialized;
+    private bool _initialized;
 
-    public static void Initialize()
+    public void Initialize()
     {
         if (_initialized) return;
         _initialized = true;
@@ -44,17 +44,17 @@ public static class ThemeManager
         Apply("Default Dark");
     }
 
-    public static Brush GetScopeBrush(string scope)
+    public Brush GetScopeBrush(string scope)
     {
         return _scopeBrushes.TryGetValue(scope, out var brush) ? brush : EditorFg;
     }
 
-    public static List<string> GetAvailableThemes()
+    public List<string> GetAvailableThemes()
     {
         return LoadThemeCache().Select(t => t.Name).ToList();
     }
 
-    public static void Apply(string themeName)
+    public void Apply(string themeName)
     {
         var themes = LoadThemeCache();
         var theme = themes.FirstOrDefault(t => t.Name.Equals(themeName, StringComparison.OrdinalIgnoreCase));
@@ -65,15 +65,15 @@ public static class ThemeManager
         UpdateEditorColors();
         UpdateScopeBrushes();
         UpdateAppResources();
-        ThemeChanged?.Invoke(null, EventArgs.Empty);
+        ThemeChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    public static void ReloadThemes()
+    public void ReloadThemes()
     {
         _themeCache = null;
     }
 
-    private static List<ColorTheme> LoadThemeCache()
+    private List<ColorTheme> LoadThemeCache()
     {
         if (_themeCache != null) return _themeCache;
         _themeCache = [];
@@ -90,7 +90,7 @@ public static class ThemeManager
         return _themeCache;
     }
 
-    private static void UpdateEditorColors()
+    private void UpdateEditorColors()
     {
         var e = _colorTheme.Editor;
         EditorBg = ColorTheme.ParseBrush(e.Background);
@@ -106,7 +106,7 @@ public static class ThemeManager
         FindMatchCurrentBrush = ColorTheme.ParseBrush(e.FindMatchCurrent);
     }
 
-    private static void UpdateScopeBrushes()
+    private void UpdateScopeBrushes()
     {
         _scopeBrushes.Clear();
         foreach (var (scope, _) in _colorTheme.Scopes)
@@ -116,7 +116,7 @@ public static class ThemeManager
         }
     }
 
-    private static void UpdateAppResources()
+    private void UpdateAppResources()
     {
         var res = Application.Current.Resources;
         var c = _colorTheme.Chrome;
@@ -139,7 +139,7 @@ public static class ThemeManager
         res["ThemeScrollThumbHover"] = ColorTheme.ParseBrush(c.ScrollThumbHover);
     }
 
-    private static void EnsureDefaultThemes()
+    private void EnsureDefaultThemes()
     {
         Directory.CreateDirectory(ThemesDir);
 

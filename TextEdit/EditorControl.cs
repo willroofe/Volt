@@ -15,6 +15,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private readonly UndoManager _undoManager = new();
     private readonly SelectionManager _selection = new();
 
+    // ── Managers (set by MainWindow after construction) ─────────────
+    public ThemeManager ThemeManager { get; set; } = null!;
+    public SyntaxManager SyntaxManager { get; set; } = null!;
+
     // ── Caret ────────────────────────────────────────────────────────
     private int _caretLine;
     private int _caretCol;
@@ -60,7 +64,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private double _glyphBaseline;
 
     // ── Cached pens / metrics ───────────────────────────────────────
-    private Pen _gutterSepPen = null!;
+    private Pen _gutterSepPen = new(Brushes.Gray, 0.5);
     private int _gutterDigits;
     private double _dpi = 1.0;
 
@@ -227,8 +231,6 @@ public class EditorControl : FrameworkElement, IScrollInfo
         Focusable = true;
         FocusVisualStyle = null;
         Cursor = Cursors.IBeam;
-        ThemeManager.ThemeChanged += OnThemeChanged;
-        RebuildGutterPen();
 
         _buffer.DirtyChanged += (_, _) => DirtyChanged?.Invoke(this, EventArgs.Empty);
 
@@ -252,6 +254,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         Loaded += (_, _) =>
         {
+            ThemeManager.ThemeChanged += OnThemeChanged;
+            RebuildGutterPen();
             _dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
             Keyboard.Focus(this);
             _blinkTimer.Start();

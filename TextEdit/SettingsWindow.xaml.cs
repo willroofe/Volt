@@ -15,13 +15,15 @@ public partial class SettingsWindow : Window
 
     public event EventHandler? Applied;
 
+    private readonly ThemeManager _themeManager;
     private readonly List<string> _themeNames;
     private readonly List<string> _fontNames;
 
-    public SettingsWindow(int currentTabSize, bool blockCaret, int caretBlinkMs,
+    public SettingsWindow(ThemeManager themeManager, int currentTabSize, bool blockCaret, int caretBlinkMs,
         string currentFontFamily, double currentFontSize, string currentFontWeight, string currentColorTheme,
         string findBarPosition)
     {
+        _themeManager = themeManager;
         InitializeComponent();
         TabSize = currentTabSize;
         BlockCaret = blockCaret;
@@ -58,7 +60,7 @@ public partial class SettingsWindow : Window
         FontWeightBox.SelectedIndex = wi >= 0 ? wi : Array.IndexOf(AppSettings.FontWeightOptions, "Normal");
 
         // Populate color theme dropdown
-        _themeNames = ThemeManager.GetAvailableThemes();
+        _themeNames = _themeManager.GetAvailableThemes();
         foreach (var name in _themeNames)
             ColorThemeBox.Items.Add(name);
         int ti = _themeNames.IndexOf(currentColorTheme);

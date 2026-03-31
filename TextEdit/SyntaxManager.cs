@@ -9,19 +9,19 @@ public record SyntaxToken(int Start, int Length, string Scope);
 /// <summary>Tracks whether a line ends inside an unclosed string.</summary>
 public record LineState(char? OpenQuote);
 
-public static class SyntaxManager
+public class SyntaxManager
 {
-    public static readonly LineState DefaultState = new(null);
-    private static readonly string GrammarsDir = Path.Combine(
+    public readonly LineState DefaultState = new(null);
+    private readonly string GrammarsDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "TextEdit", "Grammars");
 
-    private static readonly List<SyntaxDefinition> _grammars = [];
-    private static SyntaxDefinition? _activeGrammar;
+    private readonly List<SyntaxDefinition> _grammars = [];
+    private SyntaxDefinition? _activeGrammar;
 
-    private static bool _initialized;
+    private bool _initialized;
 
-    public static void Initialize()
+    public void Initialize()
     {
         if (_initialized) return;
         _initialized = true;
@@ -29,9 +29,9 @@ public static class SyntaxManager
         LoadGrammars();
     }
 
-    public static SyntaxDefinition? ActiveGrammar => _activeGrammar;
+    public SyntaxDefinition? ActiveGrammar => _activeGrammar;
 
-    public static void SetLanguageByExtension(string? extension)
+    public void SetLanguageByExtension(string? extension)
     {
         _activeGrammar = null;
         if (string.IsNullOrEmpty(extension)) return;
@@ -47,16 +47,16 @@ public static class SyntaxManager
         }
     }
 
-    public static string ActiveLanguageName => _activeGrammar?.Name ?? "Plain Text";
+    public string ActiveLanguageName => _activeGrammar?.Name ?? "Plain Text";
 
     /// <summary>Tokenize a single line (no multi-line state).</summary>
-    public static List<SyntaxToken> Tokenize(string line)
+    public List<SyntaxToken> Tokenize(string line)
     {
         return Tokenize(line, DefaultState, out _);
     }
 
     /// <summary>Tokenize a line with multi-line continuation support.</summary>
-    public static List<SyntaxToken> Tokenize(string line, LineState inState, out LineState outState)
+    public List<SyntaxToken> Tokenize(string line, LineState inState, out LineState outState)
     {
         outState = DefaultState;
         if (_activeGrammar == null) return [];
@@ -275,7 +275,7 @@ public static class SyntaxManager
         return result;
     }
 
-    public static void ReloadGrammars()
+    public void ReloadGrammars()
     {
         var activeExt = _activeGrammar?.Extensions.FirstOrDefault();
         _grammars.Clear();
@@ -283,7 +283,7 @@ public static class SyntaxManager
         if (activeExt != null) SetLanguageByExtension(activeExt);
     }
 
-    private static void LoadGrammars()
+    private void LoadGrammars()
     {
         if (!Directory.Exists(GrammarsDir)) return;
         foreach (var file in Directory.GetFiles(GrammarsDir, "*.json"))
@@ -293,7 +293,7 @@ public static class SyntaxManager
         }
     }
 
-    private static void EnsureDefaultGrammars()
+    private void EnsureDefaultGrammars()
     {
         Directory.CreateDirectory(GrammarsDir);
 

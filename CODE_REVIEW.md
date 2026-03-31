@@ -23,15 +23,15 @@ Replaced full-buffer snapshots with region-based undo. Each `UndoEntry` now stor
 
 ## Medium Priority
 
-### 3. Static classes (ThemeManager, SyntaxManager) limit testability and flexibility
+### ~~3. Static classes (ThemeManager, SyntaxManager) limit testability and flexibility~~ ✅ Done
 
-Both are static classes with static state. This means:
+Converted both from static classes to regular instance classes:
 
-- You can't run two editors with different themes/grammars
-- Unit testing requires global state setup/teardown
-- Initialization order is implicit and fragile
-
-Consider making them instance-based and passing them through constructors (or at minimum, make the static state resettable for testing when you add tests).
+- **ThemeManager** and **SyntaxManager** are now instance-based — no more static state. Pure utility methods and compiled regexes remain static since they're stateless.
+- **App** (`App.xaml.cs`) creates and owns both instances, exposed via `App.Current.ThemeManager` / `App.Current.SyntaxManager` (typed `Current` accessor).
+- **EditorControl** receives instances via `ThemeManager`/`SyntaxManager` properties set by MainWindow after `InitializeComponent`. Event subscription moved to `Loaded` handler.
+- **MainWindow** accesses instances through convenience properties delegating to `App.Current`.
+- **SettingsWindow** receives `ThemeManager` via constructor parameter.
 
 ### 4. Code-behind UI construction (CommandPalette, FindBar)
 
