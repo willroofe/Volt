@@ -116,7 +116,7 @@
                                         BorderBrush="{DynamicResource ThemeMenuPopupBorder}"
                                         BorderThickness="1" CornerRadius="3"
                                         MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
-                                        Margin="0,1,4,4" Padding="0">
+                                        Margin="0,1,4,4" Padding="0,3">
                                     <Border.Effect>
                                         <DropShadowEffect ShadowDepth="1" Opacity="0.2" BlurRadius="4"/>
                                     </Border.Effect>
@@ -138,7 +138,8 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBoxItem">
-                        <Border x:Name="Bd" Background="Transparent" Padding="10,5">
+                        <Border x:Name="Bd" Background="Transparent" Padding="10,5"
+                                CornerRadius="4" Margin="4,1">
                             <ContentPresenter/>
                         </Border>
                         <ControlTemplate.Triggers>

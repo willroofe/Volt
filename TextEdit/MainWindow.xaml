@@ -11,6 +11,16 @@
                       UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
     <Window.Resources>
+        <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">
+            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Separator">
+                        <Border Height="1" Background="{DynamicResource ThemeMenuPopupBorder}"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="TopLevelMenuItem" TargetType="MenuItem">
             <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="FontSize" Value="12"/>
@@ -31,12 +41,13 @@
                                    AllowsTransparency="True"
                                    Focusable="False"
                                    PopupAnimation="None">
-                                <Border BorderBrush="{DynamicResource ThemeMenuPopupBorder}" BorderThickness="1"
-                                        Margin="0,0,6,6">
+                                <Border Background="{DynamicResource ThemeMenuPopupBg}"
+                                        BorderBrush="{DynamicResource ThemeMenuPopupBorder}" BorderThickness="1"
+                                        CornerRadius="3" Margin="0,0,6,6">
                                     <Border.Effect>
                                         <DropShadowEffect ShadowDepth="1" Opacity="0.2" BlurRadius="4"/>
                                     </Border.Effect>
-                                    <StackPanel Background="{DynamicResource ThemeMenuPopupBg}" IsItemsHost="True"
+                                    <StackPanel IsItemsHost="True" Margin="0,3"
                                                 KeyboardNavigation.DirectionalNavigation="Cycle"/>
                                 </Border>
                             </Popup>
@@ -85,7 +96,8 @@
                             <Setter Property="Template">
                                 <Setter.Value>
                                     <ControlTemplate TargetType="MenuItem">
-                                        <Border x:Name="Bd" Background="Transparent">
+                                        <Border x:Name="Bd" Background="Transparent"
+                                                CornerRadius="4" Margin="4,1">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="28" SharedSizeGroup="Icon"/>
