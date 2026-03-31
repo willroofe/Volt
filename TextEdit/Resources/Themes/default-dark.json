@@ -1,0 +1,48 @@
+{
+  "name": "Default Dark",
+  "editor": {
+    "background": "#1E1E1E",
+    "foreground": "#D4D4D4",
+    "gutterForeground": "#6E7681",
+    "activeLineNumber": "#C6C6C6",
+    "caret": "#D4D4D4",
+    "selection": "#80264F78",
+    "currentLine": "#2A2A2A",
+    "matchingBracket": "#3A3A3A",
+    "matchingBracketBorder": "#888888",
+    "findMatch": "#60FFFF00",
+    "findMatchCurrent": "#80FF8C00"
+  },
+  "chrome": {
+    "titleBar": "#2D2D2D",
+    "border": "#3F3F3F",
+    "contentBackground": "#1E1E1E",
+    "textForeground": "#CCCCCC",
+    "textForegroundStrong": "#EEEEEE",
+    "textForegroundMuted": "#666666",
+    "buttonForeground": "#CCCCCC",
+    "buttonHover": "#404040",
+    "menuPopupBackground": "#2D2D2D",
+    "menuPopupBorder": "#4A4A4A",
+    "menuItemHover": "#3A3A3A",
+    "navBackground": "#252525",
+    "navActive": "#383838",
+    "navHover": "#333333",
+    "scrollBackground": "#2A2A2A",
+    "scrollThumb": "#4A4A4A",
+    "scrollThumbHover": "#5A5A5A"
+  },
+  "scopes": {
+    "comment": "#6A9955",
+    "string": "#CE9178",
+    "keyword": "#569CD6",
+    "variable": "#9CDCFE",
+    "number": "#B5CEA8",
+    "operator": "#D4D4D4",
+    "regex": "#D16969",
+    "type": "#4EC9B0",
+    "function": "#DCDCAA",
+    "hashkey": "#92C5F7",
+    "escape": "#D7BA7D"
+  }
+}

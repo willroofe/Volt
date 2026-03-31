@@ -1,0 +1,48 @@
+{
+  "name": "Default Light",
+  "editor": {
+    "background": "#FFFFFF",
+    "foreground": "#000000",
+    "gutterForeground": "#808080",
+    "activeLineNumber": "#A9A9A9",
+    "caret": "#000000",
+    "selection": "#60339900",
+    "currentLine": "#F0F0F0",
+    "matchingBracket": "#DBDBDB",
+    "matchingBracketBorder": "#999999",
+    "findMatch": "#60FFFF00",
+    "findMatchCurrent": "#80FF8C00"
+  },
+  "chrome": {
+    "titleBar": "#E8E8E8",
+    "border": "#D0D0D0",
+    "contentBackground": "#FFFFFF",
+    "textForeground": "#111111",
+    "textForegroundStrong": "#222222",
+    "textForegroundMuted": "#888888",
+    "buttonForeground": "#333333",
+    "buttonHover": "#D0D0D0",
+    "menuPopupBackground": "#FFFFFF",
+    "menuPopupBorder": "#D0D0D0",
+    "menuItemHover": "#E0E0E0",
+    "navBackground": "#F0F0F0",
+    "navActive": "#D8D8D8",
+    "navHover": "#E0E0E0",
+    "scrollBackground": "#E0E0E0",
+    "scrollThumb": "#C0C0C0",
+    "scrollThumbHover": "#A0A0A0"
+  },
+  "scopes": {
+    "comment": "#008000",
+    "string": "#A31515",
+    "keyword": "#0000FF",
+    "variable": "#001080",
+    "number": "#098658",
+    "operator": "#000000",
+    "regex": "#811F3F",
+    "type": "#267F99",
+    "function": "#795E26",
+    "hashkey": "#2B6CB0",
+    "escape": "#A1260D"
+  }
+}

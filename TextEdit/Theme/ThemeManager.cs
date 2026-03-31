@@ -1,5 +1,6 @@
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Media;
 
@@ -142,170 +143,17 @@ public class ThemeManager
     private void EnsureDefaultThemes()
     {
         Directory.CreateDirectory(ThemesDir);
-
-        var darkPath = Path.Combine(ThemesDir, "default-dark.json");
-        if (!File.Exists(darkPath))
-            File.WriteAllText(darkPath, DefaultDarkTheme);
-
-        var lightPath = Path.Combine(ThemesDir, "default-light.json");
-        if (!File.Exists(lightPath))
-            File.WriteAllText(lightPath, DefaultLightTheme);
-
-        var gruvboxPath = Path.Combine(ThemesDir, "gruvbox-dark.json");
-        if (!File.Exists(gruvboxPath))
-            File.WriteAllText(gruvboxPath, GruvboxDarkTheme);
+        WriteEmbeddedResource("TextEdit.Resources.Themes.default-dark.json", Path.Combine(ThemesDir, "default-dark.json"));
+        WriteEmbeddedResource("TextEdit.Resources.Themes.default-light.json", Path.Combine(ThemesDir, "default-light.json"));
+        WriteEmbeddedResource("TextEdit.Resources.Themes.gruvbox-dark.json", Path.Combine(ThemesDir, "gruvbox-dark.json"));
     }
 
-    private static readonly string DefaultDarkTheme = """
-        {
-          "name": "Default Dark",
-          "editor": {
-            "background": "#1E1E1E",
-            "foreground": "#D4D4D4",
-            "gutterForeground": "#6E7681",
-            "activeLineNumber": "#C6C6C6",
-            "caret": "#D4D4D4",
-            "selection": "#80264F78",
-            "currentLine": "#2A2A2A",
-            "matchingBracket": "#3A3A3A",
-            "matchingBracketBorder": "#888888",
-            "findMatch": "#60FFFF00",
-            "findMatchCurrent": "#80FF8C00"
-          },
-          "chrome": {
-            "titleBar": "#2D2D2D",
-            "border": "#3F3F3F",
-            "contentBackground": "#1E1E1E",
-            "textForeground": "#CCCCCC",
-            "textForegroundStrong": "#EEEEEE",
-            "textForegroundMuted": "#666666",
-            "buttonForeground": "#CCCCCC",
-            "buttonHover": "#404040",
-            "menuPopupBackground": "#2D2D2D",
-            "menuPopupBorder": "#4A4A4A",
-            "menuItemHover": "#3A3A3A",
-            "navBackground": "#252525",
-            "navActive": "#383838",
-            "navHover": "#333333",
-            "scrollBackground": "#2A2A2A",
-            "scrollThumb": "#4A4A4A",
-            "scrollThumbHover": "#5A5A5A"
-          },
-          "scopes": {
-            "comment": "#6A9955",
-            "string": "#CE9178",
-            "keyword": "#569CD6",
-            "variable": "#9CDCFE",
-            "number": "#B5CEA8",
-            "operator": "#D4D4D4",
-            "regex": "#D16969",
-            "type": "#4EC9B0",
-            "function": "#DCDCAA",
-            "hashkey": "#92C5F7",
-            "escape": "#D7BA7D"
-          }
-        }
-        """;
-
-    private static readonly string DefaultLightTheme = """
-        {
-          "name": "Default Light",
-          "editor": {
-            "background": "#FFFFFF",
-            "foreground": "#000000",
-            "gutterForeground": "#808080",
-            "activeLineNumber": "#A9A9A9",
-            "caret": "#000000",
-            "selection": "#60339900",
-            "currentLine": "#F0F0F0",
-            "matchingBracket": "#DBDBDB",
-            "matchingBracketBorder": "#999999",
-            "findMatch": "#60FFFF00",
-            "findMatchCurrent": "#80FF8C00"
-          },
-          "chrome": {
-            "titleBar": "#E8E8E8",
-            "border": "#D0D0D0",
-            "contentBackground": "#FFFFFF",
-            "textForeground": "#111111",
-            "textForegroundStrong": "#222222",
-            "textForegroundMuted": "#888888",
-            "buttonForeground": "#333333",
-            "buttonHover": "#D0D0D0",
-            "menuPopupBackground": "#FFFFFF",
-            "menuPopupBorder": "#D0D0D0",
-            "menuItemHover": "#E0E0E0",
-            "navBackground": "#F0F0F0",
-            "navActive": "#D8D8D8",
-            "navHover": "#E0E0E0",
-            "scrollBackground": "#E0E0E0",
-            "scrollThumb": "#C0C0C0",
-            "scrollThumbHover": "#A0A0A0"
-          },
-          "scopes": {
-            "comment": "#008000",
-            "string": "#A31515",
-            "keyword": "#0000FF",
-            "variable": "#001080",
-            "number": "#098658",
-            "operator": "#000000",
-            "regex": "#811F3F",
-            "type": "#267F99",
-            "function": "#795E26",
-            "hashkey": "#2B6CB0",
-            "escape": "#A1260D"
-          }
-        }
-        """;
-
-    private static readonly string GruvboxDarkTheme = """
-        {
-          "name": "Gruvbox Dark",
-          "editor": {
-            "background": "#282828",
-            "foreground": "#EBDBB2",
-            "gutterForeground": "#665C54",
-            "activeLineNumber": "#A89984",
-            "caret": "#EBDBB2",
-            "selection": "#60458588",
-            "currentLine": "#32302F",
-            "matchingBracket": "#3C3836",
-            "matchingBracketBorder": "#928374",
-            "findMatch": "#60FABD2F",
-            "findMatchCurrent": "#80FE8019"
-          },
-          "chrome": {
-            "titleBar": "#1D2021",
-            "border": "#3C3836",
-            "contentBackground": "#282828",
-            "textForeground": "#EBDBB2",
-            "textForegroundStrong": "#FBF1C7",
-            "textForegroundMuted": "#665C54",
-            "buttonForeground": "#EBDBB2",
-            "buttonHover": "#3C3836",
-            "menuPopupBackground": "#1D2021",
-            "menuPopupBorder": "#504945",
-            "menuItemHover": "#3C3836",
-            "navBackground": "#1D2021",
-            "navActive": "#3C3836",
-            "navHover": "#32302F",
-            "scrollBackground": "#32302F",
-            "scrollThumb": "#504945",
-            "scrollThumbHover": "#665C54"
-          },
-          "scopes": {
-            "comment": "#928374",
-            "string": "#B8BB26",
-            "keyword": "#FB4934",
-            "variable": "#83A598",
-            "number": "#D3869B",
-            "operator": "#FE8019",
-            "regex": "#FABD2F",
-            "type": "#8EC07C",
-            "function": "#FABD2F",
-            "hashkey": "#D3869B",
-            "escape": "#FE8019"
-          }
-        }
-        """;
+    private static void WriteEmbeddedResource(string resourceName, string targetPath)
+    {
+        if (File.Exists(targetPath)) return;
+        using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName);
+        if (stream == null) return;
+        using var reader = new StreamReader(stream);
+        File.WriteAllText(targetPath, reader.ReadToEnd());
+    }
 }
