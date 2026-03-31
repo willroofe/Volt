@@ -359,7 +359,21 @@ public partial class MainWindow : Window
         else if (ctrl && shift && e.Key == Key.P) { OpenCommandPalette(); e.Handled = true; }
         else if (ctrl && shift && e.Key == Key.S) { OnSaveAs(this, new RoutedEventArgs()); e.Handled = true; }
         else if (ctrl && !shift && e.Key == Key.S) { OnSave(this, new RoutedEventArgs()); e.Handled = true; }
+        else if (ctrl && (e.Key == Key.OemPlus || e.Key == Key.Add)) { StepFontSize(1); e.Handled = true; }
+        else if (ctrl && (e.Key == Key.OemMinus || e.Key == Key.Subtract)) { StepFontSize(-1); e.Handled = true; }
         else base.OnKeyDown(e);
+    }
+
+    private void StepFontSize(int direction)
+    {
+        var sizes = AppSettings.FontSizeOptions;
+        int idx = Array.IndexOf(sizes, Editor.EditorFontSize);
+        if (idx < 0) idx = Array.IndexOf(sizes, 14); // fallback to default
+        int next = idx + direction;
+        if (next < 0 || next >= sizes.Length) return;
+        Editor.EditorFontSize = sizes[next];
+        _settings.FontSize = sizes[next];
+        _settings.Save();
     }
 
     private void OpenCommandPalette()
