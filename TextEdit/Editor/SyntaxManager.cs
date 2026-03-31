@@ -1,4 +1,5 @@
 using System.IO;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Windows.Media;
 
@@ -299,71 +300,10 @@ public class SyntaxManager
 
         // Always overwrite built-in grammars so embedded fixes take effect
         var perlPath = Path.Combine(GrammarsDir, "perl.json");
-        File.WriteAllText(perlPath, DefaultPerlGrammar);
+        using var stream = Assembly.GetExecutingAssembly()
+            .GetManifestResourceStream("TextEdit.Resources.Grammars.perl.json");
+        if (stream == null) return;
+        using var reader = new StreamReader(stream);
+        File.WriteAllText(perlPath, reader.ReadToEnd());
     }
-
-    private static readonly string DefaultPerlGrammar = """
-        {
-          "name": "Perl",
-          "extensions": [".pl", ".pm", ".t", ".cgi"],
-          "rules": [
-            {
-              "pattern": "(?:\"(?:\\\\.|[^\"])*\"|'(?:\\\\.|[^'])*')",
-              "scope": "string"
-            },
-            {
-              "pattern": "#.*$",
-              "scope": "comment"
-            },
-            {
-              "pattern": "(?<![\\w$@%])\\b(?:use|no|require|package|sub|my|our|local|return|if|elsif|else|unless|while|until|for|foreach|do|last|next|redo|goto|die|warn|print|say|chomp|chop|push|pop|shift|unshift|splice|split|join|sort|reverse|map|grep|defined|undef|exists|delete|keys|values|each|length|scalar|ref|bless|tie|untie|open|close|read|write|seek|tell|eof|binmode|eval|BEGIN|END|INIT|CHECK|UNITCHECK|DESTROY|AUTOLOAD|__FILE__|__LINE__|__PACKAGE__|__SUB__|__DATA__|__END__)\\b",
-              "scope": "keyword"
-            },
-            {
-              "pattern": "(?<=\\bsub\\s)\\w+",
-              "scope": "function"
-            },
-            {
-              "pattern": "\\b\\w+(?=\\s*\\()",
-              "scope": "function"
-            },
-            {
-              "pattern": "&\\w[\\w:]*",
-              "scope": "function"
-            },
-            {
-              "pattern": "\\w+(?=\\s*=>)",
-              "scope": "hashkey"
-            },
-            {
-              "pattern": "(?<=\\{)\\w+(?=\\})",
-              "scope": "hashkey"
-            },
-            {
-              "pattern": "[\\$@%](?:\\{[\\w:]+\\}|[\\w:]+)",
-              "scope": "variable"
-            },
-            {
-              "pattern": "(?:\\b|(?<=\\s))(?:=>|->|=~|!~|&&|\\|\\||//|\\.\\.|\\.\\.\\.)",
-              "scope": "operator"
-            },
-            {
-              "pattern": "(?<!\\.)\\b(?:0[xX][0-9a-fA-F_]+|0[bB][01_]+|0[0-7_]+|[0-9][0-9_]*(?:\\.[0-9_]+)?(?:[eE][+-]?[0-9_]+)?)\\b",
-              "scope": "number"
-            },
-            {
-              "pattern": "(?:qw|qq|q)\\s*[({\\[/].*?[)}\\]/]",
-              "scope": "string"
-            },
-            {
-              "pattern": "(?:m|s|tr|y)\\s*/(?:\\\\/|[^/])*/(?:\\\\/|[^/])*/[gimsxce]*",
-              "scope": "regex"
-            },
-            {
-              "pattern": "/(?:\\\\/|[^/\\n])+/[gimsxce]*",
-              "scope": "regex"
-            }
-          ]
-        }
-        """;
 }

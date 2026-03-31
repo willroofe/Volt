@@ -8,4 +8,9 @@
         <UseWPF>true</UseWPF>
     </PropertyGroup>
 
+    <ItemGroup>
+        <EmbeddedResource Include="Resources\Themes\*.json" />
+        <EmbeddedResource Include="Resources\Grammars\*.json" />
+    </ItemGroup>
+
 </Project>

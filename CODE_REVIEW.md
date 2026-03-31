@@ -52,9 +52,9 @@ Source files organized into three subdirectories:
 
 All classes remain in the `TextEdit` namespace — no code changes required, purely a file organization move.
 
-### 6. Hardcoded default themes/grammars as string literals
+### ~~6. Hardcoded default themes/grammars as string literals~~ ✅ Done
 
-ThemeManager.cs contains multi-line JSON string literals for default themes. These would be cleaner as embedded resources — easier to edit, validate, and extend.
+Default theme and grammar JSON moved from inline string literals to embedded resource files under `Resources/Themes/` and `Resources/Grammars/`. ThemeManager and SyntaxManager now read from `Assembly.GetManifestResourceStream()` at startup. The JSON files are proper files that can be edited, validated, and diffed independently.
 
 ## Low Priority
 
@@ -94,5 +94,5 @@ If I were to tackle these in order:
 1. ~~Extract TextBuffer from EditorControl (biggest bang for maintainability)~~ ✅
 2. ~~Break OnKeyDown into smaller handler methods~~ ✅
 3. ~~Add folder structure~~ ✅
-4. Move embedded JSON to embedded resources
+4. ~~Move embedded JSON to embedded resources~~ ✅
 5. ~~Convert CommandPalette/FindBar to XAML + code-behind~~ ✅
