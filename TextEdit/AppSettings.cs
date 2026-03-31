@@ -22,6 +22,11 @@ public class AppSettings
     public double? WindowHeight { get; set; }
     public bool WindowMaximized { get; set; }
 
+    // Shared option arrays used by both SettingsWindow and Command Palette
+    public static readonly double[] FontSizeOptions = [8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 36];
+    public static readonly int[] TabSizeOptions = [2, 4, 8];
+    public static readonly string[] FontWeightOptions = ["Thin", "ExtraLight", "Light", "Normal", "Medium", "SemiBold", "Bold", "ExtraBold", "Black"];
+
     public void Save()
     {
         var dir = Path.GetDirectoryName(SettingsPath)!;

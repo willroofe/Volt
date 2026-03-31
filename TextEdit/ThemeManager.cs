@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 
@@ -9,6 +10,7 @@ public static class ThemeManager
     public static event EventHandler? ThemeChanged;
 
     private static ColorTheme _colorTheme = new();
+    private static List<ColorTheme>? _themeCache;
 
     private static readonly string ThemesDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -30,10 +32,13 @@ public static class ThemeManager
     // Syntax highlight scope → brush
     private static readonly Dictionary<string, Brush> _scopeBrushes = new();
 
-    static ThemeManager()
+    private static bool _initialized;
+
+    public static void Initialize()
     {
+        if (_initialized) return;
+        _initialized = true;
         EnsureDefaultThemes();
-        // Apply Default Dark as the initial theme
         Apply("Default Dark");
     }
 
@@ -44,20 +49,14 @@ public static class ThemeManager
 
     public static List<string> GetAvailableThemes()
     {
-        var names = new List<string>();
-        if (!Directory.Exists(ThemesDir)) return names;
-        foreach (var file in Directory.GetFiles(ThemesDir, "*.json"))
-        {
-            var theme = ColorTheme.LoadFromFile(file);
-            if (theme != null) names.Add(theme.Name);
-        }
-        return names;
+        return LoadThemeCache().Select(t => t.Name).ToList();
     }
 
     public static void Apply(string themeName)
     {
-        var theme = FindTheme(themeName);
-        theme ??= FindTheme("Default Dark");
+        var themes = LoadThemeCache();
+        var theme = themes.FirstOrDefault(t => t.Name.Equals(themeName, StringComparison.OrdinalIgnoreCase));
+        theme ??= themes.FirstOrDefault(t => t.Name.Equals("Default Dark", StringComparison.OrdinalIgnoreCase));
         theme ??= new ColorTheme { Name = "Default Dark" };
         _colorTheme = theme;
 
@@ -67,16 +66,26 @@ public static class ThemeManager
         ThemeChanged?.Invoke(null, EventArgs.Empty);
     }
 
-    private static ColorTheme? FindTheme(string name)
+    public static void ReloadThemes()
     {
-        if (!Directory.Exists(ThemesDir)) return null;
+        _themeCache = null;
+    }
+
+    private static List<ColorTheme> LoadThemeCache()
+    {
+        if (_themeCache != null) return _themeCache;
+        _themeCache = [];
+        if (!Directory.Exists(ThemesDir)) return _themeCache;
         foreach (var file in Directory.GetFiles(ThemesDir, "*.json"))
         {
-            var theme = ColorTheme.LoadFromFile(file);
-            if (theme != null && theme.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
-                return theme;
+            try
+            {
+                var theme = ColorTheme.LoadFromFile(file);
+                if (theme != null) _themeCache.Add(theme);
+            }
+            catch { }
         }
-        return null;
+        return _themeCache;
     }
 
     private static void UpdateEditorColors()

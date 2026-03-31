@@ -55,10 +55,19 @@ public class ColorTheme
 
     public static SolidColorBrush ParseBrush(string hex)
     {
-        var color = (Color)ColorConverter.ConvertFromString(hex);
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
+        try
+        {
+            var color = (Color)ColorConverter.ConvertFromString(hex);
+            var brush = new SolidColorBrush(color);
+            brush.Freeze();
+            return brush;
+        }
+        catch
+        {
+            var fallback = new SolidColorBrush(Colors.Magenta);
+            fallback.Freeze();
+            return fallback;
+        }
     }
 
     public static Pen ParsePen(string hex, double thickness)

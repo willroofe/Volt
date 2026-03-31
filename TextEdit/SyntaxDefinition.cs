@@ -28,6 +28,8 @@ public class SyntaxDefinition
     [JsonPropertyName("rules")]
     public List<SyntaxRule> Rules { get; set; } = [];
 
+    private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(50);
+
     public void Compile()
     {
         foreach (var rule in Rules)
@@ -35,7 +37,7 @@ public class SyntaxDefinition
             try
             {
                 rule.CompiledRegex = new Regex(rule.Pattern,
-                    RegexOptions.Compiled | RegexOptions.Multiline);
+                    RegexOptions.Compiled | RegexOptions.Multiline, RegexTimeout);
             }
             catch
             {

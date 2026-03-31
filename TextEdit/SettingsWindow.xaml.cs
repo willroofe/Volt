@@ -12,9 +12,6 @@ public partial class SettingsWindow : Window
     public string SelectedFontWeight { get; private set; }
     public string ColorThemeName { get; private set; }
 
-    private static readonly int[] TabSizeOptions = [2, 4, 8];
-    private static readonly double[] FontSizeOptions = [8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 36];
-    private static readonly string[] FontWeightOptions = ["Thin", "ExtraLight", "Light", "Normal", "Medium", "SemiBold", "Bold", "ExtraBold", "Black"];
     private readonly List<string> _themeNames;
     private readonly List<string> _fontNames;
 
@@ -30,7 +27,7 @@ public partial class SettingsWindow : Window
         SelectedFontWeight = currentFontWeight;
         ColorThemeName = currentColorTheme;
 
-        int index = Array.IndexOf(TabSizeOptions, currentTabSize);
+        int index = Array.IndexOf(AppSettings.TabSizeOptions, currentTabSize);
         TabSizeBox.SelectedIndex = index >= 0 ? index : 1;
         CaretStyleBox.SelectedIndex = blockCaret ? 1 : 0;
         CaretBlinkSlider.Value = caretBlinkMs;
@@ -43,16 +40,16 @@ public partial class SettingsWindow : Window
         FontFamilyBox.SelectedIndex = fi >= 0 ? fi : 0;
 
         // Populate font size dropdown
-        foreach (var size in FontSizeOptions)
+        foreach (var size in AppSettings.FontSizeOptions)
             FontSizeBox.Items.Add(size.ToString());
-        int si = Array.IndexOf(FontSizeOptions, currentFontSize);
-        FontSizeBox.SelectedIndex = si >= 0 ? si : Array.IndexOf(FontSizeOptions, 14);
+        int si = Array.IndexOf(AppSettings.FontSizeOptions, currentFontSize);
+        FontSizeBox.SelectedIndex = si >= 0 ? si : Array.IndexOf(AppSettings.FontSizeOptions, 14);
 
         // Populate font weight dropdown
-        foreach (var w in FontWeightOptions)
+        foreach (var w in AppSettings.FontWeightOptions)
             FontWeightBox.Items.Add(w);
-        int wi = Array.IndexOf(FontWeightOptions, currentFontWeight);
-        FontWeightBox.SelectedIndex = wi >= 0 ? wi : Array.IndexOf(FontWeightOptions, "Normal");
+        int wi = Array.IndexOf(AppSettings.FontWeightOptions, currentFontWeight);
+        FontWeightBox.SelectedIndex = wi >= 0 ? wi : Array.IndexOf(AppSettings.FontWeightOptions, "Normal");
 
         // Populate color theme dropdown
         _themeNames = ThemeManager.GetAvailableThemes();
@@ -76,12 +73,12 @@ public partial class SettingsWindow : Window
 
     private void OnOK(object sender, RoutedEventArgs e)
     {
-        TabSize = TabSizeOptions[TabSizeBox.SelectedIndex];
+        TabSize = AppSettings.TabSizeOptions[TabSizeBox.SelectedIndex];
         BlockCaret = CaretStyleBox.SelectedIndex == 1;
         CaretBlinkMs = (int)CaretBlinkSlider.Value;
         SelectedFontFamily = _fontNames[FontFamilyBox.SelectedIndex];
-        SelectedFontSize = FontSizeOptions[FontSizeBox.SelectedIndex];
-        SelectedFontWeight = FontWeightOptions[FontWeightBox.SelectedIndex];
+        SelectedFontSize = AppSettings.FontSizeOptions[FontSizeBox.SelectedIndex];
+        SelectedFontWeight = AppSettings.FontWeightOptions[FontWeightBox.SelectedIndex];
         ColorThemeName = _themeNames[ColorThemeBox.SelectedIndex];
         DialogResult = true;
     }

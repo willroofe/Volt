@@ -6,8 +6,12 @@ namespace TextEdit;
 
 public record SyntaxToken(int Start, int Length, string Scope);
 
+/// <summary>Tracks whether a line ends inside an unclosed string.</summary>
+public record LineState(char? OpenQuote);
+
 public static class SyntaxManager
 {
+    public static readonly LineState DefaultState = new(null);
     private static readonly string GrammarsDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "TextEdit", "Grammars");
@@ -15,8 +19,12 @@ public static class SyntaxManager
     private static readonly List<SyntaxDefinition> _grammars = [];
     private static SyntaxDefinition? _activeGrammar;
 
-    static SyntaxManager()
+    private static bool _initialized;
+
+    public static void Initialize()
     {
+        if (_initialized) return;
+        _initialized = true;
         EnsureDefaultGrammars();
         LoadGrammars();
     }
@@ -41,45 +49,147 @@ public static class SyntaxManager
 
     public static string ActiveLanguageName => _activeGrammar?.Name ?? "Plain Text";
 
+    /// <summary>Tokenize a single line (no multi-line state).</summary>
     public static List<SyntaxToken> Tokenize(string line)
     {
+        return Tokenize(line, DefaultState, out _);
+    }
+
+    /// <summary>Tokenize a line with multi-line continuation support.</summary>
+    public static List<SyntaxToken> Tokenize(string line, LineState inState, out LineState outState)
+    {
+        outState = DefaultState;
         if (_activeGrammar == null) return [];
 
-        // Track which character positions are already claimed
         var claimed = new bool[line.Length];
         var tokens = new List<SyntaxToken>();
+        int ruleStart = 0; // where to start applying regex rules
 
-        // Rules are applied in order — first match wins for each position
+        // If continuing a string from the previous line, find the closing quote
+        if (inState.OpenQuote is char openQ)
+        {
+            int closePos = FindClosingQuote(line, 0, openQ);
+            if (closePos < 0)
+            {
+                // Entire line is still inside the string
+                outState = inState;
+                if (line.Length > 0)
+                    tokens.Add(new SyntaxToken(0, line.Length, "string"));
+                tokens = ExpandInterpolation(tokens, line);
+                return tokens;
+            }
+            // String closes at closePos (inclusive of the quote character)
+            int len = closePos + 1;
+            tokens.Add(new SyntaxToken(0, len, "string"));
+            for (int i = 0; i < len; i++) claimed[i] = true;
+            ruleStart = len;
+        }
+
+        // Apply regex rules to the (remaining) line
         foreach (var rule in _activeGrammar.Rules)
         {
             if (rule.CompiledRegex == null) continue;
 
-            foreach (System.Text.RegularExpressions.Match match in rule.CompiledRegex.Matches(line))
+            MatchCollection matches;
+            try { matches = rule.CompiledRegex.Matches(line); }
+            catch (RegexMatchTimeoutException) { continue; }
+
+            try
             {
-                if (match.Length == 0) continue;
-
-                // Check if any part of this match is already claimed
-                bool overlap = false;
-                for (int i = match.Index; i < match.Index + match.Length; i++)
+                foreach (Match match in matches)
                 {
-                    if (claimed[i]) { overlap = true; break; }
+                    if (match.Length == 0) continue;
+                    if (match.Index < ruleStart) continue;
+
+                    bool overlap = false;
+                    for (int i = match.Index; i < match.Index + match.Length; i++)
+                    {
+                        if (claimed[i]) { overlap = true; break; }
+                    }
+                    if (overlap) continue;
+
+                    for (int i = match.Index; i < match.Index + match.Length; i++)
+                        claimed[i] = true;
+
+                    tokens.Add(new SyntaxToken(match.Index, match.Length, rule.Scope));
                 }
-                if (overlap) continue;
+            }
+            catch (RegexMatchTimeoutException) { }
+        }
 
-                // Claim these positions
-                for (int i = match.Index; i < match.Index + match.Length; i++)
-                    claimed[i] = true;
+        // Detect if the line ends with an unclosed string
+        outState = DetectUnclosedString(line, tokens);
 
-                tokens.Add(new SyntaxToken(match.Index, match.Length, rule.Scope));
+        // If we detected an unclosed string, extend a string token to end of line
+        if (outState.OpenQuote != null)
+        {
+            // Find the partial string token (the one whose opening quote starts the
+            // unclosed string) and extend it to the end of the line.
+            // The partial match won't have been captured by the regex (it requires a
+            // closing quote), so scan for the opening quote in unclaimed positions.
+            int openPos = FindOpeningQuote(line, claimed, outState.OpenQuote.Value);
+            if (openPos >= 0)
+            {
+                // Claim from openPos to end of line as string
+                int len = line.Length - openPos;
+                tokens.Add(new SyntaxToken(openPos, len, "string"));
             }
         }
 
-        // Sub-tokenize double-quoted strings for interpolated variables
         tokens = ExpandInterpolation(tokens, line);
-
-        // Sort by position for rendering
         tokens.Sort((a, b) => a.Start.CompareTo(b.Start));
         return tokens;
+    }
+
+    /// <summary>Find closing quote in line, respecting backslash escapes.</summary>
+    private static int FindClosingQuote(string line, int start, char quote)
+    {
+        for (int i = start; i < line.Length; i++)
+        {
+            if (line[i] == '\\') { i++; continue; }
+            if (line[i] == quote) return i;
+        }
+        return -1;
+    }
+
+    /// <summary>Find an unclaimed opening quote that is not closed by end of line.</summary>
+    private static int FindOpeningQuote(string line, bool[] claimed, char quote)
+    {
+        // Scan from end of claimed region for the opening quote
+        for (int i = 0; i < line.Length; i++)
+        {
+            if (claimed[i]) continue;
+            if (line[i] == quote) return i;
+        }
+        return -1;
+    }
+
+    /// <summary>After tokenizing, check if an unclosed quote remains at end of line.</summary>
+    private static LineState DetectUnclosedString(string line, List<SyntaxToken> tokens)
+    {
+        // Walk through the line tracking quote state, skipping over tokenized regions
+        // (strings that are fully closed, comments, etc.)
+        var tokenized = new bool[line.Length];
+        foreach (var t in tokens)
+            for (int i = t.Start; i < t.Start + t.Length && i < line.Length; i++)
+                tokenized[i] = true;
+
+        char? openQuote = null;
+        for (int i = 0; i < line.Length; i++)
+        {
+            if (tokenized[i]) continue; // skip positions already handled by regex
+            char c = line[i];
+            if (c == '\\' && openQuote != null) { i++; continue; }
+            if (openQuote == null)
+            {
+                if (c == '\'' || c == '"') openQuote = c;
+            }
+            else if (c == openQuote)
+            {
+                openQuote = null;
+            }
+        }
+        return new LineState(openQuote);
     }
 
     private static readonly Regex InterpolationRegex = new(
@@ -188,7 +298,7 @@ public static class SyntaxManager
     private static readonly string DefaultPerlGrammar = """
         {
           "name": "Perl",
-          "extensions": [".pl", ".pm", ".t"],
+          "extensions": [".pl", ".pm", ".t", ".cgi"],
           "rules": [
             {
               "pattern": "(?:\"(?:\\\\.|[^\"])*\"|'(?:\\\\.|[^'])*')",
