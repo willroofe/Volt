@@ -54,6 +54,7 @@ public class FindBar : UserControl
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(6, 0, 0, 0),
             Focusable = false,
+            Style = CreateThemedCheckBoxStyle(),
         };
         _matchCase.SetResourceReference(ForegroundProperty, "ThemeTextFg");
         _matchCase.Checked += (_, _) => UpdateSearch();
@@ -67,6 +68,7 @@ public class FindBar : UserControl
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(8, 0, 0, 0),
             MinWidth = 60,
+            TextAlignment = TextAlignment.Right,
         };
         _matchCount.SetResourceReference(TextBlock.ForegroundProperty, "ThemeTextFgMuted");
 
@@ -118,6 +120,7 @@ public class FindBar : UserControl
     public void Open()
     {
         Visibility = Visibility.Visible;
+        UpdateSearch();
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,
             () => { Keyboard.Focus(_input); _input.SelectAll(); });
     }
@@ -128,6 +131,11 @@ public class FindBar : UserControl
         Visibility = Visibility.Collapsed;
         _matchCount.Text = "";
         Closed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void RefreshSearch()
+    {
+        if (IsVisible) UpdateSearch();
     }
 
     private void OnInputTextChanged(object sender, TextChangedEventArgs e)
@@ -205,6 +213,105 @@ public class FindBar : UserControl
             Background = Brushes.Transparent,
         };
         btn.SetResourceReference(ForegroundProperty, "ThemeTextFg");
+
+        // Themed hover style
+        var style = new Style(typeof(Button));
+        style.Setters.Add(new Setter(TemplateProperty, CreateNavButtonTemplate()));
+        btn.Style = style;
+
         return btn;
+    }
+
+    private static ControlTemplate CreateNavButtonTemplate()
+    {
+        var template = new ControlTemplate(typeof(Button));
+
+        var border = new FrameworkElementFactory(typeof(Border));
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
+        border.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+        border.SetValue(Border.SnapsToDevicePixelsProperty, true);
+        border.Name = "border";
+
+        var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+        presenter.SetValue(HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        presenter.SetValue(VerticalAlignmentProperty, VerticalAlignment.Center);
+        border.AppendChild(presenter);
+
+        template.VisualTree = border;
+
+        // Mouse-over trigger
+        var hoverTrigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hoverTrigger.Setters.Add(new Setter(Border.BackgroundProperty,
+            new DynamicResourceExtension("ThemeButtonHover"), "border"));
+        template.Triggers.Add(hoverTrigger);
+
+        // Pressed trigger
+        var pressedTrigger = new Trigger { Property = Button.IsPressedProperty, Value = true };
+        pressedTrigger.Setters.Add(new Setter(Border.BackgroundProperty,
+            new DynamicResourceExtension("ThemeMenuItemHover"), "border"));
+        template.Triggers.Add(pressedTrigger);
+
+        return template;
+    }
+
+    private static Style CreateThemedCheckBoxStyle()
+    {
+        var style = new Style(typeof(CheckBox));
+        var template = new ControlTemplate(typeof(CheckBox));
+
+        // Outer border for the check box
+        var checkBorder = new FrameworkElementFactory(typeof(Border));
+        checkBorder.SetValue(WidthProperty, 14.0);
+        checkBorder.SetValue(HeightProperty, 14.0);
+        checkBorder.SetValue(Border.CornerRadiusProperty, new CornerRadius(2));
+        checkBorder.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        checkBorder.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+        checkBorder.SetResourceReference(Border.BorderBrushProperty, "ThemeMenuPopupBorder");
+        checkBorder.SetValue(VerticalAlignmentProperty, VerticalAlignment.Center);
+        checkBorder.Name = "checkBorder";
+
+        // Checkmark glyph
+        var checkMark = new FrameworkElementFactory(typeof(TextBlock));
+        checkMark.SetValue(TextBlock.TextProperty, "\uE73E");
+        checkMark.SetValue(TextBlock.FontFamilyProperty, new FontFamily("Segoe MDL2 Assets"));
+        checkMark.SetValue(TextBlock.FontSizeProperty, 10.0);
+        checkMark.SetValue(HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        checkMark.SetValue(VerticalAlignmentProperty, VerticalAlignment.Center);
+        checkMark.SetValue(MarginProperty, new Thickness(0, -1, 0, 0));
+        checkMark.SetResourceReference(TextBlock.ForegroundProperty, "ThemeTextFg");
+        checkMark.SetValue(VisibilityProperty, Visibility.Collapsed);
+        checkMark.Name = "checkMark";
+        checkBorder.AppendChild(checkMark);
+
+        // Content label next to the box
+        var contentPresenter = new FrameworkElementFactory(typeof(ContentPresenter));
+        contentPresenter.SetValue(MarginProperty, new Thickness(4, 0, 0, 0));
+        contentPresenter.SetValue(VerticalAlignmentProperty, VerticalAlignment.Center);
+
+        // Stack the box and label horizontally
+        var stack = new FrameworkElementFactory(typeof(StackPanel));
+        stack.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+        stack.SetValue(VerticalAlignmentProperty, VerticalAlignment.Center);
+        stack.AppendChild(checkBorder);
+        stack.AppendChild(contentPresenter);
+
+        template.VisualTree = stack;
+
+        // Checked trigger — show checkmark and fill background
+        var checkedTrigger = new Trigger { Property = CheckBox.IsCheckedProperty, Value = true };
+        checkedTrigger.Setters.Add(new Setter(VisibilityProperty, Visibility.Visible, "checkMark"));
+        checkedTrigger.Setters.Add(new Setter(Border.BackgroundProperty,
+            new DynamicResourceExtension("ThemeMenuItemHover"), "checkBorder"));
+        template.Triggers.Add(checkedTrigger);
+
+        // Hover trigger
+        var hoverTrigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hoverTrigger.Setters.Add(new Setter(Border.BorderBrushProperty,
+            new DynamicResourceExtension("ThemeTextFgMuted"), "checkBorder"));
+        template.Triggers.Add(hoverTrigger);
+
+        style.Setters.Add(new Setter(TemplateProperty, template));
+        style.Setters.Add(new Setter(CursorProperty, Cursors.Hand));
+        return style;
     }
 }

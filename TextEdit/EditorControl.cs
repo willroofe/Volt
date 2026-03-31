@@ -1705,6 +1705,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         ClearSelection();
         _undoStack.Clear();
         _redoStack.Clear();
+        _findMatches.Clear();
+        _currentMatchIndex = 0;
         IsDirty = false;
         _maxLineLengthDirty = true;
         _ftCacheDirty = true;

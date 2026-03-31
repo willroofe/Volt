@@ -187,6 +187,7 @@ public partial class MainWindow : Window
         Editor.SetContent("");
         UpdateTitle();
         UpdateFileType();
+        FindBarControl.RefreshSearch();
     }
 
     private void OnOpen(object sender, RoutedEventArgs e)
@@ -202,6 +203,7 @@ public partial class MainWindow : Window
         Editor.SetContent(File.ReadAllText(_filePath, _fileEncoding));
         UpdateTitle();
         UpdateFileType();
+        FindBarControl.RefreshSearch();
     }
 
     private void OnSave(object sender, RoutedEventArgs e)
