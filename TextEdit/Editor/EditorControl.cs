@@ -133,8 +133,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         var sample = new FormattedText("X", CultureInfo.InvariantCulture,
             FlowDirection.LeftToRight, _monoTypeface, _fontSize, Brushes.White, _dpi);
-        _charWidth = sample.WidthIncludingTrailingWhitespace;
-        _lineHeight = sample.Height;
+        _charWidth = Math.Round(sample.WidthIncludingTrailingWhitespace * _dpi) / _dpi;
+        _lineHeight = Math.Round(sample.Height * _dpi) / _dpi;
         _glyphBaseline = sample.Baseline;
 
         _tokenCacheDirty = true;
@@ -883,6 +883,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         using var dc = _textVisual.RenderOpen();
 
+        if (drawLast < drawFirst) return;
+
         EnsureLineStates(drawLast);
         for (int i = drawFirst; i <= drawLast; i++)
         {
@@ -946,6 +948,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         int drawLast = Math.Min(_buffer.Count - 1, lastLine + RenderBufferLines);
 
         using var dc = _gutterVisual.RenderOpen();
+
+        if (drawLast < drawFirst) return;
 
         double bgTop = drawFirst * _lineHeight;
         double bgBottom = (drawLast + 1) * _lineHeight;
