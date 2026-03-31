@@ -2,7 +2,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Effects;
 
 namespace TextEdit;
 
@@ -10,16 +9,8 @@ public record PaletteOption(string Label, Action ApplyPreview, Action Commit, Ac
 
 public record PaletteCommand(string Name, Action? Toggle = null, Func<List<PaletteOption>>? GetOptions = null);
 
-public class CommandPalette : UserControl
+public partial class CommandPalette : UserControl
 {
-    private readonly Border _overlay;
-    private readonly Border _panel;
-    private readonly TextBox _input;
-    private readonly TextBlock _prefix;
-    private readonly ListBox _list;
-    private readonly TextBlock _noResults;
-    private readonly TextBlock _placeholder;
-
     private List<PaletteCommand> _commands = [];
     private List<PaletteOption>? _currentOptions;
     private PaletteCommand? _activeCommand;
@@ -30,115 +21,12 @@ public class CommandPalette : UserControl
 
     public CommandPalette()
     {
+        InitializeComponent();
+
         IsVisibleChanged += (_, _) =>
         {
             if (IsVisible) Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => { if (_input != null) Keyboard.Focus(_input); });
         };
-
-        // -- Overlay (semi-transparent dark background) --
-        _overlay = new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb(0x80, 0, 0, 0)),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
-        };
-        _overlay.MouseLeftButtonDown += (_, _) => Cancel();
-
-        // -- Input text box --
-        _prefix = new TextBlock
-        {
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 0, 0),
-            FontFamily = new FontFamily("Segoe UI"),
-            FontSize = 14,
-        };
-        _prefix.SetResourceReference(TextBlock.ForegroundProperty, "ThemeTextFgMuted");
-
-        _input = new TextBox
-        {
-            BorderThickness = new Thickness(0),
-            FontFamily = new FontFamily("Segoe UI"),
-            FontSize = 14,
-            Padding = new Thickness(0),
-            VerticalContentAlignment = VerticalAlignment.Center,
-            Background = Brushes.Transparent,
-        };
-        _input.SetResourceReference(ForegroundProperty, "ThemeTextFg");
-        _input.SetResourceReference(TextBox.CaretBrushProperty, "ThemeTextFg");
-        _input.TextChanged += OnInputTextChanged;
-
-        var inputRow = new DockPanel { Margin = new Thickness(10, 8, 10, 8) };
-        DockPanel.SetDock(_prefix, Dock.Left);
-        inputRow.Children.Add(_prefix);
-        inputRow.Children.Add(_input);
-
-        var inputBorder = new Border();
-        inputBorder.SetResourceReference(Border.BackgroundProperty, "ThemeContentBg");
-        inputBorder.Child = inputRow;
-
-        // -- List --
-        _list = new ListBox
-        {
-            BorderThickness = new Thickness(0),
-            MaxHeight = 320, // ~10 items
-            Padding = new Thickness(0),
-            FocusVisualStyle = null,
-            Focusable = false,
-        };
-        _list.SetResourceReference(ListBox.BackgroundProperty, "ThemeMenuPopupBg");
-
-        _noResults = new TextBlock
-        {
-            Text = "No matching commands",
-            FontFamily = new FontFamily("Segoe UI"),
-            FontSize = 13,
-            Margin = new Thickness(12, 8, 12, 8),
-            Visibility = Visibility.Collapsed,
-        };
-        _noResults.SetResourceReference(TextBlock.ForegroundProperty, "ThemeTextFgMuted");
-
-        _placeholder = new TextBlock
-        {
-            Text = "Type to search...",
-            FontFamily = new FontFamily("Segoe UI"),
-            FontSize = 13,
-            FontStyle = FontStyles.Italic,
-            Margin = new Thickness(12, 8, 12, 8),
-            Visibility = Visibility.Collapsed,
-        };
-        _placeholder.SetResourceReference(TextBlock.ForegroundProperty, "ThemeTextFgMuted");
-
-        // -- Panel --
-        var stack = new StackPanel();
-        stack.Children.Add(inputBorder);
-        stack.Children.Add(new Border { Height = 1 });
-        var separatorBorder = (Border)stack.Children[1];
-        separatorBorder.SetResourceReference(Border.BackgroundProperty, "ThemeMenuPopupBorder");
-        stack.Children.Add(_list);
-        stack.Children.Add(_noResults);
-        stack.Children.Add(_placeholder);
-
-        _panel = new Border
-        {
-            Width = 420,
-            CornerRadius = new CornerRadius(6),
-            BorderThickness = new Thickness(1),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(0, 50, 0, 0),
-            Child = stack,
-            Effect = new DropShadowEffect { BlurRadius = 16, Opacity = 0.3, ShadowDepth = 2 },
-        };
-        _panel.SetResourceReference(Border.BackgroundProperty, "ThemeMenuPopupBg");
-        _panel.SetResourceReference(Border.BorderBrushProperty, "ThemeMenuPopupBorder");
-
-        // -- Compose --
-        var root = new Grid();
-        root.Children.Add(_overlay);
-        root.Children.Add(_panel);
-
-        Content = root;
-        Visibility = Visibility.Collapsed;
     }
 
     public void SetCommands(List<PaletteCommand> commands)
@@ -177,6 +65,11 @@ public class CommandPalette : UserControl
 
         Visibility = Visibility.Collapsed;
         Closed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnOverlayClick(object sender, MouseButtonEventArgs e)
+    {
+        Cancel();
     }
 
     private void RevertCurrentPreview()

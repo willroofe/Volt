@@ -33,9 +33,13 @@ Converted both from static classes to regular instance classes:
 - **MainWindow** accesses instances through convenience properties delegating to `App.Current`.
 - **SettingsWindow** receives `ThemeManager` via constructor parameter.
 
-### 4. Code-behind UI construction (CommandPalette, FindBar)
+### ~~4. Code-behind UI construction (CommandPalette, FindBar)~~ ✅ Done
 
-Both controls build their entire UI tree in C# constructors — 444 and 508 lines respectively. This is harder to read and modify than XAML. Moving the layout to XAML and keeping only behavior in code-behind would improve maintainability. The themed styling could use shared Style resources in App.xaml rather than being set inline on each element.
+Converted both controls from code-behind-only to XAML + code-behind:
+
+- **CommandPalette** — UI tree moved to `CommandPalette.xaml`, class made `partial`. Constructor reduced from ~140 lines of UI building to `InitializeComponent()`. Overlay click and input text change wired via XAML event attributes.
+- **FindBar** — UI tree moved to `FindBar.xaml`, class made `partial`. Constructor reduced from ~180 lines to `InitializeComponent()`. All button click handlers wired via XAML event attributes. Four static style-creation methods (`CreateNavButtonTemplate`, `CreateTextButtonTemplate`, `CreateMatchCaseButtonStyle`, `CreateRoundedTextBoxStyle`) and two static factory methods (`MakeNavButton`, `MakeTextButton`) eliminated entirely.
+- **Shared styles** added to `App.xaml`: `FindBarNavButton`, `FindBarTextButton`, `MatchCaseButton`, `RoundedTextBox` — replacing the programmatic `FrameworkElementFactory`-based templates with declarative XAML.
 
 ### 5. No folder structure
 
@@ -102,4 +106,4 @@ If I were to tackle these in order:
 2. ~~Break OnKeyDown into smaller handler methods~~ ✅
 3. Add folder structure
 4. Move embedded JSON to embedded resources
-5. Convert CommandPalette/FindBar to XAML + code-behind
+5. ~~Convert CommandPalette/FindBar to XAML + code-behind~~ ✅

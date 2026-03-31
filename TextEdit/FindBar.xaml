@@ -1,0 +1,139 @@
+<UserControl x:Class="TextEdit.FindBar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Visibility="Collapsed">
+    <Border x:Name="_panel"
+            CornerRadius="4"
+            BorderThickness="1"
+            Width="480"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Bottom"
+            Margin="0,0,0,8"
+            Background="{DynamicResource ThemeMenuPopupBg}"
+            BorderBrush="{DynamicResource ThemeMenuPopupBorder}">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="10" Opacity="0.3" ShadowDepth="0"/>
+        </Border.Effect>
+        <StackPanel Orientation="Vertical">
+            <!-- Find row -->
+            <Grid x:Name="_findRow" Margin="8,6,8,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Toggle replace button -->
+                <Button x:Name="_toggleReplaceBtn"
+                        Grid.Column="0"
+                        Style="{StaticResource FindBarNavButton}"
+                        Margin="0,0,6,0"
+                        ToolTip="Toggle replace (Ctrl+H)"
+                        RenderTransformOrigin="0.5,0.5"
+                        Click="OnToggleReplaceClick">
+                    <Button.RenderTransform>
+                        <RotateTransform x:Name="_toggleTransform" Angle="0"/>
+                    </Button.RenderTransform>
+                    <TextBlock Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                </Button>
+
+                <!-- Search box -->
+                <Border Grid.Column="1" BorderThickness="1" CornerRadius="3"
+                        SnapsToDevicePixels="True"
+                        BorderBrush="{DynamicResource ThemeMenuPopupBorder}">
+                    <DockPanel>
+                        <Button x:Name="_matchCaseBtn"
+                                DockPanel.Dock="Right"
+                                Style="{StaticResource MatchCaseButton}"
+                                Width="24" Height="22"
+                                Margin="0,2,2,2" Padding="0"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                Focusable="False"
+                                ToolTip="Match case"
+                                Background="Transparent"
+                                Foreground="{DynamicResource ThemeTextFgMuted}"
+                                Click="OnMatchCaseClick">
+                            <TextBlock Text="Aa" FontFamily="Segoe UI" FontSize="12" FontWeight="SemiBold"/>
+                        </Button>
+                        <TextBlock x:Name="_matchCount"
+                                   DockPanel.Dock="Right"
+                                   FontFamily="Segoe UI" FontSize="11"
+                                   VerticalAlignment="Center"
+                                   Margin="2,0,2,0"
+                                   Foreground="{DynamicResource ThemeTextFgMuted}"/>
+                        <TextBox x:Name="_input"
+                                 BorderThickness="0"
+                                 FontFamily="Segoe UI" FontSize="13"
+                                 Padding="4,3,0,3"
+                                 VerticalContentAlignment="Center"
+                                 Background="Transparent"
+                                 Foreground="{DynamicResource ThemeTextFg}"
+                                 CaretBrush="{DynamicResource ThemeTextFg}"
+                                 TextChanged="OnInputTextChanged"/>
+                    </DockPanel>
+                </Border>
+
+                <!-- Previous -->
+                <Button Grid.Column="2"
+                        Style="{StaticResource FindBarNavButton}"
+                        ToolTip="Previous match (Shift+Enter)"
+                        Click="OnPrevClick">
+                    <TextBlock Text="&#xE70E;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                </Button>
+
+                <!-- Next -->
+                <Button Grid.Column="3"
+                        Style="{StaticResource FindBarNavButton}"
+                        ToolTip="Next match (Enter)"
+                        Click="OnNextClick">
+                    <TextBlock Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                </Button>
+
+                <!-- Close -->
+                <Button Grid.Column="4"
+                        Style="{StaticResource FindBarNavButton}"
+                        ToolTip="Close (Escape)"
+                        Click="OnCloseClick">
+                    <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                </Button>
+            </Grid>
+
+            <!-- Replace row -->
+            <Grid x:Name="_replaceRow" Margin="42,2,8,6" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBox x:Name="_replaceInput"
+                         Grid.Column="0"
+                         Style="{StaticResource RoundedTextBox}"
+                         BorderThickness="0"
+                         FontFamily="Segoe UI" FontSize="13"
+                         Padding="4,3,4,3"
+                         VerticalContentAlignment="Center"
+                         Background="Transparent"
+                         Foreground="{DynamicResource ThemeTextFg}"
+                         CaretBrush="{DynamicResource ThemeTextFg}"/>
+
+                <Button Grid.Column="1"
+                        Style="{StaticResource FindBarTextButton}"
+                        ToolTip="Replace current match"
+                        Click="OnReplaceClick">
+                    <TextBlock Text="Replace" FontFamily="Segoe UI" FontSize="12"/>
+                </Button>
+
+                <Button Grid.Column="2"
+                        Style="{StaticResource FindBarTextButton}"
+                        ToolTip="Replace all matches"
+                        Click="OnReplaceAllClick">
+                    <TextBlock Text="Replace All" FontFamily="Segoe UI" FontSize="12"/>
+                </Button>
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>
