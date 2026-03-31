@@ -16,6 +16,9 @@ public partial class MainWindow : Window
     private Encoding _fileEncoding = new UTF8Encoding(false);
     private AppSettings _settings;
 
+    private ThemeManager ThemeManager => App.Current.ThemeManager;
+    private SyntaxManager SyntaxManager => App.Current.SyntaxManager;
+
     [DllImport("dwmapi.dll", PreserveSig = true)]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
 
@@ -26,6 +29,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Editor.ThemeManager = ThemeManager;
+        Editor.SyntaxManager = SyntaxManager;
         _settings = AppSettings.Load();
         ApplySettings();
         RestoreWindowPosition();
@@ -313,7 +318,7 @@ public partial class MainWindow : Window
 
     private void OnSettings(object sender, RoutedEventArgs e)
     {
-        var dlg = new SettingsWindow(Editor.TabSize, _settings.Editor.Caret.BlockCaret, _settings.Editor.Caret.BlinkMs,
+        var dlg = new SettingsWindow(ThemeManager, Editor.TabSize, _settings.Editor.Caret.BlockCaret, _settings.Editor.Caret.BlinkMs,
             Editor.FontFamilyName, Editor.EditorFontSize, Editor.EditorFontWeight, _settings.Application.ColorTheme,
             _settings.Editor.Find.BarPosition) { Owner = this };
         dlg.Applied += (_, _) => ApplySettingsFromDialog(dlg);

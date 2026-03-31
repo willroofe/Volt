@@ -5,6 +5,11 @@ namespace TextEdit;
 
 public partial class App : Application
 {
+    public ThemeManager ThemeManager { get; } = new();
+    public SyntaxManager SyntaxManager { get; } = new();
+
+    public static new App Current => (App)Application.Current;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         ThemeManager.Initialize();
