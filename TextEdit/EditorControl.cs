@@ -1525,6 +1525,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     try { text = Clipboard.GetText(); }
                     catch (System.Runtime.InteropServices.ExternalException) { break; }
                     var pasteLines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+                    for (int pi = 0; pi < pasteLines.Length; pi++)
+                        pasteLines[pi] = ExpandTabs(pasteLines[pi]);
                     if (pasteLines.Length == 1)
                     {
                         _lines[_caretLine] = _lines[_caretLine][.._caretCol] + pasteLines[0] + _lines[_caretLine][_caretCol..];
@@ -1660,7 +1662,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _lineEnding = DetectLineEnding(text);
 
         _lines.Clear();
-        _lines.AddRange(text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n'));
+        var rawLines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+        for (int i = 0; i < rawLines.Length; i++)
+            rawLines[i] = ExpandTabs(rawLines[i]);
+        _lines.AddRange(rawLines);
         if (_lines.Count == 0) _lines.Add("");
         _caretLine = 0;
         _caretCol = 0;
@@ -1680,6 +1685,25 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public string GetContent()
     {
         return string.Join(_lineEnding, _lines);
+    }
+
+    private string ExpandTabs(string line)
+    {
+        if (!line.Contains('\t')) return line;
+        var sb = new System.Text.StringBuilder(line.Length + 16);
+        foreach (char c in line)
+        {
+            if (c == '\t')
+            {
+                int spaces = TabSize - (sb.Length % TabSize);
+                sb.Append(' ', spaces);
+            }
+            else
+            {
+                sb.Append(c);
+            }
+        }
+        return sb.ToString();
     }
 
     private static string DetectLineEnding(string text)
