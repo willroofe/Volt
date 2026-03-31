@@ -299,6 +299,14 @@
                             <TextBlock x:Name="CaretBlinkLabel" Style="{StaticResource SettingLabel}"
                                        Margin="10,0,0,0" Width="50"/>
                         </StackPanel>
+
+                        <TextBlock Text="Find bar position" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="FindBarPosBox" Width="100" Height="26"
+                                  HorizontalAlignment="Left" Margin="0,0,0,16"
+                                  VerticalContentAlignment="Center" FontSize="13">
+                            <ComboBoxItem Content="Top"/>
+                            <ComboBoxItem Content="Bottom"/>
+                        </ComboBox>
                     </StackPanel>
                 </ScrollViewer>
 
