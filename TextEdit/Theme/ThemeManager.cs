@@ -150,7 +150,7 @@ public class ThemeManager
 
     private static void WriteEmbeddedResource(string resourceName, string targetPath)
     {
-        if (File.Exists(targetPath)) return;
+        // Always overwrite built-in themes so embedded fixes take effect
         using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName);
         if (stream == null) return;
         using var reader = new StreamReader(stream);

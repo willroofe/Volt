@@ -1,0 +1,27 @@
+{
+  "name": "JSON",
+  "extensions": [".json", ".jsonl", ".geojson", ".webmanifest"],
+  "interpolation": {
+    "quotes": "\"",
+    "variablePattern": "",
+    "escapePattern": "\\\\(?:[\"\\\\/bfnrt]|u[0-9a-fA-F]{4})"
+  },
+  "rules": [
+    {
+      "pattern": "\"(?:\\\\.|[^\"\\\\])*\"(?=\\s*:)",
+      "scope": "hashkey"
+    },
+    {
+      "pattern": "\"(?:\\\\.|[^\"\\\\])*\"",
+      "scope": "string"
+    },
+    {
+      "pattern": "-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?",
+      "scope": "number"
+    },
+    {
+      "pattern": "\\b(?:true|false|null)\\b",
+      "scope": "keyword"
+    }
+  ]
+}
