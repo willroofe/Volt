@@ -1,0 +1,171 @@
+namespace TextEdit;
+
+/// <summary>
+/// Manages the text content as a list of lines with dirty tracking,
+/// line ending detection, tab expansion, and max line length caching.
+/// </summary>
+public class TextBuffer
+{
+    private readonly List<string> _lines = [""];
+    private int _maxLineLength;
+    private bool _maxLineLengthDirty = true;
+    private string _lineEnding = "\r\n";
+    private bool _isDirty;
+
+    public int Count => _lines.Count;
+
+    public string this[int index]
+    {
+        get => _lines[index];
+        set => _lines[index] = value;
+    }
+
+    public string LineEnding => _lineEnding;
+    public string LineEndingDisplay => _lineEnding == "\n" ? "LF" : "CRLF";
+
+    public bool IsDirty
+    {
+        get => _isDirty;
+        set
+        {
+            if (_isDirty == value) return;
+            _isDirty = value;
+            DirtyChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public event EventHandler? DirtyChanged;
+
+    // ── Max line length tracking ────────────────────────────────────
+    public int MaxLineLength
+    {
+        get
+        {
+            if (_maxLineLengthDirty)
+            {
+                _maxLineLength = _lines.Count > 0 ? _lines.Max(l => l.Length) : 0;
+                _maxLineLengthDirty = false;
+            }
+            return _maxLineLength;
+        }
+    }
+
+    public void InvalidateMaxLineLength() => _maxLineLengthDirty = true;
+
+    /// <summary>
+    /// Fast path: only check a specific line against the cached max.
+    /// Returns the current max (may be stale if lines were shortened).
+    /// </summary>
+    public int UpdateMaxForLine(int lineIndex)
+    {
+        if (_maxLineLengthDirty) return MaxLineLength;
+        if (lineIndex < _lines.Count && _lines[lineIndex].Length > _maxLineLength)
+            _maxLineLength = _lines[lineIndex].Length;
+        return _maxLineLength;
+    }
+
+    /// <summary>
+    /// Call before modifying a line that might currently be the longest.
+    /// Marks max dirty if the line's current length equals or exceeds the cached max.
+    /// </summary>
+    public void NotifyLineChanging(int lineIndex)
+    {
+        if (!_maxLineLengthDirty && lineIndex < _lines.Count
+            && _lines[lineIndex].Length >= _maxLineLength)
+            _maxLineLengthDirty = true;
+    }
+
+    // ── Line manipulation ───────────────────────────────────────────
+    public void InsertLine(int index, string line)
+    {
+        _lines.Insert(index, line);
+        _maxLineLengthDirty = true;
+    }
+
+    public void RemoveAt(int index)
+    {
+        _lines.RemoveAt(index);
+        _maxLineLengthDirty = true;
+    }
+
+    public void RemoveRange(int index, int count)
+    {
+        _lines.RemoveRange(index, count);
+        _maxLineLengthDirty = true;
+    }
+
+    /// <summary>Create a snapshot copy of all lines (for undo).</summary>
+    public List<string> Snapshot() => new(_lines);
+
+    /// <summary>Replace all lines from a snapshot (for undo/redo restore).</summary>
+    public void Restore(List<string> snapshot)
+    {
+        _lines.Clear();
+        _lines.AddRange(snapshot);
+        if (_lines.Count == 0) _lines.Add("");
+        _maxLineLengthDirty = true;
+    }
+
+    // ── Content get/set ─────────────────────────────────────────────
+    public void SetContent(string text, int tabSize)
+    {
+        _lineEnding = DetectLineEnding(text);
+        _lines.Clear();
+        var rawLines = text.Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
+        for (int i = 0; i < rawLines.Length; i++)
+            rawLines[i] = ExpandTabs(rawLines[i], tabSize);
+        _lines.AddRange(rawLines);
+        if (_lines.Count == 0) _lines.Add("");
+        _maxLineLengthDirty = true;
+        IsDirty = false;
+    }
+
+    public string GetContent() => string.Join(_lineEnding, _lines);
+
+    public void Clear()
+    {
+        _lines.Clear();
+        _lines.Add("");
+        _maxLineLengthDirty = true;
+    }
+
+    // ── Tab expansion ───────────────────────────────────────────────
+    public static string ExpandTabs(string line, int tabSize)
+    {
+        if (!line.Contains('\t')) return line;
+        var sb = new System.Text.StringBuilder(line.Length + 16);
+        foreach (char c in line)
+        {
+            if (c == '\t')
+            {
+                int spaces = tabSize - (sb.Length % tabSize);
+                sb.Append(' ', spaces);
+            }
+            else
+            {
+                sb.Append(c);
+            }
+        }
+        return sb.ToString();
+    }
+
+    // ── Line ending detection ───────────────────────────────────────
+    private static string DetectLineEnding(string text)
+    {
+        int crlf = 0, lf = 0;
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '\r' && i + 1 < text.Length && text[i + 1] == '\n')
+            {
+                crlf++;
+                i++;
+            }
+            else if (text[i] == '\n')
+            {
+                lf++;
+            }
+        }
+        if (crlf == 0 && lf == 0) return Environment.NewLine;
+        return lf > crlf ? "\n" : "\r\n";
+    }
+}
