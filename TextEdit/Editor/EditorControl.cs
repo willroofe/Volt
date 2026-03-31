@@ -117,6 +117,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private void ApplyFont(string familyName, double size, FontWeight weight)
     {
+        // Preserve the top visible line so the view doesn't jump
+        int topLine = _lineHeight > 0 ? (int)(_offset.Y / _lineHeight) : 0;
+
         _fontWeight = weight;
         _monoTypeface = new Typeface(new FontFamily(familyName), FontStyles.Normal, weight, FontStretches.Normal);
         _fontSize = size;
@@ -140,6 +143,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _tokenCacheDirty = true;
         _gutterDigits = 0;
         UpdateExtent();
+
+        // Restore scroll position to keep the same line at the top
+        double newOffset = topLine * _lineHeight;
+        newOffset = Math.Clamp(newOffset, 0, Math.Max(0, _extent.Height - _viewport.Height));
+        _offset.Y = Math.Round(newOffset * _dpi) / _dpi;
+        ScrollOwner?.InvalidateScrollInfo();
+
         InvalidateText();
     }
 
