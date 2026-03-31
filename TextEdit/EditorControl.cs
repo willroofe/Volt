@@ -61,20 +61,21 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     // ── Rendering (font) ─────────────────────────────────────────────
     private Typeface _monoTypeface = null!;
+    private GlyphTypeface _glyphTypeface = null!;
     private double _fontSize = 14;
     private const double GutterPadding = 4;
     private double _charWidth;
     private double _lineHeight;
+    private double _glyphBaseline; // distance from top of line to baseline
 
     // ── Cached pens / metrics ───────────────────────────────────────
     private Pen _gutterSepPen = null!;
     private int _gutterDigits;
     private double _dpi = 1.0;
 
-    // ── FormattedText cache ──────────────────────────────────────────
-    private readonly Dictionary<int, (string content, LineState inState, FormattedText ft)> _ftCache = new();
-    private readonly Dictionary<int, (Brush brush, FormattedText ft)> _lineNumCache = new();
-    private bool _ftCacheDirty;
+    // ── Syntax token cache ────────────────────────────────────────────
+    private readonly Dictionary<int, (string content, LineState inState, List<SyntaxToken> tokens)> _tokenCache = new();
+    private bool _tokenCacheDirty;
 
     // ── Multi-line syntax state ────────────────────────────────────
     private readonly List<LineState> _lineStates = new();
@@ -130,11 +131,27 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _monoTypeface = new Typeface(new FontFamily(familyName), FontStyles.Normal, weight, FontStretches.Normal);
         _fontSize = size;
         _dpi = VisualTreeHelper.GetDpi(new DrawingVisual()).PixelsPerDip;
+
+        // Obtain GlyphTypeface for direct GlyphRun rendering
+        GlyphTypeface? gt = null;
+        if (_monoTypeface.TryGetGlyphTypeface(out gt)) { }
+        else
+        {
+            // Fallback: some font families need the first available face
+            foreach (var face in new FontFamily(familyName).GetTypefaces())
+                if (face.TryGetGlyphTypeface(out gt)) break;
+        }
+        // If we got a valid GlyphTypeface, use it; otherwise keep the previous one
+        if (gt != null) _glyphTypeface = gt;
+
+        // Compute metrics — use FormattedText once to get exact WPF metrics
         var sample = new FormattedText("X", CultureInfo.InvariantCulture,
             FlowDirection.LeftToRight, _monoTypeface, _fontSize, Brushes.White, _dpi);
         _charWidth = sample.WidthIncludingTrailingWhitespace;
         _lineHeight = sample.Height;
-        _ftCacheDirty = true;
+        _glyphBaseline = sample.Baseline;
+
+        _tokenCacheDirty = true;
         _gutterDigits = 0; // force gutter width recalc with new charWidth
         UpdateExtent();
         InvalidateText();
@@ -229,7 +246,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private void OnThemeChanged(object? sender, EventArgs e)
     {
-        _ftCacheDirty = true;
+        _tokenCacheDirty = true;
         RebuildGutterPen();
         InvalidateText();
     }
@@ -253,6 +270,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _textVisual.Transform = _textTransform;
         _textVisual.Clip = _textClipGeom;
         _gutterVisual.Transform = _gutterTransform;
+        TextOptions.SetTextRenderingMode(_textVisual, TextRenderingMode.ClearType);
+        TextOptions.SetTextRenderingMode(_gutterVisual, TextRenderingMode.ClearType);
+        TextOptions.SetTextHintingMode(_textVisual, TextHintingMode.Fixed);
+        TextOptions.SetTextHintingMode(_gutterVisual, TextHintingMode.Fixed);
         AddVisualChild(_textVisual);
         AddVisualChild(_gutterVisual);
         AddVisualChild(_caretVisual);
@@ -314,10 +335,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     new Rect(caretX, caretY, _charWidth, _lineHeight));
                 if (_caretCol < _lines[_caretLine].Length)
                 {
-                    var charText = new FormattedText(
-                        _lines[_caretLine][_caretCol].ToString(), CultureInfo.InvariantCulture,
-                        FlowDirection.LeftToRight, _monoTypeface, _fontSize, ThemeManager.EditorBg, _dpi);
-                    dc.DrawText(charText, new Point(caretX, caretY));
+                    var ch = _lines[_caretLine][_caretCol].ToString();
+                    DrawGlyphRun(dc, ch, 0, 1, caretX, caretY, ThemeManager.EditorBg);
                 }
             }
             else
@@ -331,7 +350,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
     {
         _dpi = newDpi.PixelsPerDip;
-        _ftCacheDirty = true;
+        _tokenCacheDirty = true;
         InvalidateLineStates();
         InvalidateText();
     }
@@ -445,7 +464,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _lines[sl] = _lines[sl][..sc] + _lines[el][ec..];
             _lines.RemoveRange(sl + 1, el - sl);
             _maxLineLengthDirty = true;
-            _ftCacheDirty = true;
+            _tokenCacheDirty = true;
         }
         _caretLine = sl;
         _caretCol = sc;
@@ -740,10 +759,38 @@ public class EditorControl : FrameworkElement, IScrollInfo
             SetHorizontalOffset(caretX - _viewport.Width + _charWidth * 2);
     }
 
-    /// <summary>Measure the pixel X offset of a buffer column using FormattedText (handles tabs correctly).</summary>
+    /// <summary>Measure the pixel X offset of a buffer column.</summary>
     private double ColToPixelX(string line, int col)
     {
         return col * _charWidth;
+    }
+
+    /// <summary>
+    /// Draw a run of monospace text directly via GlyphRun, bypassing the
+    /// expensive DWrite shaping pipeline that FormattedText/DrawText uses.
+    /// </summary>
+    private void DrawGlyphRun(DrawingContext dc, string text, int startIndex, int length,
+                              double x, double y, Brush brush)
+    {
+        if (length <= 0) return;
+        var map = _glyphTypeface.CharacterToGlyphMap;
+        var glyphIndices = new ushort[length];
+        var advanceWidths = new double[length];
+        for (int i = 0; i < length; i++)
+        {
+            char ch = text[startIndex + i];
+            glyphIndices[i] = map.TryGetValue(ch, out var gi) ? gi : (ushort)0;
+            advanceWidths[i] = _charWidth;
+        }
+        // Snap origin to pixel grid for sharp ClearType rendering
+        double snapX = Math.Round(x * _dpi) / _dpi;
+        double snapY = Math.Round((y + _glyphBaseline) * _dpi) / _dpi;
+        var origin = new Point(snapX, snapY);
+        var run = new GlyphRun(
+            _glyphTypeface, 0, false, _fontSize, (float)_dpi,
+            glyphIndices, origin, advanceWidths,
+            null, null, null, null, null, null);
+        dc.DrawGlyphRun(brush, run);
     }
 
     private void ResetPreferredCol() => _preferredCol = -1;
@@ -857,12 +904,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     protected override void OnRender(DrawingContext dc)
     {
-        if (_ftCacheDirty)
+        if (_tokenCacheDirty)
         {
-            _ftCache.Clear();
-            _lineNumCache.Clear();
-            _ftCacheDirty = false;
+            _tokenCache.Clear();
+            _tokenCacheDirty = false;
             _textVisualDirty = true;
+            _gutterVisualDirty = true;
         }
 
         var (firstLine, lastLine) = VisibleLineRange();
@@ -976,14 +1023,15 @@ public class EditorControl : FrameworkElement, IScrollInfo
     }
 
     // ──────────────────────────────────────────────────────────────────
-    //  Text layer — drawn at absolute document positions.
+    //  Text layer — drawn at absolute document positions via GlyphRun.
+    //  Bypasses the expensive DWrite shaping pipeline since we use a
+    //  monospace font with pre-expanded tabs.
     //  Scroll is handled by TranslateTransform on the visual, so this
     //  only re-renders when new lines enter the buffered region or
     //  content/font/theme changes.
     // ──────────────────────────────────────────────────────────────────
     private void RenderTextVisual(int firstLine, int lastLine)
     {
-        double dpi = _dpi;
         int drawFirst = Math.Max(0, firstLine - RenderBufferLines);
         int drawLast = Math.Min(_lines.Count - 1, lastLine + RenderBufferLines);
 
@@ -992,46 +1040,61 @@ public class EditorControl : FrameworkElement, IScrollInfo
         EnsureLineStates(drawLast);
         for (int i = drawFirst; i <= drawLast; i++)
         {
-            if (_lines[i].Length == 0) continue;
+            var line = _lines[i];
+            if (line.Length == 0) continue;
             double y = i * _lineHeight; // absolute position
+            double x = _gutterWidth + GutterPadding;
 
             var inState = i < _lineStates.Count ? _lineStates[i] : SyntaxManager.DefaultState;
-            if (!_ftCache.TryGetValue(i, out var cached)
-                || cached.content != _lines[i] || cached.inState != inState)
+            if (!_tokenCache.TryGetValue(i, out var cached)
+                || cached.content != line || cached.inState != inState)
             {
-                var ft = new FormattedText(
-                    _lines[i], CultureInfo.InvariantCulture,
-                    FlowDirection.LeftToRight, _monoTypeface, _fontSize,
-                    ThemeManager.EditorFg, dpi);
-                var tokens = SyntaxManager.Tokenize(_lines[i], inState, out _);
-                foreach (var token in tokens)
-                    ft.SetForegroundBrush(
-                        ThemeManager.GetScopeBrush(token.Scope), token.Start, token.Length);
-                _ftCache[i] = (_lines[i], inState, ft);
-                cached = _ftCache[i];
+                var tokens = SyntaxManager.Tokenize(line, inState, out _);
+                _tokenCache[i] = (line, inState, tokens);
+                cached = _tokenCache[i];
             }
-            dc.DrawText(cached.ft,
-                new Point(_gutterWidth + GutterPadding, y)); // absolute X
+
+            if (cached.tokens.Count == 0)
+            {
+                // No syntax — draw entire line in default foreground
+                DrawGlyphRun(dc, line, 0, line.Length, x, y, ThemeManager.EditorFg);
+            }
+            else
+            {
+                int pos = 0;
+                foreach (var token in cached.tokens)
+                {
+                    // Draw gap before this token in default foreground
+                    if (token.Start > pos)
+                        DrawGlyphRun(dc, line, pos, token.Start - pos,
+                            x + pos * _charWidth, y, ThemeManager.EditorFg);
+                    var brush = ThemeManager.GetScopeBrush(token.Scope);
+                    DrawGlyphRun(dc, line, token.Start, token.Length,
+                        x + token.Start * _charWidth, y, brush);
+                    pos = token.Start + token.Length;
+                }
+                // Draw trailing gap after last token
+                if (pos < line.Length)
+                    DrawGlyphRun(dc, line, pos, line.Length - pos,
+                        x + pos * _charWidth, y, ThemeManager.EditorFg);
+            }
         }
 
         _renderedFirstLine = drawFirst;
         _renderedLastLine = drawLast;
 
-        // Prune caches of entries far from the rendered region
-        if (_ftCache.Count > (drawLast - drawFirst + 1) * 3)
+        // Prune token cache of entries far from the rendered region
+        if (_tokenCache.Count > (drawLast - drawFirst + 1) * 3)
         {
             int margin = drawLast - drawFirst + 1;
             int pruneBelow = drawFirst - margin;
             int pruneAbove = drawLast + margin;
             var keysToRemove = new List<int>();
-            foreach (var key in _ftCache.Keys)
+            foreach (var key in _tokenCache.Keys)
                 if (key < pruneBelow || key > pruneAbove)
                     keysToRemove.Add(key);
             foreach (var key in keysToRemove)
-            {
-                _ftCache.Remove(key);
-                _lineNumCache.Remove(key);
-            }
+                _tokenCache.Remove(key);
         }
     }
 
@@ -1040,7 +1103,6 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     private void RenderGutterVisual(int firstLine, int lastLine)
     {
-        double dpi = _dpi;
         int drawFirst = Math.Max(0, firstLine - RenderBufferLines);
         int drawLast = Math.Min(_lines.Count - 1, lastLine + RenderBufferLines);
 
@@ -1059,17 +1121,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
             double y = i * _lineHeight; // absolute position
             var brush = i == _caretLine
                 ? ThemeManager.ActiveLineNumberFg : ThemeManager.GutterFg;
-            if (!_lineNumCache.TryGetValue(i, out var lnCached)
-                || lnCached.brush != brush)
-            {
-                var ft = new FormattedText(
-                    (i + 1).ToString(), CultureInfo.InvariantCulture,
-                    FlowDirection.LeftToRight, _monoTypeface, _fontSize, brush, dpi);
-                _lineNumCache[i] = (brush, ft);
-                lnCached = _lineNumCache[i];
-            }
-            dc.DrawText(lnCached.ft,
-                new Point(_gutterWidth - lnCached.ft.WidthIncludingTrailingWhitespace - 4, y));
+            var numStr = (i + 1).ToString();
+            double numWidth = numStr.Length * _charWidth;
+            DrawGlyphRun(dc, numStr, 0, numStr.Length,
+                _gutterWidth - numWidth - 4, y, brush);
         }
 
         _gutterRenderedFirstLine = drawFirst;
@@ -1276,7 +1331,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
                 ClearSelection();
                 _maxLineLengthDirty = true;
-                _ftCacheDirty = true;
+                _tokenCacheDirty = true;
                 UpdateExtent();
                 EnsureCaretVisible();
                 ResetCaret();
@@ -1332,7 +1387,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     _lines.RemoveAt(_caretLine);
                     _caretLine--;
                     _maxLineLengthDirty = true;
-                    _ftCacheDirty = true;
+                    _tokenCacheDirty = true;
                 }
                 ClearSelection();
                 UpdateExtent();
@@ -1358,7 +1413,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     _lines[_caretLine] += _lines[_caretLine + 1];
                     _lines.RemoveAt(_caretLine + 1);
                     _maxLineLengthDirty = true;
-                    _ftCacheDirty = true;
+                    _tokenCacheDirty = true;
                 }
                 ClearSelection();
                 UpdateExtent();
@@ -1591,7 +1646,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                         }
                         _caretCol = _lines[_caretLine].Length;
                         _lines[_caretLine] += after;
-                        _ftCacheDirty = true;
+                        _tokenCacheDirty = true;
                     }
                     ClearSelection();
                     UpdateExtent();
@@ -1729,7 +1784,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _currentMatchIndex = 0;
         IsDirty = false;
         _maxLineLengthDirty = true;
-        _ftCacheDirty = true;
+        _tokenCacheDirty = true;
         InvalidateLineStates();
         UpdateExtent();
         SetVerticalOffset(0);
@@ -1784,7 +1839,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public void InvalidateSyntax()
     {
         InvalidateLineStates();
-        _ftCacheDirty = true;
+        _tokenCacheDirty = true;
         InvalidateText();
     }
 
