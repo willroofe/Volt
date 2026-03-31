@@ -58,17 +58,31 @@ Default theme and grammar JSON moved from inline string literals to embedded res
 
 ## Low Priority
 
-### 7. Magic numbers scattered throughout
+### ~~7. Magic numbers scattered throughout~~ ✅ Done
 
-Values like `GutterPadding = 4`, buffer size ±50 lines, `scroll delta e.Delta / 120.0 * _lineHeight * 3`, dead zone 6px, etc. are hardcoded. Most are fine as constants but a few (like scroll speed) could be settings.
+Extracted named constants in `EditorControl.cs` for all previously-inline magic numbers:
 
-### 8. No abstraction for text buffer operations
+- `GutterRightMargin = 8` — margin between line numbers and gutter separator
+- `GutterSeparatorThickness = 0.5` — pen width for the gutter divider line
+- `HorizontalScrollPadding = 50` — extra horizontal extent beyond longest line
+- `BarCaretWidth = 1` — width of the bar-style caret in pixels
+- `DefaultFontSize = 14` — initial font size and monospace font detection size
+- `MouseWheelDeltaUnit = 120.0` — standard Windows mouse wheel delta per notch
+- `ScrollWheelLines = 3` — lines scrolled per mouse wheel notch
 
-```
-_lines[_caretLine] = _lines[_caretLine][.._caretCol] + pasteLines[0] + _lines[_caretLine][_caretCol..]
-```
+Pre-existing named constants (`GutterPadding`, `RenderBufferLines`, `MaxBracketScanLines`) were already in place. The gutter number right padding (previously a bare `4`) now reuses `GutterPadding`. Dead zone height (6px) remains in XAML where it's self-documenting.
 
-appears in several forms throughout OnKeyDown and OnTextInput. A small set of buffer mutation methods would reduce duplication and bugs.
+### ~~8. No abstraction for text buffer operations~~ ✅ Done
+
+Added five mutation methods to `TextBuffer`:
+
+- **`InsertAt(line, col, text)`** — insert text at a column position
+- **`DeleteAt(line, col, length)`** — delete a range of characters
+- **`ReplaceAt(line, col, length, text)`** — replace a range with new text
+- **`JoinWithNext(line)`** — join a line with the next line
+- **`TruncateAt(line, col)`** — truncate at column, returns removed tail
+
+All inline string-slicing mutations in `EditorControl` (`OnTextInput`, `HandleReturn`, `HandleBackspace`, `HandleDelete`, `HandleTab`, `HandlePaste`, `ReplaceCurrent`, `ReplaceAll`) now use these methods. Each method also calls `NotifyLineChanging` internally, eliminating manual max-length-cache invalidation at each call site.
 
 ### 9. List<string> for text storage
 

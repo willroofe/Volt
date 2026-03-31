@@ -117,6 +117,46 @@ public class TextBuffer
         _maxLineLengthDirty = true;
     }
 
+    // ── Inline text mutations ──────────────────────────────────────
+
+    /// <summary>Insert text at a column position in a line.</summary>
+    public void InsertAt(int line, int col, string text)
+    {
+        NotifyLineChanging(line);
+        _lines[line] = _lines[line][..col] + text + _lines[line][col..];
+    }
+
+    /// <summary>Delete a range of characters from a line.</summary>
+    public void DeleteAt(int line, int col, int length)
+    {
+        NotifyLineChanging(line);
+        _lines[line] = _lines[line][..col] + _lines[line][(col + length)..];
+    }
+
+    /// <summary>Replace a range of characters in a line with new text.</summary>
+    public void ReplaceAt(int line, int col, int length, string text)
+    {
+        NotifyLineChanging(line);
+        _lines[line] = _lines[line][..col] + text + _lines[line][(col + length)..];
+    }
+
+    /// <summary>Join a line with the next line, removing the next line.</summary>
+    public void JoinWithNext(int line)
+    {
+        _lines[line] += _lines[line + 1];
+        _lines.RemoveAt(line + 1);
+        _maxLineLengthDirty = true;
+    }
+
+    /// <summary>Truncate a line at the given column, returning the removed tail.</summary>
+    public string TruncateAt(int line, int col)
+    {
+        var tail = _lines[line][col..];
+        NotifyLineChanging(line);
+        _lines[line] = _lines[line][..col];
+        return tail;
+    }
+
     // ── Content get/set ─────────────────────────────────────────────
     public void SetContent(string text, int tabSize)
     {
