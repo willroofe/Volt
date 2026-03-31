@@ -743,16 +743,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     /// <summary>Measure the pixel X offset of a buffer column using FormattedText (handles tabs correctly).</summary>
     private double ColToPixelX(string line, int col)
     {
-        if (col <= 0) return 0;
-        int end = Math.Min(col, line.Length);
-        var sub = line[..end];
-        var ft = new FormattedText(sub, CultureInfo.InvariantCulture,
-            FlowDirection.LeftToRight, _monoTypeface, _fontSize, Brushes.White, _dpi);
-        double w = ft.WidthIncludingTrailingWhitespace;
-        // If col extends past end of line, add remaining as charWidth each
-        if (col > line.Length)
-            w += (col - line.Length) * _charWidth;
-        return w;
+        return col * _charWidth;
     }
 
     private void ResetPreferredCol() => _preferredCol = -1;
