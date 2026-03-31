@@ -1,5 +1,6 @@
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Windows;
 using System.Windows.Input;
 using Microsoft.Win32;
@@ -9,11 +10,9 @@ namespace TextEdit;
 public partial class MainWindow : Window
 {
     private string? _filePath;
+    private Encoding _fileEncoding = new UTF8Encoding(false);
     private AppSettings _settings;
 
-    private static readonly double[] PaletteFontSizes = [8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 36];
-    private static readonly int[] PaletteTabSizes = [2, 4, 8];
-    private static readonly string[] PaletteFontWeights = ["Thin", "ExtraLight", "Light", "Normal", "Medium", "SemiBold", "Bold", "ExtraBold", "Black"];
 
     public MainWindow()
     {
@@ -60,11 +59,31 @@ public partial class MainWindow : Window
     {
         if (_settings.WindowWidth.HasValue && _settings.WindowHeight.HasValue)
         {
-            WindowStartupLocation = WindowStartupLocation.Manual;
-            Left = _settings.WindowLeft!.Value;
-            Top = _settings.WindowTop!.Value;
-            Width = _settings.WindowWidth.Value;
-            Height = _settings.WindowHeight.Value;
+            double left = _settings.WindowLeft!.Value;
+            double top = _settings.WindowTop!.Value;
+            double width = _settings.WindowWidth.Value;
+            double height = _settings.WindowHeight.Value;
+
+            // Validate that at least 100x100 of the window is visible on the virtual screen
+            double vsLeft = SystemParameters.VirtualScreenLeft;
+            double vsTop = SystemParameters.VirtualScreenTop;
+            double vsRight = vsLeft + SystemParameters.VirtualScreenWidth;
+            double vsBottom = vsTop + SystemParameters.VirtualScreenHeight;
+
+            bool visible = left + 100 <= vsRight &&
+                           top + 100 <= vsBottom &&
+                           left + width >= vsLeft + 100 &&
+                           top + height >= vsTop + 100;
+
+            if (visible)
+            {
+                WindowStartupLocation = WindowStartupLocation.Manual;
+                Left = left;
+                Top = top;
+                Width = width;
+                Height = height;
+            }
+            // else: fall through to default CenterScreen placement
         }
 
         if (_settings.WindowMaximized)
@@ -90,16 +109,25 @@ public partial class MainWindow : Window
         CaretPosText.Text = $"Ln {Editor.CaretLine + 1}, Col {Editor.CaretCol + 1}";
     }
 
+    private string GetEncodingLabel()
+    {
+        if (_fileEncoding is UTF8Encoding utf8)
+            return utf8.GetPreamble().Length > 0 ? "UTF-8 BOM" : "UTF-8";
+        if (_fileEncoding is UnicodeEncoding)
+            return "UTF-16";
+        return _fileEncoding.EncodingName;
+    }
+
     private void UpdateFileType()
     {
         var ext = _filePath != null ? Path.GetExtension(_filePath).ToLowerInvariant() : "";
         SyntaxManager.SetLanguageByExtension(ext);
-        Editor.InvalidateVisual();
-        FileTypeText.Text = ext switch
+        Editor.InvalidateSyntax();
+        var fileType = ext switch
         {
             ".txt" => "Plain Text",
             ".cs" => "C# Source",
-            ".pl" => "Perl Script",
+            ".pl" or ".cgi" => "Perl Script",
             ".py" => "Python Script",
             ".js" => "JavaScript",
             ".ts" => "TypeScript",
@@ -123,8 +151,9 @@ public partial class MainWindow : Window
             ".rs" => "Rust Source",
             ".ini" or ".cfg" => "Configuration File",
             ".log" => "Log File",
-            _ => _filePath != null ? "Plain Text" : "Plain Text"
+            _ => "Plain Text"
         };
+        FileTypeText.Text = $"{fileType} ({GetEncodingLabel()}, {Editor.LineEnding})";
     }
 
     private void UpdateTitle()
@@ -151,6 +180,7 @@ public partial class MainWindow : Window
     {
         if (!PromptSaveIfDirty()) return;
         _filePath = null;
+        _fileEncoding = new UTF8Encoding(false);
         Editor.SetContent("");
         UpdateTitle();
         UpdateFileType();
@@ -165,7 +195,8 @@ public partial class MainWindow : Window
         };
         if (dlg.ShowDialog() != true) return;
         _filePath = dlg.FileName;
-        Editor.SetContent(File.ReadAllText(_filePath));
+        _fileEncoding = DetectEncoding(_filePath);
+        Editor.SetContent(File.ReadAllText(_filePath, _fileEncoding));
         UpdateTitle();
         UpdateFileType();
     }
@@ -177,7 +208,7 @@ public partial class MainWindow : Window
             OnSaveAs(sender, e);
             return;
         }
-        File.WriteAllText(_filePath, Editor.GetContent());
+        AtomicWriteText(_filePath, Editor.GetContent(), _fileEncoding);
         Editor.MarkClean();
         UpdateTitle();
     }
@@ -206,10 +237,36 @@ public partial class MainWindow : Window
         };
         if (dlg.ShowDialog() != true) return;
         _filePath = dlg.FileName;
-        File.WriteAllText(_filePath, Editor.GetContent());
+        AtomicWriteText(_filePath, Editor.GetContent(), _fileEncoding);
         Editor.MarkClean();
         UpdateTitle();
         UpdateFileType();
+    }
+
+    private static void AtomicWriteText(string path, string content, Encoding encoding)
+    {
+        var dir = Path.GetDirectoryName(path)!;
+        var tempPath = Path.Combine(dir, Path.GetRandomFileName());
+        File.WriteAllText(tempPath, content, encoding);
+        File.Move(tempPath, path, overwrite: true);
+    }
+
+    private static Encoding DetectEncoding(string path)
+    {
+        using var stream = File.OpenRead(path);
+        var bom = new byte[4];
+        int read = stream.Read(bom, 0, 4);
+
+        if (read >= 3 && bom[0] == 0xEF && bom[1] == 0xBB && bom[2] == 0xBF)
+            return new UTF8Encoding(true);
+        if (read >= 2 && bom[0] == 0xFF && bom[1] == 0xFE)
+            return new UnicodeEncoding(false, true); // UTF-16 LE
+        if (read >= 2 && bom[0] == 0xFE && bom[1] == 0xFF)
+            return new UnicodeEncoding(true, true); // UTF-16 BE
+        if (read >= 4 && bom[0] == 0 && bom[1] == 0 && bom[2] == 0xFE && bom[3] == 0xFF)
+            return new UTF32Encoding(true, true); // UTF-32 BE
+
+        return new UTF8Encoding(false); // default: UTF-8 without BOM
     }
 
     private void OnSettings(object sender, RoutedEventArgs e)
@@ -255,11 +312,11 @@ public partial class MainWindow : Window
         bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
         bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
 
-        if (ctrl && e.Key == Key.N) { OnNew(this, new RoutedEventArgs()); e.Handled = true; }
-        else if (ctrl && e.Key == Key.O) { OnOpen(this, new RoutedEventArgs()); e.Handled = true; }
+        if (ctrl && !shift && e.Key == Key.N) { OnNew(this, new RoutedEventArgs()); e.Handled = true; }
+        else if (ctrl && !shift && e.Key == Key.O) { OnOpen(this, new RoutedEventArgs()); e.Handled = true; }
         else if (ctrl && shift && e.Key == Key.P) { OpenCommandPalette(); e.Handled = true; }
         else if (ctrl && shift && e.Key == Key.S) { OnSaveAs(this, new RoutedEventArgs()); e.Handled = true; }
-        else if (ctrl && e.Key == Key.S) { OnSave(this, new RoutedEventArgs()); e.Handled = true; }
+        else if (ctrl && !shift && e.Key == Key.S) { OnSave(this, new RoutedEventArgs()); e.Handled = true; }
         else base.OnKeyDown(e);
     }
 
@@ -281,7 +338,7 @@ public partial class MainWindow : Window
             new("Change Font Size", GetOptions: () =>
             {
                 var original = Editor.EditorFontSize;
-                return PaletteFontSizes.Select(size => new PaletteOption(
+                return AppSettings.FontSizeOptions.Select(size => new PaletteOption(
                     size.ToString(),
                     ApplyPreview: () => Editor.EditorFontSize = size,
                     Commit: () => { _settings.FontSize = size; _settings.Save(); },
@@ -303,7 +360,7 @@ public partial class MainWindow : Window
             new("Change Font Weight", GetOptions: () =>
             {
                 var original = Editor.EditorFontWeight;
-                return PaletteFontWeights.Select(w => new PaletteOption(
+                return AppSettings.FontWeightOptions.Select(w => new PaletteOption(
                     w,
                     ApplyPreview: () => Editor.EditorFontWeight = w,
                     Commit: () => { _settings.FontWeight = w; _settings.Save(); },
@@ -314,7 +371,7 @@ public partial class MainWindow : Window
             new("Change Tab Size", GetOptions: () =>
             {
                 var original = Editor.TabSize;
-                return PaletteTabSizes.Select(size => new PaletteOption(
+                return AppSettings.TabSizeOptions.Select(size => new PaletteOption(
                     size.ToString(),
                     ApplyPreview: () => { Editor.TabSize = size; Editor.InvalidateVisual(); },
                     Commit: () => { _settings.TabSize = size; _settings.Save(); },
