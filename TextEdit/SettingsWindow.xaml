@@ -382,6 +382,9 @@
                 <Border Grid.Row="1" Background="{DynamicResource ThemeBorderBrush}"/>
                 <StackPanel Grid.Row="2" Orientation="Horizontal"
                             HorizontalAlignment="Right" Margin="16,12">
+                    <Button Content="Apply" Width="75" Height="28" Margin="0,0,8,0"
+                            Style="{StaticResource ActionButton}"
+                            Click="OnApply"/>
                     <Button Content="OK" Width="75" Height="28" Margin="0,0,8,0"
                             Style="{StaticResource ActionButton}"
                             Click="OnOK" IsDefault="True"/>

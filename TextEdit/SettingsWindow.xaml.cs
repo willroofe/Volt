@@ -13,6 +13,8 @@ public partial class SettingsWindow : Window
     public string ColorThemeName { get; private set; }
     public string FindBarPosition { get; private set; }
 
+    public event EventHandler? Applied;
+
     private readonly List<string> _themeNames;
     private readonly List<string> _fontNames;
 
@@ -81,7 +83,7 @@ public partial class SettingsWindow : Window
     private void OnNavCaret(object sender, RoutedEventArgs e) => SelectNav("Caret");
     private void OnNavFind(object sender, RoutedEventArgs e) => SelectNav("Find");
 
-    private void OnOK(object sender, RoutedEventArgs e)
+    private void ReadCurrentValues()
     {
         TabSize = AppSettings.TabSizeOptions[TabSizeBox.SelectedIndex];
         BlockCaret = CaretStyleBox.SelectedIndex == 1;
@@ -91,6 +93,17 @@ public partial class SettingsWindow : Window
         SelectedFontWeight = AppSettings.FontWeightOptions[FontWeightBox.SelectedIndex];
         ColorThemeName = _themeNames[ColorThemeBox.SelectedIndex];
         FindBarPosition = FindBarPosBox.SelectedIndex == 0 ? "Top" : "Bottom";
+    }
+
+    private void OnApply(object sender, RoutedEventArgs e)
+    {
+        ReadCurrentValues();
+        Applied?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnOK(object sender, RoutedEventArgs e)
+    {
+        ReadCurrentValues();
         DialogResult = true;
     }
 
