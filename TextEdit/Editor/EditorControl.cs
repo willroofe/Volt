@@ -1625,6 +1625,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public void SetHorizontalOffset(double offset)
     {
         offset = Math.Clamp(offset, 0, Math.Max(0, _extent.Width - _viewport.Width));
+        offset = Math.Round(offset * _dpi) / _dpi;
         if (Math.Abs(offset - _offset.X) < 0.01) return;
         _offset.X = offset;
         ScrollOwner?.InvalidateScrollInfo();
@@ -1634,6 +1635,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public void SetVerticalOffset(double offset)
     {
         offset = Math.Clamp(offset, 0, Math.Max(0, _extent.Height - _viewport.Height));
+        offset = Math.Round(offset * _dpi) / _dpi;
         if (Math.Abs(offset - _offset.Y) < 0.01) return;
         _offset.Y = offset;
         ScrollOwner?.InvalidateScrollInfo();
