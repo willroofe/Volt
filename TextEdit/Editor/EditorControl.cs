@@ -388,6 +388,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _buffer.ReplaceLines(entry.StartLine, entry.After.Count, entry.Before);
         _caretLine = entry.CaretLineBefore;
         _caretCol = entry.CaretColBefore;
+        ClampCaret();
         _selection.Clear();
         _bracketMatchDirty = true;
         InvalidateLineStates();
@@ -402,6 +403,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _buffer.ReplaceLines(entry.StartLine, entry.Before.Count, entry.After);
         _caretLine = entry.CaretLineAfter;
         _caretCol = entry.CaretColAfter;
+        ClampCaret();
         _selection.Clear();
         _bracketMatchDirty = true;
         InvalidateLineStates();
@@ -509,6 +511,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     private (int line, int col, int matchLine, int matchCol)? FindMatchingBracket()
     {
+        ClampCaret();
         int[] colsToCheck = _caretCol < _buffer[_caretLine].Length && _caretCol > 0
             ? [_caretCol, _caretCol - 1]
             : _caretCol < _buffer[_caretLine].Length
@@ -692,6 +695,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
         dc.DrawGlyphRun(brush, run);
     }
 
+    private void ClampCaret()
+    {
+        _caretLine = Math.Clamp(_caretLine, 0, Math.Max(0, _buffer.Count - 1));
+        _caretCol = Math.Clamp(_caretCol, 0, _buffer[_caretLine].Length);
+    }
+
     private void ResetPreferredCol() => _preferredCol = -1;
 
     private int _prevCaretLine = -1;
@@ -784,6 +793,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     protected override void OnRender(DrawingContext dc)
     {
+        ClampCaret();
+
         if (_tokenCacheDirty)
         {
             _tokenCache.Clear();

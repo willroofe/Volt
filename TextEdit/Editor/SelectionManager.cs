@@ -26,6 +26,15 @@ public class SelectionManager
         AnchorCol = col;
     }
 
+    private void ClampToBuffer(TextBuffer buffer, ref int caretLine, ref int caretCol)
+    {
+        int maxLine = Math.Max(0, buffer.Count - 1);
+        AnchorLine = Math.Clamp(AnchorLine, 0, maxLine);
+        AnchorCol = Math.Clamp(AnchorCol, 0, buffer[AnchorLine].Length);
+        caretLine = Math.Clamp(caretLine, 0, maxLine);
+        caretCol = Math.Clamp(caretCol, 0, buffer[caretLine].Length);
+    }
+
     public (int startLine, int startCol, int endLine, int endCol) GetOrdered(int caretLine, int caretCol)
     {
         if (AnchorLine < caretLine || (AnchorLine == caretLine && AnchorCol < caretCol))
@@ -36,6 +45,7 @@ public class SelectionManager
     public string GetSelectedText(TextBuffer buffer, int caretLine, int caretCol)
     {
         if (!HasSelection) return "";
+        ClampToBuffer(buffer, ref caretLine, ref caretCol);
         var (sl, sc, el, ec) = GetOrdered(caretLine, caretCol);
         if (sl == el)
             return buffer[sl].Substring(sc, ec - sc);
@@ -55,6 +65,7 @@ public class SelectionManager
     public (int line, int col) DeleteSelection(TextBuffer buffer, int caretLine, int caretCol)
     {
         if (!HasSelection) return (caretLine, caretCol);
+        ClampToBuffer(buffer, ref caretLine, ref caretCol);
         var (sl, sc, el, ec) = GetOrdered(caretLine, caretCol);
         if (sl == el)
         {
