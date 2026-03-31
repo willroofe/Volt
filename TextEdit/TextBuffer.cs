@@ -94,14 +94,25 @@ public class TextBuffer
         _maxLineLengthDirty = true;
     }
 
-    /// <summary>Create a snapshot copy of all lines (for undo).</summary>
-    public List<string> Snapshot() => new(_lines);
-
-    /// <summary>Replace all lines from a snapshot (for undo/redo restore).</summary>
-    public void Restore(List<string> snapshot)
+    /// <summary>Get a copy of a range of lines (for undo snapshots).</summary>
+    public List<string> GetLines(int start, int count)
     {
-        _lines.Clear();
-        _lines.AddRange(snapshot);
+        var result = new List<string>(count);
+        for (int i = start; i < start + count && i < _lines.Count; i++)
+            result.Add(_lines[i]);
+        return result;
+    }
+
+    /// <summary>
+    /// Replace a range of lines with new lines (for undo/redo application).
+    /// Removes <paramref name="removeCount"/> lines starting at <paramref name="start"/>,
+    /// then inserts <paramref name="newLines"/> at that position.
+    /// </summary>
+    public void ReplaceLines(int start, int removeCount, List<string> newLines)
+    {
+        if (removeCount > 0)
+            _lines.RemoveRange(start, removeCount);
+        _lines.InsertRange(start, newLines);
         if (_lines.Count == 0) _lines.Add("");
         _maxLineLengthDirty = true;
     }

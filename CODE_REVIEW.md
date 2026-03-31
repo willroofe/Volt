@@ -17,9 +17,9 @@ Addressed by extracting three classes and breaking up OnKeyDown:
 
 CaretManager and InputHandler were not extracted as separate classes — caret position is too deeply coupled to rendering/input/selection to benefit from indirection, and the handler methods already achieve the readability goal of an InputHandler without the coupling overhead. EditorControl reduced from ~1979 to ~1360 lines.
 
-### 2. Full-snapshot undo is a scaling risk
+### ~~2. Full-snapshot undo is a scaling risk~~ ✅ Done
 
-Every edit copies the entire List<string>. For a 50,000-line file, that's a lot of allocations. A change-based undo (storing diffs or operations) would be more scalable, but the current approach is fine for typical file sizes — just be aware of it.
+Replaced full-buffer snapshots with region-based undo. Each `UndoEntry` now stores only the affected line range (before/after lines + caret positions). `EditorControl` uses a `BeginEdit(startLine, endLine)` / `EndEdit(scope)` pattern at each edit site to capture just the changed region. `TextBuffer` gained `GetLines()` and `ReplaceLines()` helpers for snapshotting and applying region diffs. Undo/redo applies the diff via `ReplaceLines` instead of restoring the entire buffer.
 
 ## Medium Priority
 
