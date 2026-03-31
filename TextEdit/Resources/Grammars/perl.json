@@ -1,9 +1,29 @@
 {
   "name": "Perl",
   "extensions": [".pl", ".pm", ".t", ".cgi"],
+  "blockComments": [
+    {
+      "start": "^=\\w+",
+      "end": "^=cut\\b",
+      "scope": "comment"
+    },
+    {
+      "start": "^__(?:DATA|END)__$",
+      "scope": "comment"
+    }
+  ],
+  "heredoc": {
+    "pattern": "<<~?\\s*(?:'(\\w+)'|\"(\\w+)\"|(\\w+))",
+    "noInterpolationGroup": 1
+  },
+  "interpolation": {
+    "quotes": "\"",
+    "variablePattern": "(?<!\\\\)[\\$@](?:\\{[\\w:]+\\}|[\\w:]+)",
+    "escapePattern": "\\\\(?:[abefnrt\\\\'\"]|0[0-7]*|x[0-9a-fA-F]{1,2}|u[0-9a-fA-F]{4}|N\\{[^}]+\\}|.)"
+  },
   "rules": [
     {
-      "pattern": "(?:\"(?:\\\\.|[^\"])*\"|'(?:\\\\.|[^'])*')",
+      "pattern": "(?:\"(?:\\\\.|[^\"])*\"|'(?:\\\\.|[^'])*'|`(?:\\\\.|[^`])*`)",
       "scope": "string"
     },
     {
@@ -27,6 +47,18 @@
       "scope": "function"
     },
     {
+      "pattern": "(?<=->)\\w+",
+      "scope": "function"
+    },
+    {
+      "pattern": "(?<=\\b(?:use|require|package)\\s)\\w+(?:::\\w+)*",
+      "scope": "type"
+    },
+    {
+      "pattern": "\\b\\w+(?=::)",
+      "scope": "type"
+    },
+    {
       "pattern": "\\w+(?=\\s*=>)",
       "scope": "hashkey"
     },
@@ -35,7 +67,11 @@
       "scope": "hashkey"
     },
     {
-      "pattern": "[\\$@%](?:\\{[\\w:]+\\}|[\\w:]+)",
+      "pattern": "\\$(?:#[\\w:]+|\\{[\\w:]+\\}|[\\w:]+|\\d+|[\"'\\\\/$;!@&`+\\-\\[\\]<>?^~])",
+      "scope": "variable"
+    },
+    {
+      "pattern": "[@%](?:\\{[\\w:]+\\}|[\\w:]+)",
       "scope": "variable"
     },
     {
@@ -51,7 +87,11 @@
       "scope": "string"
     },
     {
-      "pattern": "(?:m|s|tr|y)\\s*/(?:\\\\/|[^/])*/(?:\\\\/|[^/])*/[gimsxce]*",
+      "pattern": "(?:s|tr|y)([^\\w\\s])(?:\\\\.|(?!\\1).)*\\1(?:\\\\.|(?!\\1).)*\\1[gimsxce]*",
+      "scope": "regex"
+    },
+    {
+      "pattern": "(?:m|qr)([^\\w\\s])(?:\\\\.|(?!\\1).)*\\1[gimsxce]*",
       "scope": "regex"
     },
     {

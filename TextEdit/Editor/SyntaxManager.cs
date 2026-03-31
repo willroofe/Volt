@@ -7,8 +7,10 @@ namespace TextEdit;
 
 public record SyntaxToken(int Start, int Length, string Scope);
 
-/// <summary>Tracks whether a line ends inside an unclosed string.</summary>
-public record LineState(char? OpenQuote);
+/// <summary>Tracks whether a line ends inside an unclosed string, block comment, or heredoc.</summary>
+/// <param name="BlockCommentIndex">Index into grammar's BlockComments list, or -1 if not in a block comment.</param>
+public record LineState(char? OpenQuote, int BlockCommentIndex = -1,
+    string? HeredocDelimiter = null, bool HeredocInterpolate = true);
 
 public class SyntaxManager
 {
@@ -62,6 +64,45 @@ public class SyntaxManager
         outState = DefaultState;
         if (_activeGrammar == null) return [];
 
+        var bcs = _activeGrammar.BlockComments;
+
+        // Handle block comment continuation (e.g. POD, __DATA__)
+        if (inState.BlockCommentIndex >= 0 && bcs != null && inState.BlockCommentIndex < bcs.Count)
+        {
+            var bc = bcs[inState.BlockCommentIndex];
+            bool endsBlock = bc.EndRegex != null && bc.EndRegex.IsMatch(line);
+            outState = endsBlock ? DefaultState : inState;
+            return line.Length > 0 ? [new SyntaxToken(0, line.Length, bc.Scope)] : [];
+        }
+
+        // Check if this line starts a block comment
+        if (bcs != null)
+        {
+            for (int i = 0; i < bcs.Count; i++)
+            {
+                if (bcs[i].StartRegex is { } startRx && startRx.IsMatch(line))
+                {
+                    outState = new LineState(null, i);
+                    return line.Length > 0 ? [new SyntaxToken(0, line.Length, bcs[i].Scope)] : [];
+                }
+            }
+        }
+
+        // Handle heredoc continuation
+        if (inState.HeredocDelimiter != null)
+        {
+            bool isEnd = line.TrimStart() == inState.HeredocDelimiter;
+            outState = isEnd ? DefaultState : inState;
+            if (line.Length > 0)
+            {
+                var hdTokens = new List<SyntaxToken> { new(0, line.Length, "string") };
+                if (inState.HeredocInterpolate && _activeGrammar.Interpolation != null)
+                    hdTokens = ExpandInterpolation(hdTokens, line, _activeGrammar.Interpolation);
+                return hdTokens;
+            }
+            return [];
+        }
+
         var claimed = new bool[line.Length];
         var tokens = new List<SyntaxToken>();
         int ruleStart = 0; // where to start applying regex rules
@@ -76,7 +117,8 @@ public class SyntaxManager
                 outState = inState;
                 if (line.Length > 0)
                     tokens.Add(new SyntaxToken(0, line.Length, "string"));
-                tokens = ExpandInterpolation(tokens, line);
+                if (_activeGrammar.Interpolation != null)
+                    tokens = ExpandInterpolation(tokens, line, _activeGrammar.Interpolation);
                 return tokens;
             }
             // String closes at closePos (inclusive of the quote character)
@@ -127,26 +169,65 @@ public class SyntaxManager
             tokens.Add(new SyntaxToken(start, length, scope));
         }
 
-        // Detect if the line ends with an unclosed string
-        outState = DetectUnclosedString(line, tokens);
-
-        // If we detected an unclosed string, extend a string token to end of line
-        if (outState.OpenQuote != null)
+        // Detect heredoc markers (e.g. <<EOF, <<~'END')
+        var hd = _activeGrammar.Heredoc;
+        if (hd?.CompiledRegex != null)
         {
-            // Find the partial string token (the one whose opening quote starts the
-            // unclosed string) and extend it to the end of the line.
-            // The partial match won't have been captured by the regex (it requires a
-            // closing quote), so scan for the opening quote in unclaimed positions.
-            int openPos = FindOpeningQuote(line, claimed, outState.OpenQuote.Value);
-            if (openPos >= 0)
+            var hMatch = hd.CompiledRegex.Match(line);
+            if (hMatch.Success)
             {
-                // Claim from openPos to end of line as string
-                int len = line.Length - openPos;
-                tokens.Add(new SyntaxToken(openPos, len, "string"));
+                bool hdOverlap = false;
+                for (int i = hMatch.Index; i < hMatch.Index + hMatch.Length; i++)
+                    if (claimed[i]) { hdOverlap = true; break; }
+
+                if (!hdOverlap)
+                {
+                    for (int i = hMatch.Index; i < hMatch.Index + hMatch.Length; i++)
+                        claimed[i] = true;
+                    tokens.Add(new SyntaxToken(hMatch.Index, hMatch.Length, "string"));
+
+                    // Extract delimiter from first matching capture group
+                    string delimiter = "";
+                    bool interpolate = true;
+                    for (int g = 1; g < hMatch.Groups.Count; g++)
+                    {
+                        if (hMatch.Groups[g].Success)
+                        {
+                            delimiter = hMatch.Groups[g].Value;
+                            interpolate = g != hd.NoInterpolationGroup;
+                            break;
+                        }
+                    }
+                    if (!string.IsNullOrEmpty(delimiter))
+                        outState = new LineState(null, -1, delimiter, interpolate);
+                }
             }
         }
 
-        tokens = ExpandInterpolation(tokens, line);
+        // Detect if the line ends with an unclosed string (skip if heredoc already set)
+        if (outState.HeredocDelimiter == null)
+        {
+            outState = DetectUnclosedString(line, tokens);
+
+            // If we detected an unclosed string, extend a string token to end of line
+            if (outState.OpenQuote != null)
+            {
+                // Find the partial string token (the one whose opening quote starts the
+                // unclosed string) and extend it to the end of the line.
+                // The partial match won't have been captured by the regex (it requires a
+                // closing quote), so scan for the opening quote in unclaimed positions.
+                int openPos = FindOpeningQuote(line, claimed, outState.OpenQuote.Value);
+                if (openPos >= 0)
+                {
+                    // Claim from openPos to end of line as string
+                    int len = line.Length - openPos;
+                    tokens.Add(new SyntaxToken(openPos, len, "string"));
+                }
+            }
+        }
+
+        if (_activeGrammar.Interpolation != null)
+            tokens = ExpandInterpolation(tokens, line, _activeGrammar.Interpolation);
         tokens.Sort((a, b) => a.Start.CompareTo(b.Start));
         return tokens;
     }
@@ -192,7 +273,12 @@ public class SyntaxManager
             if (c == '\\' && openQuote != null) { i++; continue; }
             if (openQuote == null)
             {
-                if (c == '\'' || c == '"') openQuote = c;
+                if (c == '"') openQuote = c;
+                // Single quote only opens a string if not preceded by a word character
+                // (avoids treating apostrophes in "don't", "debugger's" as string delimiters,
+                // and Perl's Foo'Bar package separator)
+                else if (c == '\'' && (i == 0 || !char.IsLetterOrDigit(line[i - 1])))
+                    openQuote = c;
             }
             else if (c == openQuote)
             {
@@ -202,13 +288,7 @@ public class SyntaxManager
         return new LineState(openQuote);
     }
 
-    private static readonly Regex InterpolationRegex = new(
-        @"(?<!\\)[\$@](?:\{[\w:]+\}|[\w:]+)", RegexOptions.Compiled);
-
-    private static readonly Regex EscapeRegex = new(
-        @"\\(?:[abefnrt\\'""]|0[0-7]*|x[0-9a-fA-F]{1,2}|u[0-9a-fA-F]{4}|N\{[^}]+\}|.)", RegexOptions.Compiled);
-
-    private static List<SyntaxToken> ExpandInterpolation(List<SyntaxToken> tokens, string line)
+    private static List<SyntaxToken> ExpandInterpolation(List<SyntaxToken> tokens, string line, InterpolationDef interp)
     {
         var result = new List<SyntaxToken>(tokens.Count);
         foreach (var token in tokens)
@@ -219,9 +299,9 @@ public class SyntaxManager
                 continue;
             }
 
-            // Only expand double-quoted strings (starts with ")
+            // Only expand strings whose opening quote is in the interpolation set
             char quote = line[token.Start];
-            if (quote != '"')
+            if (!interp.Quotes.Contains(quote))
             {
                 result.Add(token);
                 continue;
@@ -235,11 +315,13 @@ public class SyntaxManager
             // Collect all sub-tokens (variables and escapes) sorted by position
             var subTokens = new List<(int Start, int Length, string Scope)>();
 
-            foreach (Match m in InterpolationRegex.Matches(inner))
-                subTokens.Add((innerStart + m.Index, m.Length, "variable"));
+            if (interp.VariableRegex != null)
+                foreach (Match m in interp.VariableRegex.Matches(inner))
+                    subTokens.Add((innerStart + m.Index, m.Length, "variable"));
 
-            foreach (Match m in EscapeRegex.Matches(inner))
-                subTokens.Add((innerStart + m.Index, m.Length, "escape"));
+            if (interp.EscapeRegex != null)
+                foreach (Match m in interp.EscapeRegex.Matches(inner))
+                    subTokens.Add((innerStart + m.Index, m.Length, "escape"));
 
             if (subTokens.Count == 0)
             {
