@@ -22,6 +22,7 @@ public partial class MainWindow : Window
         RestoreWindowPosition();
         Editor.DirtyChanged += (_, _) => UpdateTitle();
         Editor.CaretMoved += (_, _) => UpdateCaretPos();
+        CmdPalette.Closed += (_, _) => Keyboard.Focus(Editor);
         StateChanged += OnStateChanged;
         Closing += OnWindowClosing;
     }
