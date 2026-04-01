@@ -5,7 +5,7 @@ namespace TextEdit;
 
 public class ApplicationSettings
 {
-    public string ColorTheme { get; set; } = "Default Dark";
+    public string ColorTheme { get; set; } = "Dark";
 }
 
 public class FontSettings
@@ -91,7 +91,7 @@ public class AppSettings
         var s = new AppSettings();
 
         if (root.TryGetProperty("ColorTheme", out var ct))
-            s.Application.ColorTheme = ct.GetString() ?? "Default Dark";
+            s.Application.ColorTheme = ct.GetString() ?? "Dark";
 
         if (root.TryGetProperty("TabSize", out var ts))
             s.Editor.TabSize = ts.GetInt32();

@@ -42,7 +42,7 @@ public class ThemeManager
         if (_initialized) return;
         _initialized = true;
         EnsureDefaultThemes();
-        Apply("Default Dark");
+        Apply("Dark");
     }
 
     public Brush GetScopeBrush(string scope)
@@ -59,8 +59,8 @@ public class ThemeManager
     {
         var themes = LoadThemeCache();
         var theme = themes.FirstOrDefault(t => t.Name.Equals(themeName, StringComparison.OrdinalIgnoreCase));
-        theme ??= themes.FirstOrDefault(t => t.Name.Equals("Default Dark", StringComparison.OrdinalIgnoreCase));
-        theme ??= new ColorTheme { Name = "Default Dark" };
+        theme ??= themes.FirstOrDefault(t => t.Name.Equals("Dark", StringComparison.OrdinalIgnoreCase));
+        theme ??= new ColorTheme { Name = "Dark" };
         _colorTheme = theme;
 
         UpdateEditorColors();
