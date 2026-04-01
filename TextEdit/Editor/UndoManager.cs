@@ -80,6 +80,8 @@ public class UndoManager
     public void Clear()
     {
         _undoStack.Clear();
+        _undoStack.TrimExcess();
         _redoStack.Clear();
+        _redoStack.TrimExcess();
     }
 }

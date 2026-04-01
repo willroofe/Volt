@@ -197,6 +197,7 @@ public class TextBuffer
     public void Clear()
     {
         _lines.Clear();
+        _lines.TrimExcess();
         _lines.Add("");
         _maxLineLengthDirty = true;
     }
