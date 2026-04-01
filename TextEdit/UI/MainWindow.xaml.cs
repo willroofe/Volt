@@ -702,6 +702,17 @@ public partial class MainWindow : Window
         TabInfo? lastTab = null;
         foreach (var fileName in dlg.FileNames)
         {
+            var fullPath = Path.GetFullPath(fileName);
+
+            // If the file is already open, just switch to that tab
+            var existing = _tabs.FirstOrDefault(t =>
+                t.FilePath != null && string.Equals(Path.GetFullPath(t.FilePath), fullPath, StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+            {
+                lastTab = existing;
+                continue;
+            }
+
             // Reuse current tab if it is untitled and clean (first file only)
             TabInfo tab;
             if (lastTab == null && _activeTab != null && _activeTab.FilePath == null && !_activeTab.Editor.IsDirty)
