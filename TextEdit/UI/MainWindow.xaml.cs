@@ -36,6 +36,15 @@ public partial class MainWindow : Window
     private const int DWMWA_CAPTION_COLOR = 35;
     private const int DWMWA_BORDER_COLOR = 34;
     private const int WM_MOUSEHWHEEL = 0x020E;
+    private const int WM_NCHITTEST = 0x0084;
+    private const int HTLEFT = 10;
+    private const int HTRIGHT = 11;
+    private const int HTTOP = 12;
+    private const int HTTOPLEFT = 13;
+    private const int HTTOPRIGHT = 14;
+    private const int HTBOTTOM = 15;
+    private const int HTBOTTOMLEFT = 16;
+    private const int HTBOTTOMRIGHT = 17;
 
     public MainWindow()
     {
@@ -460,6 +469,33 @@ public partial class MainWindow : Window
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (msg == WM_NCHITTEST && WindowState != WindowState.Maximized)
+        {
+            int x = (short)(lParam.ToInt64() & 0xFFFF);
+            int y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
+            var pt = PointFromScreen(new Point(x, y));
+            const int side = 3;
+            const int edge = 6;
+
+            bool left = pt.X < side + 1;
+            bool right = pt.X >= ActualWidth - side;
+            bool top = pt.Y < side + 1;
+            bool bottom = pt.Y >= ActualHeight - edge;
+
+            if (top || bottom || left || right)
+            {
+                handled = true;
+                if (top && left) return (IntPtr)HTTOPLEFT;
+                if (top && right) return (IntPtr)HTTOPRIGHT;
+                if (bottom && left) return (IntPtr)HTBOTTOMLEFT;
+                if (bottom && right) return (IntPtr)HTBOTTOMRIGHT;
+                if (left) return (IntPtr)HTLEFT;
+                if (right) return (IntPtr)HTRIGHT;
+                if (top) return (IntPtr)HTTOP;
+                return (IntPtr)HTBOTTOM;
+            }
+        }
+
         if (msg == WM_MOUSEHWHEEL)
         {
             int delta = (short)(wParam.ToInt64() >> 16);
