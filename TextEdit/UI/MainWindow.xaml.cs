@@ -188,7 +188,11 @@ public partial class MainWindow : Window
         }
 
         if (wasLarge)
-            GC.Collect(2, GCCollectionMode.Optimized, false);
+        {
+            GC.Collect(2, GCCollectionMode.Forced, true, true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(2, GCCollectionMode.Forced, true, true);
+        }
     }
 
     private Border CreateTabHeader(TabInfo tab)
