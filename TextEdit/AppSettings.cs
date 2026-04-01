@@ -60,7 +60,7 @@ public class AppSettings
         var dir = Path.GetDirectoryName(SettingsPath)!;
         Directory.CreateDirectory(dir);
         var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(SettingsPath, json);
+        FileHelper.AtomicWriteText(SettingsPath, json, System.Text.Encoding.UTF8);
     }
 
     public static AppSettings Load()
@@ -80,8 +80,9 @@ public class AppSettings
 
             return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"Failed to load settings: {ex.Message}");
             return new AppSettings();
         }
     }
@@ -119,7 +120,8 @@ public class AppSettings
         if (root.TryGetProperty("WindowMaximized", out var wm))
             s.WindowMaximized = wm.GetBoolean();
 
-        // Save in new format so migration only happens once
+        // Side effect: saves in new format so migration only happens once.
+        // Callers of Load() should be aware this may write to disk.
         s.Save();
         return s;
     }

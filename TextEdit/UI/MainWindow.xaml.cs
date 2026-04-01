@@ -42,7 +42,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        _settings = AppSettings.Load();
+        _settings = App.Current.Settings;
 
         // Create the initial tab
         var tab = CreateTab();

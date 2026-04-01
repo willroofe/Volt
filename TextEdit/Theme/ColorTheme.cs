@@ -69,8 +69,9 @@ public class ColorTheme
             brush.Freeze();
             return brush;
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"Invalid color value '{hex}': {ex.Message}");
             var fallback = new SolidColorBrush(Colors.Magenta);
             fallback.Freeze();
             return fallback;
@@ -97,8 +98,9 @@ public class ColorTheme
             var json = File.ReadAllText(path);
             return JsonSerializer.Deserialize<ColorTheme>(json);
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"Failed to load theme '{path}': {ex.Message}");
             return null;
         }
     }

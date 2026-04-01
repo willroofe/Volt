@@ -147,7 +147,10 @@ public class FontManager
                 if (Math.Abs(narrow.WidthIncludingTrailingWhitespace - wide.WidthIncludingTrailingWhitespace) < 0.01)
                     mono.Add(family.Source);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to probe font '{family.Source}': {ex.Message}");
+            }
         }
         _monoFontCache = mono;
         return _monoFontCache;

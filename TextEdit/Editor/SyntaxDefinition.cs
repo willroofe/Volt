@@ -98,8 +98,9 @@ public class SyntaxDefinition
                 rule.CompiledRegex = new Regex(rule.Pattern,
                     RegexOptions.Compiled | RegexOptions.Multiline, RegexTimeout);
             }
-            catch
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"Invalid regex for scope '{rule.Scope}': {rule.Pattern} — {ex.Message}");
                 rule.CompiledRegex = null;
             }
         }
@@ -163,8 +164,9 @@ public class SyntaxDefinition
             def?.Compile();
             return def;
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"Failed to load grammar '{path}': {ex.Message}");
             return null;
         }
     }

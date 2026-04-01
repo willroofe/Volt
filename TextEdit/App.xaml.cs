@@ -7,6 +7,7 @@ public partial class App : Application
 {
     public ThemeManager ThemeManager { get; } = new();
     public SyntaxManager SyntaxManager { get; } = new();
+    public AppSettings Settings { get; private set; } = null!;
 
     public static new App Current => (App)Application.Current;
 
@@ -14,8 +15,8 @@ public partial class App : Application
     {
         ThemeManager.Initialize();
         SyntaxManager.Initialize();
-        var settings = AppSettings.Load();
-        ThemeManager.Apply(settings.Application.ColorTheme);
+        Settings = AppSettings.Load();
+        ThemeManager.Apply(Settings.Application.ColorTheme);
         // Pre-warm monospace font cache at idle priority so it's ready
         // before the user opens settings or the command palette
         Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
