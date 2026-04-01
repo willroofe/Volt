@@ -172,6 +172,9 @@ public partial class MainWindow : Window
             _activeTab = null;
         }
 
+        // Release undo history and buffer to free memory immediately
+        bool wasLarge = tab.Editor.ReleaseResources();
+
         if (_tabs.Count == 0)
         {
             // Always keep at least one tab
@@ -183,6 +186,9 @@ public partial class MainWindow : Window
             int nextIdx = Math.Min(idx, _tabs.Count - 1);
             ActivateTab(_tabs[nextIdx]);
         }
+
+        if (wasLarge)
+            GC.Collect(2, GCCollectionMode.Optimized, false);
     }
 
     private Border CreateTabHeader(TabInfo tab)

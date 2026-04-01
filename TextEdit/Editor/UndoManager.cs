@@ -16,8 +16,18 @@ public class UndoManager
         int CaretLineBefore, int CaretColBefore,
         int CaretLineAfter, int CaretColAfter);
 
-    private readonly List<UndoEntry> _undoStack = [];
-    private readonly List<UndoEntry> _redoStack = [];
+    /// <summary>
+    /// Compact undo entry for multi-line indent/unindent.
+    /// Stores only the number of spaces added/removed per line instead of full line copies.
+    /// </summary>
+    public record IndentEntry(
+        int StartLine, int LineCount,
+        int[] SpacesPerLine, bool IsIndent,
+        int CaretLineBefore, int CaretColBefore,
+        int CaretLineAfter, int CaretColAfter);
+
+    private readonly List<object> _undoStack = [];
+    private readonly List<object> _redoStack = [];
 
     public bool CanUndo => _undoStack.Count > 0;
     public bool CanRedo => _redoStack.Count > 0;
@@ -27,7 +37,11 @@ public class UndoManager
     /// Push a region-based undo entry. Clears the redo stack.
     /// Returns true if the oldest entry was evicted due to the size cap.
     /// </summary>
-    public bool Push(UndoEntry entry)
+    public bool Push(UndoEntry entry) => PushInternal(entry);
+
+    public bool Push(IndentEntry entry) => PushInternal(entry);
+
+    private bool PushInternal(object entry)
     {
         _undoStack.Add(entry);
         bool evicted = _undoStack.Count > MaxEntries;
@@ -38,10 +52,10 @@ public class UndoManager
     }
 
     /// <summary>
-    /// Undo: pops the last entry, moves it to the redo stack, returns it.
-    /// The caller applies the reverse (replaces After with Before in the buffer).
+    /// Pop the last undo entry, move it to the redo stack.
+    /// Returns UndoEntry or IndentEntry (caller checks type).
     /// </summary>
-    public UndoEntry? Undo()
+    public object? Undo()
     {
         if (_undoStack.Count == 0) return null;
         var entry = _undoStack[^1];
@@ -51,10 +65,10 @@ public class UndoManager
     }
 
     /// <summary>
-    /// Redo: pops the last redo entry, moves it back to the undo stack, returns it.
-    /// The caller applies the forward (replaces Before with After in the buffer).
+    /// Pop the last redo entry, move it back to the undo stack.
+    /// Returns UndoEntry or IndentEntry (caller checks type).
     /// </summary>
-    public UndoEntry? Redo()
+    public object? Redo()
     {
         if (_redoStack.Count == 0) return null;
         var entry = _redoStack[^1];
