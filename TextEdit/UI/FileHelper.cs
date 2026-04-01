@@ -48,8 +48,16 @@ internal static class FileHelper
     {
         var dir = Path.GetDirectoryName(path)!;
         var tempPath = Path.Combine(dir, Path.GetRandomFileName());
-        File.WriteAllText(tempPath, content, encoding);
-        File.Move(tempPath, path, overwrite: true);
+        try
+        {
+            File.WriteAllText(tempPath, content, encoding);
+            File.Move(tempPath, path, overwrite: true);
+        }
+        catch
+        {
+            try { File.Delete(tempPath); } catch { }
+            throw;
+        }
     }
 
     public static Encoding DetectEncoding(string path)
@@ -60,12 +68,15 @@ internal static class FileHelper
 
         if (read >= 3 && bom[0] == 0xEF && bom[1] == 0xBB && bom[2] == 0xBF)
             return new UTF8Encoding(true);
+        // Check 4-byte BOMs before 2-byte to avoid misidentifying UTF-32 LE as UTF-16 LE
+        if (read >= 4 && bom[0] == 0xFF && bom[1] == 0xFE && bom[2] == 0 && bom[3] == 0)
+            return new UTF32Encoding(false, true);
+        if (read >= 4 && bom[0] == 0 && bom[1] == 0 && bom[2] == 0xFE && bom[3] == 0xFF)
+            return new UTF32Encoding(true, true);
         if (read >= 2 && bom[0] == 0xFF && bom[1] == 0xFE)
             return new UnicodeEncoding(false, true);
         if (read >= 2 && bom[0] == 0xFE && bom[1] == 0xFF)
             return new UnicodeEncoding(true, true);
-        if (read >= 4 && bom[0] == 0 && bom[1] == 0 && bom[2] == 0xFE && bom[3] == 0xFF)
-            return new UTF32Encoding(true, true);
 
         return new UTF8Encoding(false);
     }

@@ -567,20 +567,25 @@ public class SyntaxManager
 
     private void EnsureDefaultGrammars()
     {
-        Directory.CreateDirectory(GrammarsDir);
-
-        // Always overwrite built-in grammars so embedded fixes take effect
-        var asm = Assembly.GetExecutingAssembly();
-        foreach (var name in asm.GetManifestResourceNames())
+        try
         {
-            if (!name.StartsWith("TextEdit.Resources.Grammars.") || !name.EndsWith(".json"))
-                continue;
-            var fileName = name["TextEdit.Resources.Grammars.".Length..];
-            var destPath = Path.Combine(GrammarsDir, fileName);
-            using var stream = asm.GetManifestResourceStream(name);
-            if (stream == null) continue;
-            using var reader = new StreamReader(stream);
-            File.WriteAllText(destPath, reader.ReadToEnd());
+            Directory.CreateDirectory(GrammarsDir);
+
+            // Always overwrite built-in grammars so embedded fixes take effect
+            var asm = Assembly.GetExecutingAssembly();
+            foreach (var name in asm.GetManifestResourceNames())
+            {
+                if (!name.StartsWith("TextEdit.Resources.Grammars.") || !name.EndsWith(".json"))
+                    continue;
+                var fileName = name["TextEdit.Resources.Grammars.".Length..];
+                var destPath = Path.Combine(GrammarsDir, fileName);
+                using var stream = asm.GetManifestResourceStream(name);
+                if (stream == null) continue;
+                using var reader = new StreamReader(stream);
+                File.WriteAllText(destPath, reader.ReadToEnd());
+            }
         }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 }

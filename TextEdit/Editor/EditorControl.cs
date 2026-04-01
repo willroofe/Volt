@@ -1418,14 +1418,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
         try { if (!Clipboard.ContainsText()) return; }
         catch (System.Runtime.InteropServices.ExternalException) { return; }
 
+        // Read clipboard BEFORE modifying the buffer so a clipboard failure
+        // doesn't leave the selection deleted with no undo entry.
+        string text;
+        try { text = Clipboard.GetText(); }
+        catch (System.Runtime.InteropServices.ExternalException) { return; }
+
         ResetPreferredCol();
         var (sl, el) = GetEditRange();
         var scope = BeginEdit(sl, el);
         DeleteSelectionIfPresent();
-
-        string text;
-        try { text = Clipboard.GetText(); }
-        catch (System.Runtime.InteropServices.ExternalException) { return; }
 
         var pasteLines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
         for (int pi = 0; pi < pasteLines.Length; pi++)
@@ -1439,14 +1441,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
         else
         {
             var after = _buffer.TruncateAt(_caretLine, _caretCol);
-            _buffer[_caretLine] += pasteLines[0];
+            _buffer.InsertAt(_caretLine, _caretCol, pasteLines[0]);
             for (int i = 1; i < pasteLines.Length; i++)
             {
                 _caretLine++;
                 _buffer.InsertLine(_caretLine, pasteLines[i]);
             }
             _caretCol = _buffer[_caretLine].Length;
-            _buffer[_caretLine] += after;
+            _buffer.InsertAt(_caretLine, _caretCol, after);
             _tokenCacheDirty = true;
         }
         FinishEdit(scope);

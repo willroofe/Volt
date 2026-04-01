@@ -147,10 +147,15 @@ public class ThemeManager
 
     private void EnsureDefaultThemes()
     {
-        Directory.CreateDirectory(ThemesDir);
-        WriteEmbeddedResource("TextEdit.Resources.Themes.default-dark.json", Path.Combine(ThemesDir, "default-dark.json"));
-        WriteEmbeddedResource("TextEdit.Resources.Themes.default-light.json", Path.Combine(ThemesDir, "default-light.json"));
-        WriteEmbeddedResource("TextEdit.Resources.Themes.gruvbox-dark.json", Path.Combine(ThemesDir, "gruvbox-dark.json"));
+        try
+        {
+            Directory.CreateDirectory(ThemesDir);
+            WriteEmbeddedResource("TextEdit.Resources.Themes.default-dark.json", Path.Combine(ThemesDir, "default-dark.json"));
+            WriteEmbeddedResource("TextEdit.Resources.Themes.default-light.json", Path.Combine(ThemesDir, "default-light.json"));
+            WriteEmbeddedResource("TextEdit.Resources.Themes.gruvbox-dark.json", Path.Combine(ThemesDir, "gruvbox-dark.json"));
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     private static void WriteEmbeddedResource(string resourceName, string targetPath)
