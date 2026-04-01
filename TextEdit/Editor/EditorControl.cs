@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -15,6 +14,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private readonly UndoManager _undoManager = new();
     private int _cleanUndoDepth; // undo stack depth when last marked clean (-1 = unreachable)
     private readonly SelectionManager _selection = new();
+    private readonly FindManager _find = new();
+    private readonly FontManager _font = new();
 
     // ── Managers (set by MainWindow after construction) ─────────────
     public ThemeManager ThemeManager { get; set; } = null!;
@@ -26,7 +27,6 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private int _preferredCol = -1; // sticky column for vertical movement
 
     // ── Bracket match cache ─────────────────────────────────────────
-    private const int MaxBracketScanLines = 500;
     private (int line, int col, int matchLine, int matchCol)? _bracketMatchCache;
     private bool _bracketMatchDirty = true;
 
@@ -55,26 +55,18 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
     }
 
-    // ── Rendering (font) ─────────────────────────────────────────────
-    private Typeface _monoTypeface = null!;
-    private GlyphTypeface _glyphTypeface = null!;
-    private double _fontSize = 14;
+    // ── Rendering constants ──────────────────────────────────────────
     private const double GutterPadding = 4;
     private const double GutterRightMargin = 8;
     private const double GutterSeparatorThickness = 0.5;
     private const double HorizontalScrollPadding = 50;
     private const double BarCaretWidth = 1;
-    private const double DefaultFontSize = 14;
     private const double MouseWheelDeltaUnit = 120.0;
     private const int ScrollWheelLines = 3;
-    private double _charWidth;
-    private double _lineHeight;
-    private double _glyphBaseline;
 
     // ── Cached pens / metrics ───────────────────────────────────────
     private Pen _gutterSepPen = new(Brushes.Gray, GutterSeparatorThickness);
     private int _gutterDigits;
-    private double _dpi = 1.0;
 
     // ── Syntax token cache ────────────────────────────────────────────
     private readonly Dictionary<int, (string content, LineState inState, List<SyntaxToken> tokens)> _tokenCache = new();
@@ -99,105 +91,32 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private int _gutterRenderedLastLine = -1;
     private const int RenderBufferLines = 50;
 
+    // ── Font property delegation ─────────────────────────────────────
     public string FontFamilyName
     {
-        get => _monoTypeface.FontFamily.Source;
-        set { ApplyFont(value, _fontSize, _fontWeight); }
+        get => _font.FontFamilyName;
+        set => _font.FontFamilyName = value;
     }
 
     public double EditorFontSize
     {
-        get => _fontSize;
-        set { ApplyFont(_monoTypeface.FontFamily.Source, value, _fontWeight); }
+        get => _font.EditorFontSize;
+        set => _font.EditorFontSize = value;
     }
-
-    private FontWeight _fontWeight = FontWeights.Normal;
-    private double _lineHeightMultiplier = 1.0;
 
     public double LineHeightMultiplier
     {
-        get => _lineHeightMultiplier;
-        set
-        {
-            if (Math.Abs(value - _lineHeightMultiplier) < 0.001) return;
-            _lineHeightMultiplier = value;
-            ApplyFont(_monoTypeface.FontFamily.Source, _fontSize, _fontWeight);
-        }
+        get => _font.LineHeightMultiplier;
+        set => _font.LineHeightMultiplier = value;
     }
 
     public string EditorFontWeight
     {
-        get => new FontWeightConverter().ConvertToString(_fontWeight)!;
-        set
-        {
-            var fw = (FontWeight)new FontWeightConverter().ConvertFromString(value)!;
-            ApplyFont(_monoTypeface.FontFamily.Source, _fontSize, fw);
-        }
+        get => _font.EditorFontWeight;
+        set => _font.EditorFontWeight = value;
     }
 
-    private void ApplyFont(string familyName, double size, FontWeight weight)
-    {
-        // Preserve the top visible line so the view doesn't jump
-        int topLine = _lineHeight > 0 ? (int)(_offset.Y / _lineHeight) : 0;
-
-        _fontWeight = weight;
-        _monoTypeface = new Typeface(new FontFamily(familyName), FontStyles.Normal, weight, FontStretches.Normal);
-        _fontSize = size;
-        _dpi = VisualTreeHelper.GetDpi(new DrawingVisual()).PixelsPerDip;
-
-        GlyphTypeface? gt = null;
-        if (_monoTypeface.TryGetGlyphTypeface(out gt)) { }
-        else
-        {
-            foreach (var face in new FontFamily(familyName).GetTypefaces())
-                if (face.TryGetGlyphTypeface(out gt)) break;
-        }
-        if (gt != null) _glyphTypeface = gt;
-
-        var sample = new FormattedText("X", CultureInfo.InvariantCulture,
-            FlowDirection.LeftToRight, _monoTypeface, _fontSize, Brushes.White, _dpi);
-        _charWidth = Math.Round(sample.WidthIncludingTrailingWhitespace * _dpi) / _dpi;
-        _lineHeight = Math.Round(sample.Height * _lineHeightMultiplier * _dpi) / _dpi;
-        _glyphBaseline = sample.Baseline;
-
-        _tokenCacheDirty = true;
-        _gutterDigits = 0;
-        UpdateExtent();
-
-        // Restore scroll position to keep the same line at the top
-        double newOffset = topLine * _lineHeight;
-        newOffset = Math.Clamp(newOffset, 0, Math.Max(0, _extent.Height - _viewport.Height));
-        _offset.Y = Math.Round(newOffset * _dpi) / _dpi;
-        ScrollOwner?.InvalidateScrollInfo();
-
-        InvalidateText();
-    }
-
-    private static List<string>? _monoFontCache;
-
-    public static List<string> GetMonospaceFonts()
-    {
-        if (_monoFontCache != null) return _monoFontCache;
-
-        var dpi = VisualTreeHelper.GetDpi(new DrawingVisual()).PixelsPerDip;
-        var mono = new List<string>();
-        foreach (var family in Fonts.SystemFontFamilies.OrderBy(f => f.Source))
-        {
-            try
-            {
-                var typeface = new Typeface(family, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
-                var narrow = new FormattedText("i", CultureInfo.InvariantCulture,
-                    FlowDirection.LeftToRight, typeface, DefaultFontSize, Brushes.White, dpi);
-                var wide = new FormattedText("M", CultureInfo.InvariantCulture,
-                    FlowDirection.LeftToRight, typeface, DefaultFontSize, Brushes.White, dpi);
-                if (Math.Abs(narrow.WidthIncludingTrailingWhitespace - wide.WidthIncludingTrailingWhitespace) < 0.01)
-                    mono.Add(family.Source);
-            }
-            catch { }
-        }
-        _monoFontCache = mono;
-        return _monoFontCache;
-    }
+    public static List<string> GetMonospaceFonts() => FontManager.GetMonospaceFonts();
 
     // ── Caret blink ──────────────────────────────────────────────────
     private readonly DispatcherTimer _blinkTimer;
@@ -219,34 +138,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public int CaretLine => _caretLine;
     public int CaretCol => _caretCol;
 
-    // ── Auto-close bracket/quote pairs ─────────────────────────────
-    private static readonly Dictionary<char, char> BracketPairs = new()
-    {
-        { '(', ')' },
-        { '{', '}' },
-        { '[', ']' },
-    };
-    private static readonly HashSet<char> ClosingBrackets = new(BracketPairs.Values);
-    private static readonly Dictionary<char, char> ReverseBracketPairs =
-        BracketPairs.ToDictionary(kv => kv.Value, kv => kv.Key);
-    private static readonly HashSet<char> AutoCloseQuotes = ['\'', '"', '`'];
-
-    // ── Find matches ──────────────────────────────────────────────────
-    private List<(int Line, int Col, int Length)> _findMatches = [];
-    private int _currentMatchIndex = -1;
-
     // ── Mouse drag ───────────────────────────────────────────────────
     private bool _isDragging;
 
     // ── Gutter width (computed) ──────────────────────────────────────
     private double _gutterWidth;
-
-    private static string DefaultFontFamily()
-    {
-        return Fonts.SystemFontFamilies.Any(f =>
-            f.Source.Equals("Cascadia Code", StringComparison.OrdinalIgnoreCase))
-            ? "Cascadia Code" : "Consolas";
-    }
 
     private void OnThemeChanged(object? sender, EventArgs e)
     {
@@ -255,9 +151,27 @@ public class EditorControl : FrameworkElement, IScrollInfo
         InvalidateText();
     }
 
+    private void OnFontChanged()
+    {
+        // Preserve the top visible line so the view doesn't jump
+        int topLine = _font.LineHeight > 0 ? (int)(_offset.Y / _font.LineHeight) : 0;
+
+        _tokenCacheDirty = true;
+        _gutterDigits = 0;
+        UpdateExtent();
+
+        // Restore scroll position to keep the same line at the top
+        double newOffset = topLine * _font.LineHeight;
+        newOffset = Math.Clamp(newOffset, 0, Math.Max(0, _extent.Height - _viewport.Height));
+        _offset.Y = Math.Round(newOffset * _font.Dpi) / _font.Dpi;
+        ScrollOwner?.InvalidateScrollInfo();
+
+        InvalidateText();
+    }
+
     public EditorControl()
     {
-        ApplyFont(DefaultFontFamily(), DefaultFontSize, FontWeights.Normal);
+        _font.FontChanged += OnFontChanged;
         Focusable = true;
         FocusVisualStyle = null;
         Cursor = Cursors.IBeam;
@@ -286,7 +200,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             ThemeManager.ThemeChanged += OnThemeChanged;
             RebuildGutterPen();
-            _dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+            _font.Dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
             Keyboard.Focus(this);
             _blinkTimer.Start();
             UpdateExtent();
@@ -325,31 +239,31 @@ public class EditorControl : FrameworkElement, IScrollInfo
         using var dc = _caretVisual.RenderOpen();
         if (!IsKeyboardFocused || !_caretVisible) return;
 
-        double caretX = _gutterWidth + GutterPadding + _caretCol * _charWidth - _offset.X;
-        double caretY = _caretLine * _lineHeight - _offset.Y;
-        if (caretX >= _gutterWidth && caretY + _lineHeight > 0 && caretY < ActualHeight)
+        double caretX = _gutterWidth + GutterPadding + _caretCol * _font.CharWidth - _offset.X;
+        double caretY = _caretLine * _font.LineHeight - _offset.Y;
+        if (caretX >= _gutterWidth && caretY + _font.LineHeight > 0 && caretY < ActualHeight)
         {
             if (BlockCaret)
             {
                 dc.DrawRectangle(ThemeManager.CaretBrush, null,
-                    new Rect(caretX, caretY, _charWidth, _lineHeight));
+                    new Rect(caretX, caretY, _font.CharWidth, _font.LineHeight));
                 if (_caretCol < _buffer[_caretLine].Length)
                 {
                     var ch = _buffer[_caretLine][_caretCol].ToString();
-                    DrawGlyphRun(dc, ch, 0, 1, caretX, caretY, ThemeManager.EditorBg);
+                    _font.DrawGlyphRun(dc, ch, 0, 1, caretX, caretY, ThemeManager.EditorBg);
                 }
             }
             else
             {
                 dc.DrawRectangle(ThemeManager.CaretBrush, null,
-                    new Rect(caretX, caretY, BarCaretWidth, _lineHeight));
+                    new Rect(caretX, caretY, BarCaretWidth, _font.LineHeight));
             }
         }
     }
 
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
     {
-        _dpi = newDpi.PixelsPerDip;
+        _font.Dpi = newDpi.PixelsPerDip;
         _tokenCacheDirty = true;
         InvalidateLineStates();
         InvalidateText();
@@ -364,10 +278,6 @@ public class EditorControl : FrameworkElement, IScrollInfo
         int StartLine, int LineCount, int BufferCount,
         List<string> Before, int CaretLine, int CaretCol);
 
-    /// <summary>
-    /// Call before an edit. Snapshots the lines in [startLine, endLine] (inclusive)
-    /// and records the caret position and buffer size.
-    /// </summary>
     private EditScope BeginEdit(int startLine, int endLine)
     {
         int count = endLine - startLine + 1;
@@ -375,10 +285,6 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _buffer.GetLines(startLine, count), _caretLine, _caretCol);
     }
 
-    /// <summary>
-    /// Call after an edit. Snapshots the new state of the affected region
-    /// and pushes a region-based undo entry.
-    /// </summary>
     private void EndEdit(EditScope scope)
     {
         int lineDelta = _buffer.Count - scope.BufferCount;
@@ -388,7 +294,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             scope.StartLine, scope.Before, after,
             scope.CaretLine, scope.CaretCol, _caretLine, _caretCol));
         if (evicted && _cleanUndoDepth >= 0)
-            _cleanUndoDepth--;  // -1 means the clean state was evicted and is unreachable
+            _cleanUndoDepth--;
 
         _textVisualDirty = true;
         _bracketMatchDirty = true;
@@ -471,11 +377,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     private (int line, int col) HitTest(Point pos)
     {
-        int line = (int)((pos.Y + _offset.Y) / _lineHeight);
+        int line = (int)((pos.Y + _offset.Y) / _font.LineHeight);
         line = Math.Clamp(line, 0, _buffer.Count - 1);
 
         double textX = pos.X + _offset.X - _gutterWidth - GutterPadding;
-        int col = (int)Math.Round(textX / _charWidth);
+        int col = (int)Math.Round(textX / _font.CharWidth);
         col = Math.Clamp(col, 0, _buffer[line].Length);
         return (line, col);
     }
@@ -524,122 +430,6 @@ public class EditorControl : FrameworkElement, IScrollInfo
     }
 
     // ──────────────────────────────────────────────────────────────────
-    //  Bracket matching
-    // ──────────────────────────────────────────────────────────────────
-    private (int line, int col, int matchLine, int matchCol)? FindMatchingBracket()
-    {
-        ClampCaret();
-        int[] colsToCheck = _caretCol < _buffer[_caretLine].Length && _caretCol > 0
-            ? [_caretCol, _caretCol - 1]
-            : _caretCol < _buffer[_caretLine].Length
-                ? [_caretCol]
-                : _caretCol > 0
-                    ? [_caretCol - 1]
-                    : [];
-
-        foreach (int checkCol in colsToCheck)
-        {
-            char ch = _buffer[_caretLine][checkCol];
-
-            if (BracketPairs.TryGetValue(ch, out char closer))
-            {
-                var match = ScanForBracket(ch, closer, _caretLine, checkCol, forward: true);
-                if (match != null)
-                    return (_caretLine, checkCol, match.Value.line, match.Value.col);
-            }
-            else if (ReverseBracketPairs.TryGetValue(ch, out char opener))
-            {
-                var match = ScanForBracket(ch, opener, _caretLine, checkCol, forward: false);
-                if (match != null)
-                    return (_caretLine, checkCol, match.Value.line, match.Value.col);
-            }
-        }
-
-        return FindEnclosingBracket();
-    }
-
-    private (int line, int col, int matchLine, int matchCol)? FindEnclosingBracket()
-    {
-        var depths = new Dictionary<char, int>();
-        foreach (var opener in BracketPairs.Keys)
-            depths[opener] = 0;
-
-        int line = _caretLine;
-        int col = _caretCol - 1;
-        int minLine = Math.Max(0, _caretLine - MaxBracketScanLines);
-
-        while (true)
-        {
-            while (col < 0 || _buffer[line].Length == 0)
-            {
-                line--;
-                if (line < minLine) return null;
-                col = _buffer[line].Length - 1;
-            }
-
-            char ch = _buffer[line][col];
-
-            if (ClosingBrackets.Contains(ch))
-            {
-                var opener = ReverseBracketPairs[ch];
-                depths[opener]++;
-            }
-            else if (BracketPairs.TryGetValue(ch, out char closer))
-            {
-                depths[ch]--;
-                if (depths[ch] < 0)
-                {
-                    var match = ScanForBracket(ch, closer, line, col, forward: true);
-                    if (match != null)
-                        return (line, col, match.Value.line, match.Value.col);
-                    depths[ch] = 0;
-                }
-            }
-
-            col--;
-        }
-    }
-
-    private (int line, int col)? ScanForBracket(char bracket, char target, int startLine, int startCol, bool forward)
-    {
-        int depth = 1;
-        int line = startLine;
-        int col = startCol;
-        int maxLine = Math.Min(_buffer.Count - 1, startLine + MaxBracketScanLines);
-        int minLine = Math.Max(0, startLine - MaxBracketScanLines);
-
-        while (true)
-        {
-            if (forward)
-            {
-                col++;
-                while (col >= _buffer[line].Length)
-                {
-                    line++;
-                    if (line > maxLine) return null;
-                    col = 0;
-                }
-            }
-            else
-            {
-                col--;
-                while (col < 0 || _buffer[line].Length == 0)
-                {
-                    line--;
-                    if (line < minLine) return null;
-                    col = _buffer[line].Length - 1;
-                }
-            }
-
-            char ch = _buffer[line][col];
-            if (ch == bracket) depth++;
-            else if (ch == target) depth--;
-
-            if (depth == 0) return (line, col);
-        }
-    }
-
-    // ──────────────────────────────────────────────────────────────────
     //  Scroll / extent management
     // ──────────────────────────────────────────────────────────────────
     private void UpdateExtent()
@@ -650,15 +440,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (digits != _gutterDigits)
         {
             _gutterDigits = digits;
-            _gutterWidth = digits * _charWidth + GutterRightMargin;
+            _gutterWidth = digits * _font.CharWidth + GutterRightMargin;
         }
 
-        // Use the fast path when possible, full recalc only when dirty
         int maxLen = _buffer.UpdateMaxForLine(_caretLine);
 
         var newExtent = new Size(
-            _gutterWidth + GutterPadding + maxLen * _charWidth + HorizontalScrollPadding,
-            _buffer.Count * _lineHeight);
+            _gutterWidth + GutterPadding + maxLen * _font.CharWidth + HorizontalScrollPadding,
+            _buffer.Count * _font.LineHeight);
 
         if (Math.Abs(newExtent.Width - _extent.Width) > 0.5
             || Math.Abs(newExtent.Height - _extent.Height) > 0.5)
@@ -670,46 +459,18 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private void EnsureCaretVisible()
     {
-        double caretTop = _caretLine * _lineHeight;
-        double caretBottom = caretTop + _lineHeight;
+        double caretTop = _caretLine * _font.LineHeight;
+        double caretBottom = caretTop + _font.LineHeight;
         if (caretTop < _offset.Y)
             SetVerticalOffset(caretTop);
         else if (caretBottom > _offset.Y + _viewport.Height)
             SetVerticalOffset(caretBottom - _viewport.Height);
 
-        double caretX = _gutterWidth + GutterPadding + _caretCol * _charWidth;
+        double caretX = _gutterWidth + GutterPadding + _caretCol * _font.CharWidth;
         if (caretX - _offset.X < _gutterWidth + GutterPadding)
             SetHorizontalOffset(caretX - _gutterWidth - GutterPadding);
-        else if (caretX - _offset.X > _viewport.Width - _charWidth)
-            SetHorizontalOffset(caretX - _viewport.Width + _charWidth * 2);
-    }
-
-    private double ColToPixelX(string line, int col)
-    {
-        return col * _charWidth;
-    }
-
-    private void DrawGlyphRun(DrawingContext dc, string text, int startIndex, int length,
-                              double x, double y, Brush brush)
-    {
-        if (length <= 0) return;
-        var map = _glyphTypeface.CharacterToGlyphMap;
-        var glyphIndices = new ushort[length];
-        var advanceWidths = new double[length];
-        for (int i = 0; i < length; i++)
-        {
-            char ch = text[startIndex + i];
-            glyphIndices[i] = map.TryGetValue(ch, out var gi) ? gi : (ushort)0;
-            advanceWidths[i] = _charWidth;
-        }
-        double snapX = Math.Round(x * _dpi) / _dpi;
-        double snapY = Math.Round((y + _glyphBaseline) * _dpi) / _dpi;
-        var origin = new Point(snapX, snapY);
-        var run = new GlyphRun(
-            _glyphTypeface, 0, false, _fontSize, (float)_dpi,
-            glyphIndices, origin, advanceWidths,
-            null, null, null, null, null, null);
-        dc.DrawGlyphRun(brush, run);
+        else if (caretX - _offset.X > _viewport.Width - _font.CharWidth)
+            SetHorizontalOffset(caretX - _viewport.Width + _font.CharWidth * 2);
     }
 
     private void ClampCaret()
@@ -823,9 +584,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     private (int first, int last) VisibleLineRange()
     {
-        int first = Math.Max(0, (int)(_offset.Y / _lineHeight));
+        int first = Math.Max(0, (int)(_offset.Y / _font.LineHeight));
         int last = Math.Min(_buffer.Count - 1,
-            (int)((_offset.Y + _viewport.Height) / _lineHeight));
+            (int)((_offset.Y + _viewport.Height) / _font.LineHeight));
         return (first, last);
     }
 
@@ -848,9 +609,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         if (_caretLine >= firstLine && _caretLine <= lastLine)
         {
-            double curLineY = _caretLine * _lineHeight - _offset.Y;
+            double curLineY = _caretLine * _font.LineHeight - _offset.Y;
             dc.DrawRectangle(ThemeManager.CurrentLineBrush, null,
-                new Rect(0, curLineY, ActualWidth, _lineHeight));
+                new Rect(0, curLineY, ActualWidth, _font.LineHeight));
         }
 
         if (_selection.HasSelection)
@@ -862,9 +623,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 int selStart = i == sl ? sc : 0;
                 int selEnd = i == el ? ec : _buffer[i].Length;
 
-                double y = i * _lineHeight - _offset.Y;
-                double x1 = _gutterWidth + GutterPadding + selStart * _charWidth - _offset.X;
-                double x2 = _gutterWidth + GutterPadding + selEnd * _charWidth - _offset.X;
+                double y = i * _font.LineHeight - _offset.Y;
+                double x1 = _gutterWidth + GutterPadding + selStart * _font.CharWidth - _offset.X;
+                double x2 = _gutterWidth + GutterPadding + selEnd * _font.CharWidth - _offset.X;
 
                 if (i > sl && i < el) x2 = Math.Max(x2, ActualWidth);
                 if (i == sl && i != el) x2 = Math.Max(x2, ActualWidth);
@@ -872,25 +633,25 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 dc.DrawRectangle(ThemeManager.SelectionBrush, null,
                     new Rect(Math.Max(x1, _gutterWidth + GutterPadding), y,
                              Math.Max(0, x2 - Math.Max(x1, _gutterWidth + GutterPadding)),
-                             _lineHeight));
+                             _font.LineHeight));
             }
         }
 
-        if (_findMatches.Count > 0)
+        if (_find.MatchCount > 0)
         {
-            for (int m = 0; m < _findMatches.Count; m++)
+            for (int m = 0; m < _find.Matches.Count; m++)
             {
-                var (mLine, mCol, mLen) = _findMatches[m];
+                var (mLine, mCol, mLen) = _find.Matches[m];
                 if (mLine < firstLine || mLine > lastLine) continue;
-                double pxStart = ColToPixelX(_buffer[mLine], mCol);
-                double pxEnd = ColToPixelX(_buffer[mLine], mCol + mLen);
+                double pxStart = mCol * _font.CharWidth;
+                double pxEnd = (mCol + mLen) * _font.CharWidth;
                 double mx = _gutterWidth + GutterPadding + pxStart - _offset.X;
-                double my = mLine * _lineHeight - _offset.Y;
-                var brush = m == _currentMatchIndex
+                double my = mLine * _font.LineHeight - _offset.Y;
+                var brush = m == _find.CurrentIndex
                     ? ThemeManager.FindMatchCurrentBrush
                     : ThemeManager.FindMatchBrush;
                 dc.DrawRectangle(brush, null,
-                    new Rect(mx, my, pxEnd - pxStart, _lineHeight));
+                    new Rect(mx, my, pxEnd - pxStart, _font.LineHeight));
             }
         }
 
@@ -898,7 +659,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             if (_bracketMatchDirty)
             {
-                _bracketMatchCache = FindMatchingBracket();
+                _bracketMatchCache = BracketMatcher.FindMatch(_buffer, _caretLine, _caretCol);
                 _bracketMatchDirty = false;
             }
             if (_bracketMatchCache is var (bl, bc, ml, mc))
@@ -907,11 +668,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 {
                     if (bLine >= firstLine && bLine <= lastLine)
                     {
-                        double bx = _gutterWidth + GutterPadding + bCol * _charWidth - _offset.X;
-                        double by = bLine * _lineHeight - _offset.Y;
+                        double bx = _gutterWidth + GutterPadding + bCol * _font.CharWidth - _offset.X;
+                        double by = bLine * _font.LineHeight - _offset.Y;
                         dc.DrawRectangle(ThemeManager.MatchingBracketBrush,
                             ThemeManager.MatchingBracketPen,
-                            new Rect(bx, by, _charWidth, _lineHeight));
+                            new Rect(bx, by, _font.CharWidth, _font.LineHeight));
                     }
                 }
             }
@@ -956,7 +717,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             var line = _buffer[i];
             if (line.Length == 0) continue;
-            double y = i * _lineHeight;
+            double y = i * _font.LineHeight;
             double x = _gutterWidth + GutterPadding;
 
             var inState = i < _lineStates.Count ? _lineStates[i] : SyntaxManager.DefaultState;
@@ -970,7 +731,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
             if (cached.tokens.Count == 0)
             {
-                DrawGlyphRun(dc, line, 0, line.Length, x, y, ThemeManager.EditorFg);
+                _font.DrawGlyphRun(dc, line, 0, line.Length, x, y, ThemeManager.EditorFg);
             }
             else
             {
@@ -978,16 +739,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 foreach (var token in cached.tokens)
                 {
                     if (token.Start > pos)
-                        DrawGlyphRun(dc, line, pos, token.Start - pos,
-                            x + pos * _charWidth, y, ThemeManager.EditorFg);
+                        _font.DrawGlyphRun(dc, line, pos, token.Start - pos,
+                            x + pos * _font.CharWidth, y, ThemeManager.EditorFg);
                     var brush = ThemeManager.GetScopeBrush(token.Scope);
-                    DrawGlyphRun(dc, line, token.Start, token.Length,
-                        x + token.Start * _charWidth, y, brush);
+                    _font.DrawGlyphRun(dc, line, token.Start, token.Length,
+                        x + token.Start * _font.CharWidth, y, brush);
                     pos = token.Start + token.Length;
                 }
                 if (pos < line.Length)
-                    DrawGlyphRun(dc, line, pos, line.Length - pos,
-                        x + pos * _charWidth, y, ThemeManager.EditorFg);
+                    _font.DrawGlyphRun(dc, line, pos, line.Length - pos,
+                        x + pos * _font.CharWidth, y, ThemeManager.EditorFg);
             }
         }
 
@@ -1017,8 +778,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         if (drawLast < drawFirst) return;
 
-        double bgTop = drawFirst * _lineHeight;
-        double bgBottom = (drawLast + 1) * _lineHeight;
+        double bgTop = drawFirst * _font.LineHeight;
+        double bgBottom = (drawLast + 1) * _font.LineHeight;
         dc.DrawRectangle(ThemeManager.EditorBg, null,
             new Rect(0, bgTop, _gutterWidth, bgBottom - bgTop));
         dc.DrawLine(_gutterSepPen,
@@ -1026,12 +787,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         for (int i = drawFirst; i <= drawLast; i++)
         {
-            double y = i * _lineHeight;
+            double y = i * _font.LineHeight;
             var brush = i == _caretLine
                 ? ThemeManager.ActiveLineNumberFg : ThemeManager.GutterFg;
             var numStr = (i + 1).ToString();
-            double numWidth = numStr.Length * _charWidth;
-            DrawGlyphRun(dc, numStr, 0, numStr.Length,
+            double numWidth = numStr.Length * _font.CharWidth;
+            _font.DrawGlyphRun(dc, numStr, 0, numStr.Length,
                 _gutterWidth - numWidth - GutterPadding, y, brush);
         }
 
@@ -1136,7 +897,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         char ch = e.Text[0];
 
         // Over-type closing bracket or quote
-        if (e.Text.Length == 1 && (ClosingBrackets.Contains(ch) || AutoCloseQuotes.Contains(ch)) && !_selection.HasSelection)
+        if (e.Text.Length == 1 && (BracketMatcher.ClosingBrackets.Contains(ch) || BracketMatcher.AutoCloseQuotes.Contains(ch)) && !_selection.HasSelection)
         {
             var line = _buffer[_caretLine];
             if (_caretCol < line.Length && line[_caretCol] == ch)
@@ -1166,12 +927,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
         var currentLine = _buffer[_caretLine];
         bool insideString = IsCaretInsideString(currentLine, _caretCol);
 
-        if (!insideString && e.Text.Length == 1 && BracketPairs.TryGetValue(ch, out char closer))
+        if (!insideString && e.Text.Length == 1 && BracketMatcher.Pairs.TryGetValue(ch, out char closer))
         {
             _buffer.InsertAt(_caretLine, _caretCol, ch.ToString() + closer);
             _caretCol++;
         }
-        else if (!insideString && e.Text.Length == 1 && AutoCloseQuotes.Contains(ch))
+        else if (!insideString && e.Text.Length == 1 && BracketMatcher.AutoCloseQuotes.Contains(ch))
         {
             _buffer.InsertAt(_caretLine, _caretCol, ch.ToString() + ch);
             _caretCol++;
@@ -1289,11 +1050,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
         var rest = _buffer.TruncateAt(_caretLine, _caretCol);
 
         bool betweenBrackets = _caretCol > 0 && rest.Length > 0
-            && BracketPairs.TryGetValue(_buffer[_caretLine][^1], out char expectedCloser)
+            && BracketMatcher.Pairs.TryGetValue(_buffer[_caretLine][^1], out char expectedCloser)
             && rest[0] == expectedCloser;
 
         bool afterOpen = _caretCol > 0
-            && BracketPairs.ContainsKey(_buffer[_caretLine][_caretCol - 1]);
+            && BracketMatcher.Pairs.ContainsKey(_buffer[_caretLine][_caretCol - 1]);
 
         if (betweenBrackets)
         {
@@ -1336,7 +1097,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
         else if (_caretCol == 0 && _caretLine > 0)
         {
-            sl = _caretLine - 1; // line join: affects previous + current
+            sl = _caretLine - 1;
         }
         var scope = BeginEdit(sl, el);
 
@@ -1353,8 +1114,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
             {
                 char before = line[_caretCol - 1];
                 char after = line[_caretCol];
-                bool isPair = (BracketPairs.TryGetValue(before, out char expected) && after == expected)
-                              || (AutoCloseQuotes.Contains(before) && after == before);
+                bool isPair = (BracketMatcher.Pairs.TryGetValue(before, out char expected) && after == expected)
+                              || (BracketMatcher.AutoCloseQuotes.Contains(before) && after == before);
                 if (isPair)
                 {
                     _buffer.DeleteAt(_caretLine, _caretCol - 1, 2);
@@ -1401,7 +1162,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
         else if (_caretCol >= _buffer[_caretLine].Length && _caretLine < _buffer.Count - 1)
         {
-            el = _caretLine + 1; // line join: affects current + next
+            el = _caretLine + 1;
         }
         var scope = BeginEdit(sl, el);
 
@@ -1559,7 +1320,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             case Key.PageUp:
             case Key.PageDown:
             {
-                int visibleLines = Math.Max(1, (int)(_viewport.Height / _lineHeight) - 1);
+                int visibleLines = Math.Max(1, (int)(_viewport.Height / _font.LineHeight) - 1);
                 if (shift) _selection.Start(_caretLine, _caretCol);
                 if (key == Key.PageUp)
                     _caretLine = Math.Max(0, _caretLine - visibleLines);
@@ -1669,7 +1430,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     protected override void OnMouseWheel(MouseWheelEventArgs e)
     {
-        SetVerticalOffset(_offset.Y - e.Delta / MouseWheelDeltaUnit * _lineHeight * ScrollWheelLines);
+        SetVerticalOffset(_offset.Y - e.Delta / MouseWheelDeltaUnit * _font.LineHeight * ScrollWheelLines);
         e.Handled = true;
     }
 
@@ -1679,12 +1440,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private const double MinThumbFraction = 0.05;
     private double ThumbPadding(double extent, double viewport)
     {
-        // If the viewport is already >= the minimum fraction of the extent, no padding needed.
         double minViewport = extent * MinThumbFraction;
         return viewport >= minViewport ? 0 : minViewport - viewport;
     }
-    // Extent and Viewport are inflated by the same amount so the scrollable range
-    // (Extent - Viewport) stays correct while the thumb stays a usable size.
     public double ExtentWidth => _extent.Width + ThumbPadding(_extent.Width, _viewport.Width);
     public double ExtentHeight => _extent.Height + ThumbPadding(_extent.Height, _viewport.Height);
     public double ViewportWidth => _viewport.Width + ThumbPadding(_extent.Width, _viewport.Width);
@@ -1695,7 +1453,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public void SetHorizontalOffset(double offset)
     {
         offset = Math.Clamp(offset, 0, Math.Max(0, _extent.Width - _viewport.Width));
-        offset = Math.Round(offset * _dpi) / _dpi;
+        offset = Math.Round(offset * _font.Dpi) / _font.Dpi;
         if (Math.Abs(offset - _offset.X) < 0.01) return;
         _offset.X = offset;
         ScrollOwner?.InvalidateScrollInfo();
@@ -1705,7 +1463,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public void SetVerticalOffset(double offset)
     {
         offset = Math.Clamp(offset, 0, Math.Max(0, _extent.Height - _viewport.Height));
-        offset = Math.Round(offset * _dpi) / _dpi;
+        offset = Math.Round(offset * _font.Dpi) / _font.Dpi;
         if (Math.Abs(offset - _offset.Y) < 0.01) return;
         _offset.Y = offset;
         ScrollOwner?.InvalidateScrollInfo();
@@ -1714,10 +1472,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     public Rect MakeVisible(Visual visual, Rect rectangle) => rectangle;
 
-    public void LineUp() => SetVerticalOffset(_offset.Y - _lineHeight);
-    public void LineDown() => SetVerticalOffset(_offset.Y + _lineHeight);
-    public void LineLeft() => SetHorizontalOffset(_offset.X - _charWidth * TabSize);
-    public void LineRight() => SetHorizontalOffset(_offset.X + _charWidth * TabSize);
+    public void LineUp() => SetVerticalOffset(_offset.Y - _font.LineHeight);
+    public void LineDown() => SetVerticalOffset(_offset.Y + _font.LineHeight);
+    public void LineLeft() => SetHorizontalOffset(_offset.X - _font.CharWidth * TabSize);
+    public void LineRight() => SetHorizontalOffset(_offset.X + _font.CharWidth * TabSize);
     public void PageUp() => SetVerticalOffset(_offset.Y - _viewport.Height);
     public void PageDown() => SetVerticalOffset(_offset.Y + _viewport.Height);
     public void PageLeft() => SetHorizontalOffset(_offset.X - _viewport.Width);
@@ -1770,8 +1528,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _selection.Clear();
         _undoManager.Clear();
         _cleanUndoDepth = 0;
-        _findMatches.Clear();
-        _currentMatchIndex = 0;
+        _find.Clear();
         _tokenCacheDirty = true;
         InvalidateLineStates();
         UpdateExtent();
@@ -1798,81 +1555,47 @@ public class EditorControl : FrameworkElement, IScrollInfo
     }
 
     // ──────────────────────────────────────────────────────────────────
-    //  Find support
+    //  Find support (delegates to FindManager)
     // ──────────────────────────────────────────────────────────────────
 
-    public int FindMatchCount => _findMatches.Count;
-    public int CurrentMatchIndex => _currentMatchIndex;
+    public int FindMatchCount => _find.MatchCount;
+    public int CurrentMatchIndex => _find.CurrentIndex;
 
     public void SetFindMatches(string query, bool matchCase)
     {
-        _findMatches.Clear();
-        _currentMatchIndex = -1;
-
-        if (string.IsNullOrEmpty(query))
-        {
-            InvalidateVisual();
-            return;
-        }
-
-        var comparison = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-        for (int line = 0; line < _buffer.Count; line++)
-        {
-            int pos = 0;
-            while (pos < _buffer[line].Length)
-            {
-                int idx = _buffer[line].IndexOf(query, pos, comparison);
-                if (idx < 0) break;
-                _findMatches.Add((line, idx, query.Length));
-                pos = idx + 1;
-            }
-        }
-
-        if (_findMatches.Count > 0)
-        {
-            _currentMatchIndex = 0;
-            for (int i = 0; i < _findMatches.Count; i++)
-            {
-                var (ml, mc, _) = _findMatches[i];
-                if (ml > _caretLine || (ml == _caretLine && mc >= _caretCol))
-                {
-                    _currentMatchIndex = i;
-                    break;
-                }
-            }
+        _find.Search(_buffer, query, matchCase, _caretLine, _caretCol);
+        if (_find.MatchCount > 0)
             NavigateToCurrentMatch();
-        }
-
         InvalidateVisual();
     }
 
     public void ClearFindMatches()
     {
-        _findMatches.Clear();
-        _currentMatchIndex = -1;
+        _find.Clear();
         InvalidateVisual();
     }
 
     public void FindNext()
     {
-        if (_findMatches.Count == 0) return;
-        _currentMatchIndex = (_currentMatchIndex + 1) % _findMatches.Count;
+        if (_find.MatchCount == 0) return;
+        _find.MoveNext();
         NavigateToCurrentMatch();
         InvalidateVisual();
     }
 
     public void FindPrevious()
     {
-        if (_findMatches.Count == 0) return;
-        _currentMatchIndex = (_currentMatchIndex - 1 + _findMatches.Count) % _findMatches.Count;
+        if (_find.MatchCount == 0) return;
+        _find.MovePrevious();
         NavigateToCurrentMatch();
         InvalidateVisual();
     }
 
     public void ReplaceCurrent(string replacement)
     {
-        if (_currentMatchIndex < 0 || _currentMatchIndex >= _findMatches.Count) return;
-        var (line, col, len) = _findMatches[_currentMatchIndex];
+        var match = _find.GetCurrentMatch();
+        if (match == null) return;
+        var (line, col, len) = match.Value;
         var scope = BeginEdit(line, line);
         _buffer.ReplaceAt(line, col, len, replacement);
         EndEdit(scope);
@@ -1883,13 +1606,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     public void ReplaceAll(string query, string replacement, bool matchCase)
     {
-        if (_findMatches.Count == 0) return;
-        int firstLine = _findMatches[0].Line;
-        int lastLine = _findMatches[^1].Line;
+        var range = _find.GetMatchLineRange();
+        if (range == null) return;
+        var (firstLine, lastLine) = range.Value;
         var scope = BeginEdit(firstLine, lastLine);
-        for (int i = _findMatches.Count - 1; i >= 0; i--)
+        var matches = _find.Matches;
+        for (int i = matches.Count - 1; i >= 0; i--)
         {
-            var (line, col, len) = _findMatches[i];
+            var (line, col, len) = matches[i];
             _buffer.ReplaceAt(line, col, len, replacement);
         }
         EndEdit(scope);
@@ -1902,8 +1626,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private void NavigateToCurrentMatch()
     {
-        if (_currentMatchIndex < 0 || _currentMatchIndex >= _findMatches.Count) return;
-        var (line, col, _) = _findMatches[_currentMatchIndex];
+        var match = _find.GetCurrentMatch();
+        if (match == null) return;
+        var (line, col, _) = match.Value;
         _caretLine = line;
         _caretCol = col;
         _selection.Clear();
@@ -1913,10 +1638,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private void CentreLineInViewport(int line)
     {
-        double targetY = line * _lineHeight - (_viewport.Height - _lineHeight) / 2;
+        double targetY = line * _font.LineHeight - (_viewport.Height - _font.LineHeight) / 2;
         SetVerticalOffset(targetY);
 
-        double caretX = _gutterWidth + GutterPadding + ColToPixelX(_buffer[line], _caretCol);
+        double caretX = _gutterWidth + GutterPadding + _caretCol * _font.CharWidth;
         double textAreaWidth = _viewport.Width - _gutterWidth - GutterPadding;
         double targetX = caretX - _gutterWidth - GutterPadding - textAreaWidth / 2;
         SetHorizontalOffset(targetX);

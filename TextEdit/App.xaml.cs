@@ -19,7 +19,7 @@ public partial class App : Application
         // Pre-warm monospace font cache at idle priority so it's ready
         // before the user opens settings or the command palette
         Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
-            () => EditorControl.GetMonospaceFonts());
+            () => FontManager.GetMonospaceFonts());
         base.OnStartup(e);
     }
 }
