@@ -347,6 +347,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _caretCol = indent.CaretColBefore;
             InvalidateLineStatesFrom(indent.StartLine);
         }
+        else throw new InvalidOperationException($"Unknown undo entry type: {obj.GetType()}");
 
         ClampCaret();
         _selection.Clear();
@@ -375,6 +376,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _caretCol = indent.CaretColAfter;
             InvalidateLineStatesFrom(indent.StartLine);
         }
+        else throw new InvalidOperationException($"Unknown undo entry type: {obj.GetType()}");
 
         ClampCaret();
         _selection.Clear();
@@ -1571,7 +1573,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     /// </summary>
     public bool ReleaseResources()
     {
-        bool large = _buffer.Count > 10_000 || _undoManager.UndoCount > 50;
+        bool large = _buffer.Count > 10_000;
         _undoManager.Clear();
         _buffer.Clear();
         // TrimExcess releases the backing arrays that Clear() leaves allocated
@@ -1579,7 +1581,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _tokenCache.TrimExcess();
         _lineStates.Clear();
         _lineStates.TrimExcess();
-        _find.Clear();
+        _find.Clear(trimExcess: true);
         _pruneKeys.Clear();
         _pruneKeys.TrimExcess();
         return large;
