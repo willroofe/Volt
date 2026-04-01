@@ -653,13 +653,19 @@ public partial class MainWindow : Window
             SaveTabAs(tab);
             return;
         }
-        tab.SuppressWatcher = true;
+        tab.StopWatching();
         try
         {
             FileHelper.AtomicWriteText(tab.FilePath, tab.Editor.GetContent(), tab.FileEncoding);
-            tab.LastKnownWriteTimeUtc = File.GetLastWriteTimeUtc(tab.FilePath);
         }
-        finally { tab.SuppressWatcher = false; }
+        catch (Exception ex)
+        {
+            tab.StartWatching();
+            MessageBox.Show(this, $"Could not save '{tab.DisplayName}':\n\n{ex.Message}",
+                "Save Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+        tab.StartWatching();
         tab.Editor.MarkClean();
         UpdateTabHeader(tab);
         if (tab == _activeTab) UpdateTitle();
@@ -686,12 +692,18 @@ public partial class MainWindow : Window
         };
         if (dlg.ShowDialog() != true) return;
         tab.FilePath = dlg.FileName;
-        tab.SuppressWatcher = true;
+        tab.StopWatching();
         try
         {
             FileHelper.AtomicWriteText(tab.FilePath, tab.Editor.GetContent(), tab.FileEncoding);
         }
-        finally { tab.SuppressWatcher = false; }
+        catch (Exception ex)
+        {
+            tab.StartWatching();
+            MessageBox.Show(this, $"Could not save '{tab.DisplayName}':\n\n{ex.Message}",
+                "Save Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
         tab.StartWatching();
         tab.Editor.MarkClean();
         UpdateTabHeader(tab);

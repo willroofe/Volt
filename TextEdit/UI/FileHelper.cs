@@ -51,7 +51,22 @@ internal static class FileHelper
         try
         {
             File.WriteAllText(tempPath, content, encoding);
-            File.Move(tempPath, path, overwrite: true);
+            for (int attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    File.Move(tempPath, path, overwrite: true);
+                    return;
+                }
+                catch (UnauthorizedAccessException) when (attempt < 3)
+                {
+                    Thread.Sleep(50);
+                }
+                catch (IOException) when (attempt < 3)
+                {
+                    Thread.Sleep(50);
+                }
+            }
         }
         catch
         {
