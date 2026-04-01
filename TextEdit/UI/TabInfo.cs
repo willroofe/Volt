@@ -18,9 +18,6 @@ public class TabInfo
     /// <summary>Tracks the last write time when we loaded or saved the file, to detect external changes.</summary>
     public DateTime LastKnownWriteTimeUtc { get; set; }
 
-    /// <summary>Set to true while we are saving, to suppress our own FileSystemWatcher events.</summary>
-    public bool SuppressWatcher { get; set; }
-
     /// <summary>Guards against re-entrant external change handling (MessageBox pumps messages).</summary>
     public bool IsHandlingExternalChange { get; set; }
 
@@ -77,7 +74,6 @@ public class TabInfo
 
     private void OnWatcherChanged(object sender, FileSystemEventArgs e)
     {
-        if (SuppressWatcher) return;
         Application.Current?.Dispatcher?.BeginInvoke(() => FileChangedExternally?.Invoke(this));
     }
 }
