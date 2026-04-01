@@ -1676,11 +1676,19 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     //  IScrollInfo
     // ──────────────────────────────────────────────────────────────────
-    private const double MinScrollThumbFraction = 0.05;
-    public double ExtentWidth => _extent.Width;
-    public double ExtentHeight => _extent.Height;
-    public double ViewportWidth => Math.Max(_viewport.Width, _extent.Width * MinScrollThumbFraction);
-    public double ViewportHeight => Math.Max(_viewport.Height, _extent.Height * MinScrollThumbFraction);
+    private const double MinThumbFraction = 0.05;
+    private double ThumbPadding(double extent, double viewport)
+    {
+        // If the viewport is already >= the minimum fraction of the extent, no padding needed.
+        double minViewport = extent * MinThumbFraction;
+        return viewport >= minViewport ? 0 : minViewport - viewport;
+    }
+    // Extent and Viewport are inflated by the same amount so the scrollable range
+    // (Extent - Viewport) stays correct while the thumb stays a usable size.
+    public double ExtentWidth => _extent.Width + ThumbPadding(_extent.Width, _viewport.Width);
+    public double ExtentHeight => _extent.Height + ThumbPadding(_extent.Height, _viewport.Height);
+    public double ViewportWidth => _viewport.Width + ThumbPadding(_extent.Width, _viewport.Width);
+    public double ViewportHeight => _viewport.Height + ThumbPadding(_extent.Height, _viewport.Height);
     public double HorizontalOffset => _offset.X;
     public double VerticalOffset => _offset.Y;
 
