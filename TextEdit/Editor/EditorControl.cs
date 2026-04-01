@@ -1574,9 +1574,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
         bool large = _buffer.Count > 10_000 || _undoManager.UndoCount > 50;
         _undoManager.Clear();
         _buffer.Clear();
+        // TrimExcess releases the backing arrays that Clear() leaves allocated
         _tokenCache.Clear();
+        _tokenCache.TrimExcess();
         _lineStates.Clear();
+        _lineStates.TrimExcess();
         _find.Clear();
+        _pruneKeys.Clear();
+        _pruneKeys.TrimExcess();
         return large;
     }
 
