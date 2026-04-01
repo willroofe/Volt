@@ -59,15 +59,15 @@ Unified JSON-based theming — one theme file controls everything (editor, chrom
 
 **SyntaxManager** (`Editor/SyntaxManager.cs`) — instance class owned by `App`, accessed via `App.Current.SyntaxManager`:
 - Loads grammar JSON from `%AppData%/TextEdit/Grammars/`
-- `Tokenize(line, LineState, out LineState)` — first-match-wins regex rules with multi-line string state tracking
-- Post-processes double-quoted strings for interpolated variables and escape sequences
+- `Tokenize(line, LineState, out LineState)` — orchestrator that delegates to phase-specific private methods (block comments, heredocs, regex continuation, string continuation, grammar rules, post-rule detection). First-match-wins regex rules with multi-line string state tracking.
+- Post-processes double-quoted strings for interpolated variables and escape sequences via `ExpandInterpolation`
 - EditorControl maintains `List<LineState>` with convergence optimization — revalidation stops early when output state matches cached value
 
 **Adding a new language**: Drop a JSON file in `%AppData%/TextEdit/Grammars/` with `name`, `extensions`, and `rules`.
 
 ### MainWindow (`UI/MainWindow.xaml` + `.cs`)
 
-UI shell (~860 lines) with tab management, file I/O, settings, and keyboard shortcuts. Delegates to:
+UI shell (~830 lines) with tab management, file I/O, settings, and keyboard shortcuts. Delegates to:
 - **FileHelper** (`UI/FileHelper.cs`) — `AtomicWriteText`, `DetectEncoding`, file type name lookup
 - **CommandPaletteCommands** (`UI/CommandPaletteCommands.cs`) — builds command list with preview/commit/revert lambdas
 - **DwmHelper** (`UI/DwmHelper.cs`) — DWM window attribute management
@@ -76,7 +76,7 @@ UI shell (~860 lines) with tab management, file I/O, settings, and keyboard shor
 
 - **Owns** `ThemeManager` and `SyntaxManager` as instance properties, accessed via typed `App.Current` accessor
 - **Startup order**: `ThemeManager.Initialize()` → `SyntaxManager.Initialize()` → `AppSettings.Load()` → `ThemeManager.Apply()` → async monospace font cache warm-up at idle priority
-- **App.xaml** defines: default `SolidColorBrush` resources (overwritten by `ThemeManager`), custom `ScrollBar`/`ThemedScrollViewer` styles, shared FindBar/CommandPalette styles
+- **App.xaml** defines: default `SolidColorBrush` resources (overwritten by `ThemeManager`), custom `ScrollBar`/`ThemedScrollViewer` styles, `TabCloseButton` style, shared FindBar/CommandPalette styles
 
 ## Key Design Rules
 
