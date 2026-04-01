@@ -136,14 +136,14 @@ public class SyntaxManager
             if (rule.CompiledRegex == null) continue;
 
             MatchCollection matches;
-            try { matches = rule.CompiledRegex.Matches(line); }
+            try { matches = rule.CompiledRegex.Matches(line, ruleStart); }
             catch (RegexMatchTimeoutException) { continue; }
 
             try
             {
                 foreach (Match match in matches)
                 {
-                    if (match.Length == 0 || match.Index < ruleStart) continue;
+                    if (match.Length == 0) continue;
                     candidates.Add((r, match.Index, match.Length, rule.Scope));
                 }
             }
