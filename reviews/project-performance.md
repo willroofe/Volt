@@ -8,7 +8,7 @@
 
 ## SIGNIFICANT
 
-### FontManager.cs -- `DrawGlyphRun` allocates two arrays per call (lines 100-101)
+### ~~FontManager.cs -- `DrawGlyphRun` allocates two arrays per call (lines 100-101)~~ ADDRESSED
 
 Every call to `DrawGlyphRun` allocates `ushort[length]` and `double[length]` for glyph indices and advance widths. This method is called **per-token per-line** in the render loop, meaning a typical frame rendering ~80 visible lines with ~5 tokens each produces ~400+ array allocations. GC pressure from short-lived arrays in a hot rendering path is a known WPF performance concern.
 
@@ -42,7 +42,7 @@ public void DrawGlyphRun(DrawingContext dc, string text, int startIndex, int len
 }
 ```
 
-Better yet, since this is a **monospace** editor where every advance width is `CharWidth`, pass `null` for `advanceWidths` and set a single advance width on the `GlyphRun` — this eliminates one of the two allocations entirely. Additionally, for lines where every character maps to the same glyph index pattern, caching could eliminate the glyph lookup loop. Investigate whether `GlyphRun` accepts a shared/cached array reference.
+~~Implemented: Cached a uniform `double[]` advance widths array (pre-filled with `CharWidth`) and pass it to `GlyphRun` via `ArraySegment<double>` — eliminates the `double[]` allocation entirely. Benchmark result: per-frame allocation dropped from 184 KB to 137 KB (-25%), with individual token allocation dropping up to 71% (5,600 B to 1,608 B for 500-char lines).~~
 
 ---
 
@@ -82,9 +82,11 @@ foreach (Match match in rule.CompiledRegex.Matches(line, ruleStart))
 
 This reduces per-rule work from O(n) `Match()` calls to a single `Matches()` call. The comment at line 161 says advancing-by-1 is needed for overlapping matches, but since the claiming pass is greedy (first-match-at-position wins), overlapping candidates from the same rule at offsets +1, +2, etc. are always discarded. Verify by testing with the Perl grammar.
 
+**Benchmark result:** Switching to `Matches()` was a **net regression** — the `MatchCollection` + enumerator overhead per rule (×20 rules) outweighed the reduced match count. Simple line went from 3.8 us / 1.44 KB to 4.5 us / 4.53 KB. Change was reverted. The existing `Match()` loop is the better approach for this workload.
+
 ---
 
-### SyntaxManager.cs -- `DetectUnclosedString` allocates a second `bool[line.Length]` array (line 254)
+### ~~SyntaxManager.cs -- `DetectUnclosedString` allocates a second `bool[line.Length]` array (line 254)~~ ADDRESSED
 
 `DetectUnclosedString` creates its own `tokenized[]` array from the token list, duplicating work already done by the `claimed[]` array in the calling `Tokenize` method. The `claimed[]` array tracks exactly which positions are covered by tokens.
 
@@ -100,14 +102,7 @@ private static LineState DetectUnclosedString(string line, List<SyntaxToken> tok
 
 **Impact:** MODERATE. This allocates a `bool[]` + fills it in O(n) for every line tokenized. Not a bottleneck alone, but it compounds with the per-line overhead in `Tokenize` (which already allocates `claimed[]`).
 
-**Suggested fix:** Pass the `claimed[]` array into `DetectUnclosedStringAtEOL`/`DetectUnclosedString` instead of reconstructing it:
-
-```csharp
-private static LineState DetectUnclosedString(string line, bool[] claimed)
-{
-    // Use claimed[] directly instead of rebuilding from tokens
-}
-```
+~~Implemented: Changed `DetectUnclosedString` to accept `bool[] claimed` directly instead of `List<SyntaxToken> tokens`. Eliminates the `bool[line.Length]` allocation and O(tokens) fill loop. Benchmark result: small allocation reduction per line (1.44 KB to 1.38 KB on simple lines, 54.09 KB to 53.41 KB on long lines).~~
 
 ---
 
@@ -339,9 +334,9 @@ The main performance liabilities are allocation-heavy patterns in the hottest pa
 
 ### Top 3 Highest-Impact Changes
 
-1. **Pool/optimize `DrawGlyphRun` arrays** — This is the highest-frequency allocation in the codebase. Hundreds of short-lived `ushort[]` and `double[]` arrays per render frame create steady GC pressure. For the monospace case, the advance widths array is always uniform and could potentially be shared or eliminated.
+1. ~~**Pool/optimize `DrawGlyphRun` arrays**~~ **DONE** — Cached uniform advance widths via `ArraySegment<double>`, eliminating one of two per-call allocations. Per-frame allocation: 184 KB -> 137 KB (-25%). Individual 500-char calls: 5,600 B -> 1,608 B (-71%).
 
-2. **Switch `ApplyGrammarRules` from advancing `Match()` to `Matches()`** — This would reduce per-rule regex invocations from O(n) to O(1) per rule per line, roughly halving the tokenization cost on complex grammars.
+2. **~~Switch `ApplyGrammarRules` from advancing `Match()` to `Matches()`~~** **REVERTED** — Benchmarking showed `Matches()` adds `MatchCollection` + enumerator overhead per rule that outweighs the benefit. The existing `Match()` loop is faster for this workload.
 
 3. **Cache-check in `IsCaretInsideString` before re-tokenizing** — Avoids re-tokenizing the current line on every keystroke when the token cache already has the answer. One-line fix with immediate benefit.
 
