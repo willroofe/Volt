@@ -18,7 +18,7 @@
   },
   "interpolation": {
     "quotes": "\"",
-    "variablePattern": "(?<!\\\\)[\\$@](?:\\{[\\w:]+\\}|[\\w:]+)",
+    "variablePattern": "(?<!\\\\)[\\$@](?:\\{\\w+\\}|\\w+)",
     "escapePattern": "\\\\(?:[abefnrt\\\\'\"]|0[0-7]*|x[0-9a-fA-F]{1,2}|u[0-9a-fA-F]{4}|N\\{[^}]+\\}|.)"
   },
   "rules": [
@@ -47,7 +47,7 @@
       "scope": "function"
     },
     {
-      "pattern": "&\\w[\\w:]*",
+      "pattern": "&\\w+",
       "scope": "function"
     },
     {
@@ -59,11 +59,23 @@
       "scope": "type"
     },
     {
-      "pattern": "(?<=\\b(?:use|no|require|package)\\s)\\w+(?:::\\w+)*",
+      "pattern": "(?<=\\b(?:use|no|require|package)\\s)\\w+",
       "scope": "type"
     },
     {
       "pattern": "\\b\\w+(?=::)",
+      "scope": "type"
+    },
+    {
+      "pattern": "(?<=&\\w{1,100}::)\\w+",
+      "scope": "function"
+    },
+    {
+      "pattern": "(?<=[\\$@%]\\w{1,100}::)\\w+",
+      "scope": "function"
+    },
+    {
+      "pattern": "(?<=::)\\w+",
       "scope": "type"
     },
     {
@@ -79,11 +91,11 @@
       "scope": "hashkey"
     },
     {
-      "pattern": "\\$(?:#[\\w:]+|\\{[\\w:]+\\}|[\\w:]+|\\d+|[\"'\\\\/$;!@&`+\\-\\[\\]<>?^~])",
+      "pattern": "\\$(?:#\\w+|\\{\\w+\\}|\\w+|\\d+|[\"'\\\\/$;!@&`+\\-\\[\\]<>?^~])",
       "scope": "variable"
     },
     {
-      "pattern": "[@%](?:\\{[\\w:]+\\}|[\\w:]+)",
+      "pattern": "[@%](?:\\{\\w+\\}|\\w+)",
       "scope": "variable"
     },
     {
