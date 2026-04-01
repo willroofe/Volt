@@ -661,36 +661,7 @@ public partial class MainWindow : Window
         var ext = _activeTab.FilePath != null ? Path.GetExtension(_activeTab.FilePath).ToLowerInvariant() : "";
         SyntaxManager.SetLanguageByExtension(ext);
         Editor.InvalidateSyntax();
-        var fileType = ext switch
-        {
-            ".txt" => "Plain Text",
-            ".cs" => "C# Source",
-            ".pl" or ".cgi" => "Perl Script",
-            ".py" => "Python Script",
-            ".js" => "JavaScript",
-            ".ts" => "TypeScript",
-            ".json" => "JSON",
-            ".xml" => "XML Document",
-            ".xaml" => "XAML Document",
-            ".html" or ".htm" => "HTML Document",
-            ".css" => "CSS Stylesheet",
-            ".md" => "Markdown",
-            ".yml" or ".yaml" => "YAML",
-            ".sql" => "SQL",
-            ".sh" or ".bash" => "Shell Script",
-            ".bat" or ".cmd" => "Batch File",
-            ".ps1" => "PowerShell Script",
-            ".cpp" or ".cc" or ".cxx" => "C++ Source",
-            ".c" => "C Source",
-            ".h" => "C/C++ Header",
-            ".java" => "Java Source",
-            ".rb" => "Ruby Script",
-            ".go" => "Go Source",
-            ".rs" => "Rust Source",
-            ".ini" or ".cfg" => "Configuration File",
-            ".log" => "Log File",
-            _ => "Plain Text"
-        };
+        var fileType = FileTypeNames.GetValueOrDefault(ext, "Plain Text");
         FileTypeText.Text = $"{fileType} ({GetEncodingLabel()}, {Editor.LineEnding})";
     }
 
@@ -765,12 +736,7 @@ public partial class MainWindow : Window
         ActivateTab(tab);
     }
 
-    private void OnNew(object sender, RoutedEventArgs e)
-    {
-        // Ctrl+N creates a new tab
-        var tab = CreateTab();
-        ActivateTab(tab);
-    }
+    private void OnNew(object sender, RoutedEventArgs e) => OnNewTab(sender, e);
 
     private void OnOpen(object sender, RoutedEventArgs e)
     {
@@ -817,6 +783,36 @@ public partial class MainWindow : Window
 
     private static readonly string[] SaveFilters =
         ["Text Files (*.txt)|*.txt", "Perl Files (*.pl)|*.pl", "All Files (*.*)|*.*"];
+
+    private static readonly Dictionary<string, string> FileTypeNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".txt"] = "Plain Text",
+        [".cs"] = "C# Source",
+        [".pl"] = "Perl Script", [".cgi"] = "Perl Script",
+        [".py"] = "Python Script",
+        [".js"] = "JavaScript",
+        [".ts"] = "TypeScript",
+        [".json"] = "JSON",
+        [".xml"] = "XML Document",
+        [".xaml"] = "XAML Document",
+        [".html"] = "HTML Document", [".htm"] = "HTML Document",
+        [".css"] = "CSS Stylesheet",
+        [".md"] = "Markdown",
+        [".yml"] = "YAML", [".yaml"] = "YAML",
+        [".sql"] = "SQL",
+        [".sh"] = "Shell Script", [".bash"] = "Shell Script",
+        [".bat"] = "Batch File", [".cmd"] = "Batch File",
+        [".ps1"] = "PowerShell Script",
+        [".cpp"] = "C++ Source", [".cc"] = "C++ Source", [".cxx"] = "C++ Source",
+        [".c"] = "C Source",
+        [".h"] = "C/C++ Header",
+        [".java"] = "Java Source",
+        [".rb"] = "Ruby Script",
+        [".go"] = "Go Source",
+        [".rs"] = "Rust Source",
+        [".ini"] = "Configuration File", [".cfg"] = "Configuration File",
+        [".log"] = "Log File",
+    };
 
     private void OnSaveAs(object sender, RoutedEventArgs e)
     {
