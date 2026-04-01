@@ -286,7 +286,7 @@ public class SyntaxManager
     {
         if (outState.HeredocDelimiter != null || outState.OpenRegexDelimiter != null) return;
 
-        outState = DetectUnclosedString(line, tokens);
+        outState = DetectUnclosedString(line, claimed);
         if (outState.OpenQuote == null) return;
 
         int openPos = FindOpeningQuote(line, claimed, outState.OpenQuote.Value);
@@ -318,19 +318,12 @@ public class SyntaxManager
     }
 
     /// <summary>After tokenizing, check if an unclosed quote remains at end of line.</summary>
-    private static LineState DetectUnclosedString(string line, List<SyntaxToken> tokens)
+    private static LineState DetectUnclosedString(string line, bool[] claimed)
     {
-        // Walk through the line tracking quote state, skipping over tokenized regions
-        // (strings that are fully closed, comments, etc.)
-        var tokenized = new bool[line.Length];
-        foreach (var t in tokens)
-            for (int i = t.Start; i < t.Start + t.Length && i < line.Length; i++)
-                tokenized[i] = true;
-
         char? openQuote = null;
         for (int i = 0; i < line.Length; i++)
         {
-            if (tokenized[i]) continue; // skip positions already handled by regex
+            if (claimed[i]) continue;
             char c = line[i];
             if (c == '\\' && openQuote != null) { i++; continue; }
             if (openQuote == null)

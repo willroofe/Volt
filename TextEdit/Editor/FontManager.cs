@@ -17,6 +17,7 @@ public class FontManager
     private double _fontSize = DefaultFontSize;
     private FontWeight _fontWeight = FontWeights.Normal;
     private double _lineHeightMultiplier = 1.0;
+    private double[] _uniformAdvanceWidths = Array.Empty<double>();
 
     public double CharWidth { get; private set; }
     public double LineHeight { get; private set; }
@@ -88,6 +89,7 @@ public class FontManager
         CharWidth = Math.Round(sample.WidthIncludingTrailingWhitespace * Dpi) / Dpi;
         LineHeight = Math.Round(sample.Height * _lineHeightMultiplier * Dpi) / Dpi;
         GlyphBaseline = sample.Baseline;
+        _uniformAdvanceWidths = Array.Empty<double>();
 
         FontChanged?.Invoke();
     }
@@ -98,19 +100,22 @@ public class FontManager
         if (length <= 0) return;
         var map = _glyphTypeface.CharacterToGlyphMap;
         var glyphIndices = new ushort[length];
-        var advanceWidths = new double[length];
         for (int i = 0; i < length; i++)
         {
             char ch = text[startIndex + i];
             glyphIndices[i] = map.TryGetValue(ch, out var gi) ? gi : (ushort)0;
-            advanceWidths[i] = CharWidth;
+        }
+        if (_uniformAdvanceWidths.Length < length)
+        {
+            _uniformAdvanceWidths = new double[Math.Max(length, 256)];
+            Array.Fill(_uniformAdvanceWidths, CharWidth);
         }
         double snapX = Math.Round(x * Dpi) / Dpi;
         double snapY = Math.Round((y + GlyphBaseline) * Dpi) / Dpi;
         var origin = new Point(snapX, snapY);
         var run = new GlyphRun(
             _glyphTypeface, 0, false, _fontSize, (float)Dpi,
-            glyphIndices, origin, advanceWidths,
+            glyphIndices, origin, new ArraySegment<double>(_uniformAdvanceWidths, 0, length),
             null, null, null, null, null, null);
         dc.DrawGlyphRun(brush, run);
     }
