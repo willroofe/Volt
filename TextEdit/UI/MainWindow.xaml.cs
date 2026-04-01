@@ -35,6 +35,7 @@ public partial class MainWindow : Window
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     private const int DWMWA_CAPTION_COLOR = 35;
     private const int DWMWA_BORDER_COLOR = 34;
+    private const int WM_MOUSEHWHEEL = 0x020E;
 
     public MainWindow()
     {
@@ -53,7 +54,12 @@ public partial class MainWindow : Window
         StateChanged += OnStateChanged;
         Closing += OnWindowClosing;
         ThemeManager.ThemeChanged += (_, _) => ApplyDwmTheme();
-        SourceInitialized += (_, _) => ApplyDwmTheme();
+        SourceInitialized += (_, _) =>
+        {
+            ApplyDwmTheme();
+            if (PresentationSource.FromVisual(this) is HwndSource source)
+                source.AddHook(WndProc);
+        };
     }
 
     private TabInfo CreateTab(string? filePath = null)
@@ -406,6 +412,18 @@ public partial class MainWindow : Window
 
     private void OnActiveDirtyChanged(object? sender, EventArgs e) => UpdateTitle();
     private void OnActiveCaretMoved(object? sender, EventArgs e) => UpdateCaretPos();
+
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WM_MOUSEHWHEEL && _activeTab != null)
+        {
+            int delta = (short)(wParam.ToInt64() >> 16);
+            _activeTab.Editor.SetHorizontalOffset(
+                _activeTab.Editor.HorizontalOffset + delta);
+            handled = true;
+        }
+        return IntPtr.Zero;
+    }
 
     private void ApplyDwmTheme()
     {
