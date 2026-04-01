@@ -35,6 +35,10 @@
       "scope": "keyword"
     },
     {
+      "pattern": "\\b(?:STDERR|STDOUT|STDIN|ARGV|ENV|INC|SIG|TRUE|FALSE)\\b",
+      "scope": "type"
+    },
+    {
       "pattern": "(?<=\\bsub\\s)\\w+",
       "scope": "function"
     },
