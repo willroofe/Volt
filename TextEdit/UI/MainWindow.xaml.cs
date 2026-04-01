@@ -1,6 +1,5 @@
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -29,12 +28,6 @@ public partial class MainWindow : Window
     private ThemeManager ThemeManager => App.Current.ThemeManager;
     private SyntaxManager SyntaxManager => App.Current.SyntaxManager;
 
-    [DllImport("dwmapi.dll", PreserveSig = true)]
-    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
-
-    private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
-    private const int DWMWA_CAPTION_COLOR = 35;
-    private const int DWMWA_BORDER_COLOR = 34;
     private const int WM_MOUSEHWHEEL = 0x020E;
     private const int WM_NCHITTEST = 0x0084;
     private const int HTLEFT = 10;
@@ -519,28 +512,7 @@ public partial class MainWindow : Window
         return IntPtr.Zero;
     }
 
-    private void ApplyDwmTheme()
-    {
-        if (PresentationSource.FromVisual(this) is not HwndSource source) return;
-        var hwnd = source.Handle;
-
-        var bg = ThemeManager.EditorBg as SolidColorBrush;
-        if (bg == null) return;
-        var c = bg.Color;
-        bool isDark = (0.299 * c.R + 0.587 * c.G + 0.114 * c.B) < 128;
-
-        int darkMode = isDark ? 1 : 0;
-        DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
-
-        var chromeBrush = Application.Current.Resources["ThemeChromeBrush"] as SolidColorBrush;
-        if (chromeBrush != null)
-        {
-            var cc = chromeBrush.Color;
-            int colorRef = cc.R | (cc.G << 8) | (cc.B << 16);
-            DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, ref colorRef, sizeof(int));
-            DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, ref colorRef, sizeof(int));
-        }
-    }
+    private void ApplyDwmTheme() => DwmHelper.ApplyTheme(this, ThemeManager);
 
     private void OnStateChanged(object? sender, EventArgs e)
     {
@@ -661,7 +633,7 @@ public partial class MainWindow : Window
         var ext = _activeTab.FilePath != null ? Path.GetExtension(_activeTab.FilePath).ToLowerInvariant() : "";
         SyntaxManager.SetLanguageByExtension(ext);
         Editor.InvalidateSyntax();
-        var fileType = FileTypeNames.GetValueOrDefault(ext, "Plain Text");
+        var fileType = FileHelper.GetFileTypeName(ext);
         FileTypeText.Text = $"{fileType} ({GetEncodingLabel()}, {Editor.LineEnding})";
     }
 
@@ -693,7 +665,7 @@ public partial class MainWindow : Window
             SaveTabAs(tab);
             return;
         }
-        AtomicWriteText(tab.FilePath, tab.Editor.GetContent(), tab.FileEncoding);
+        FileHelper.AtomicWriteText(tab.FilePath, tab.Editor.GetContent(), tab.FileEncoding);
         tab.Editor.MarkClean();
         UpdateTabHeader(tab);
         if (tab == _activeTab) UpdateTitle();
@@ -714,13 +686,13 @@ public partial class MainWindow : Window
         }
         var dlg = new SaveFileDialog
         {
-            Filter = string.Join("|", SaveFilters),
+            Filter = string.Join("|", FileHelper.SaveFilters),
             FilterIndex = filterIndex,
             FileName = tab.FilePath != null ? Path.GetFileName(tab.FilePath) : ""
         };
         if (dlg.ShowDialog() != true) return;
         tab.FilePath = dlg.FileName;
-        AtomicWriteText(tab.FilePath, tab.Editor.GetContent(), tab.FileEncoding);
+        FileHelper.AtomicWriteText(tab.FilePath, tab.Editor.GetContent(), tab.FileEncoding);
         tab.Editor.MarkClean();
         UpdateTabHeader(tab);
         if (tab == _activeTab)
@@ -762,7 +734,7 @@ public partial class MainWindow : Window
             }
 
             tab.FilePath = fileName;
-            tab.FileEncoding = DetectEncoding(fileName);
+            tab.FileEncoding = FileHelper.DetectEncoding(fileName);
             tab.Editor.SetContent(File.ReadAllText(fileName, tab.FileEncoding));
             UpdateTabHeader(tab);
             lastTab = tab;
@@ -781,69 +753,11 @@ public partial class MainWindow : Window
         SaveTab(_activeTab);
     }
 
-    private static readonly string[] SaveFilters =
-        ["Text Files (*.txt)|*.txt", "Perl Files (*.pl)|*.pl", "All Files (*.*)|*.*"];
-
-    private static readonly Dictionary<string, string> FileTypeNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        [".txt"] = "Plain Text",
-        [".cs"] = "C# Source",
-        [".pl"] = "Perl Script", [".cgi"] = "Perl Script",
-        [".py"] = "Python Script",
-        [".js"] = "JavaScript",
-        [".ts"] = "TypeScript",
-        [".json"] = "JSON",
-        [".xml"] = "XML Document",
-        [".xaml"] = "XAML Document",
-        [".html"] = "HTML Document", [".htm"] = "HTML Document",
-        [".css"] = "CSS Stylesheet",
-        [".md"] = "Markdown",
-        [".yml"] = "YAML", [".yaml"] = "YAML",
-        [".sql"] = "SQL",
-        [".sh"] = "Shell Script", [".bash"] = "Shell Script",
-        [".bat"] = "Batch File", [".cmd"] = "Batch File",
-        [".ps1"] = "PowerShell Script",
-        [".cpp"] = "C++ Source", [".cc"] = "C++ Source", [".cxx"] = "C++ Source",
-        [".c"] = "C Source",
-        [".h"] = "C/C++ Header",
-        [".java"] = "Java Source",
-        [".rb"] = "Ruby Script",
-        [".go"] = "Go Source",
-        [".rs"] = "Rust Source",
-        [".ini"] = "Configuration File", [".cfg"] = "Configuration File",
-        [".log"] = "Log File",
-    };
 
     private void OnSaveAs(object sender, RoutedEventArgs e)
     {
         if (_activeTab == null) return;
         SaveTabAs(_activeTab);
-    }
-
-    private static void AtomicWriteText(string path, string content, Encoding encoding)
-    {
-        var dir = Path.GetDirectoryName(path)!;
-        var tempPath = Path.Combine(dir, Path.GetRandomFileName());
-        File.WriteAllText(tempPath, content, encoding);
-        File.Move(tempPath, path, overwrite: true);
-    }
-
-    private static Encoding DetectEncoding(string path)
-    {
-        using var stream = File.OpenRead(path);
-        var bom = new byte[4];
-        int read = stream.Read(bom, 0, 4);
-
-        if (read >= 3 && bom[0] == 0xEF && bom[1] == 0xBB && bom[2] == 0xBF)
-            return new UTF8Encoding(true);
-        if (read >= 2 && bom[0] == 0xFF && bom[1] == 0xFE)
-            return new UnicodeEncoding(false, true);
-        if (read >= 2 && bom[0] == 0xFE && bom[1] == 0xFF)
-            return new UnicodeEncoding(true, true);
-        if (read >= 4 && bom[0] == 0 && bom[1] == 0 && bom[2] == 0xFE && bom[3] == 0xFF)
-            return new UTF32Encoding(true, true);
-
-        return new UTF8Encoding(false);
     }
 
     private void OnSettings(object sender, RoutedEventArgs e)
@@ -938,97 +852,8 @@ public partial class MainWindow : Window
 
     private void OpenCommandPalette()
     {
-        var commands = new List<PaletteCommand>
-        {
-            new("Change Theme", GetOptions: () =>
-            {
-                var original = _settings.Application.ColorTheme;
-                return ThemeManager.GetAvailableThemes().Select(name => new PaletteOption(
-                    name,
-                    ApplyPreview: () => ThemeManager.Apply(name),
-                    Commit: () => { _settings.Application.ColorTheme = name; _settings.Save(); },
-                    Revert: () => ThemeManager.Apply(original)
-                )).ToList();
-            }),
-
-            new("Change Font Size", GetOptions: () =>
-            {
-                var original = Editor.EditorFontSize;
-                return AppSettings.FontSizeOptions.Select(size => new PaletteOption(
-                    size.ToString(),
-                    ApplyPreview: () => { foreach (var t in _tabs) t.Editor.EditorFontSize = size; },
-                    Commit: () => { _settings.Editor.Font.Size = size; _settings.Save(); },
-                    Revert: () => { foreach (var t in _tabs) t.Editor.EditorFontSize = original; }
-                )).ToList();
-            }),
-
-            new("Change Font Family", GetOptions: () =>
-            {
-                var original = Editor.FontFamilyName;
-                return FontManager.GetMonospaceFonts().Select(name => new PaletteOption(
-                    name,
-                    ApplyPreview: () => { foreach (var t in _tabs) t.Editor.FontFamilyName = name; },
-                    Commit: () => { _settings.Editor.Font.Family = name; _settings.Save(); },
-                    Revert: () => { foreach (var t in _tabs) t.Editor.FontFamilyName = original; }
-                )).ToList();
-            }),
-
-            new("Change Font Weight", GetOptions: () =>
-            {
-                var original = Editor.EditorFontWeight;
-                return AppSettings.FontWeightOptions.Select(w => new PaletteOption(
-                    w,
-                    ApplyPreview: () => { foreach (var t in _tabs) t.Editor.EditorFontWeight = w; },
-                    Commit: () => { _settings.Editor.Font.Weight = w; _settings.Save(); },
-                    Revert: () => { foreach (var t in _tabs) t.Editor.EditorFontWeight = original; }
-                )).ToList();
-            }),
-
-            new("Change Line Height", GetOptions: () =>
-            {
-                var original = Editor.LineHeightMultiplier;
-                return AppSettings.LineHeightOptions.Select(lh => new PaletteOption(
-                    lh.ToString("0.0") + "x",
-                    ApplyPreview: () => { foreach (var t in _tabs) t.Editor.LineHeightMultiplier = lh; },
-                    Commit: () => { _settings.Editor.Font.LineHeight = lh; _settings.Save(); },
-                    Revert: () => { foreach (var t in _tabs) t.Editor.LineHeightMultiplier = original; }
-                )).ToList();
-            }),
-
-            new("Change Tab Size", GetOptions: () =>
-            {
-                var original = Editor.TabSize;
-                return AppSettings.TabSizeOptions.Select(size => new PaletteOption(
-                    size.ToString(),
-                    ApplyPreview: () => { foreach (var t in _tabs) { t.Editor.TabSize = size; t.Editor.InvalidateVisual(); } },
-                    Commit: () => { _settings.Editor.TabSize = size; _settings.Save(); },
-                    Revert: () => { foreach (var t in _tabs) { t.Editor.TabSize = original; t.Editor.InvalidateVisual(); } }
-                )).ToList();
-            }),
-
-            new("Toggle Block Caret", Toggle: () =>
-            {
-                _settings.Editor.Caret.BlockCaret = !_settings.Editor.Caret.BlockCaret;
-                foreach (var t in _tabs)
-                {
-                    t.Editor.BlockCaret = _settings.Editor.Caret.BlockCaret;
-                    t.Editor.InvalidateVisual();
-                }
-                _settings.Save();
-            }),
-
-            new("Find Bar Position", GetOptions: () =>
-            {
-                var original = _settings.Editor.Find.BarPosition;
-                return AppSettings.FindBarPositionOptions.Select(pos => new PaletteOption(
-                    pos,
-                    ApplyPreview: () => FindBarControl.SetPosition(pos),
-                    Commit: () => { _settings.Editor.Find.BarPosition = pos; _settings.Save(); },
-                    Revert: () => FindBarControl.SetPosition(original)
-                )).ToList();
-            }),
-        };
-
+        var commands = CommandPaletteCommands.Build(
+            _tabs, _settings, ThemeManager, Editor, FindBarControl, () => _settings.Save());
         CmdPalette.SetCommands(commands);
         CmdPalette.Open();
     }
