@@ -108,7 +108,7 @@ private static LineState DetectUnclosedString(string line, List<SyntaxToken> tok
 
 ## MODERATE
 
-### TextBuffer.cs -- `MaxLineLength` does `_lines.Max(l => l.Length)` via LINQ (line 46)
+### ~~TextBuffer.cs -- `MaxLineLength` does `_lines.Max(l => l.Length)` via LINQ (line 46)~~ ADDRESSED
 
 When `_maxLineLengthDirty` is true, computing the max scans every line. This is O(n) where n = line count. On a 100K-line file this iterates 100K strings. The flag is set by many operations (InsertLine, RemoveAt, JoinWithNext, etc.) and cleared on next access.
 
@@ -128,11 +128,11 @@ for (int i = 0; i < _lines.Count; i++)
 _maxLineLength = max;
 ```
 
-Also consider tracking max incrementally on insert operations. `InsertAt` and `ReplaceAt` already call `NotifyLineChanging`, so the new length could be checked immediately after the mutation.
+~~Implemented: Replaced LINQ `.Max()` with a `for` loop. Benchmark result: 100K lines 227 us -> 86 us (-62%), 1K lines 2.2 us -> 0.66 us (-70%). Zero allocations in both cases.~~
 
 ---
 
-### EditorControl.cs -- `OnRender` iterates ALL find matches to draw highlights (lines 667-681)
+### ~~EditorControl.cs -- `OnRender` iterates ALL find matches to draw highlights (lines 667-681)~~ ADDRESSED
 
 The find match rendering loop checks every match in the document against the visible line range:
 
@@ -161,9 +161,11 @@ for (int m = lo; m < _find.Matches.Count; m++)
 }
 ```
 
+~~Implemented: Binary search to find first visible match, then iterate only until past `lastLine`. O(log n + visible) instead of O(total matches).~~
+
 ---
 
-### EditorControl.cs -- `RenderTextVisual` token cache pruning allocates a key list (lines 788-793)
+### ~~EditorControl.cs -- `RenderTextVisual` token cache pruning allocates a key list (lines 788-793)~~ ADDRESSED
 
 After rendering, the token cache is pruned by collecting keys to remove into a new `List<int>`, then removing them:
 
@@ -187,11 +189,11 @@ _tokenCache.Keys.Where(k => k < pruneBelow || k > pruneAbove)
     .ToList().ForEach(k => _tokenCache.Remove(k));
 ```
 
-Or better, avoid the allocation entirely by swapping to a new dictionary with only the lines we just rendered.
+~~Implemented: Added a reusable `_pruneKeys` list field. The list is cleared and reused each prune, eliminating per-render allocation.~~
 
 ---
 
-### TextBuffer.cs -- `InsertAt`, `DeleteAt`, `ReplaceAt` create intermediate strings via slicing (lines 141-158)
+### ~~TextBuffer.cs -- `InsertAt`, `DeleteAt`, `ReplaceAt` create intermediate strings via slicing (lines 141-158)~~ ADDRESSED
 
 Every character insertion, deletion, or replacement creates 2-3 intermediate string slices that are immediately concatenated:
 
@@ -208,11 +210,11 @@ _lines[line] = _lines[line][..col] + text + _lines[line][col..];
 _lines[line] = string.Concat(_lines[line].AsSpan(0, col), text, _lines[line].AsSpan(col));
 ```
 
-`string.Concat(ReadOnlySpan<char>, ...)` avoids intermediate string allocations. This is a net win for any line length.
+~~Implemented: All three methods now use `string.Concat` with `AsSpan`. Benchmark result: 80-char InsertAt 392 B -> 184 B (-53%), 33 ns -> 15 ns (-56%); 10K-char InsertAt 60 KB -> 40 KB (-33%), 1,920 ns -> 1,265 ns (-34%).~~
 
 ---
 
-### EditorControl.cs -- `IsCaretInsideString` re-tokenizes the current line on every character input (line 369)
+### ~~EditorControl.cs -- `IsCaretInsideString` re-tokenizes the current line on every character input (line 369)~~ ADDRESSED
 
 Each `OnTextInput` call invokes `IsCaretInsideString` which calls `SyntaxManager.Tokenize(line, inState, out _)`. This re-tokenizes the current line even though the render loop will tokenize it again moments later.
 
@@ -242,6 +244,8 @@ private bool IsCaretInsideString(string line, int caretCol)
     ...
 }
 ```
+
+~~Implemented: Check `_tokenCache` for a valid cached entry before calling `SyntaxManager.Tokenize`. Avoids redundant tokenization on every keystroke when the cache has the answer from the most recent render.~~
 
 ---
 
