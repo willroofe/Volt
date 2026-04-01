@@ -308,8 +308,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private (int start, int end) GetEditRange()
     {
         if (!_selection.HasSelection) return (_caretLine, _caretLine);
-        var (s, _, e2, _) = _selection.GetOrdered(_caretLine, _caretCol);
-        return (s, e2);
+        var (sl, _, el, _) = _selection.GetOrdered(_caretLine, _caretCol);
+        return (sl, el);
     }
 
     private void DeleteSelectionIfPresent()

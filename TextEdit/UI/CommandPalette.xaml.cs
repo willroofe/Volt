@@ -25,7 +25,7 @@ public partial class CommandPalette : UserControl
 
         IsVisibleChanged += (_, _) =>
         {
-            if (IsVisible) Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => { if (_input != null) Keyboard.Focus(_input); });
+            if (IsVisible) Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => { if (_filterInput != null) Keyboard.Focus(_filterInput); });
         };
     }
 
@@ -39,12 +39,12 @@ public partial class CommandPalette : UserControl
         _currentOptions = null;
         _activeCommand = null;
         _prefixText = "";
-        _prefix.Text = "";
-        _input.Text = "";
+        _filterPrefix.Text = "";
+        _filterInput.Text = "";
         _selectedIndex = -1;
         Visibility = Visibility.Visible;
         RefreshList();
-        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => Keyboard.Focus(_input));
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => Keyboard.Focus(_filterInput));
     }
 
     public void Cancel()
@@ -56,8 +56,8 @@ public partial class CommandPalette : UserControl
             _currentOptions = null;
             _activeCommand = null;
             _prefixText = "";
-            _prefix.Text = "";
-            _input.Text = "";
+            _filterPrefix.Text = "";
+            _filterInput.Text = "";
             _selectedIndex = -1;
             RefreshList();
             return;
@@ -87,7 +87,7 @@ public partial class CommandPalette : UserControl
         _selectedIndex = -1;
         RefreshList();
         // Auto-select first item
-        if (_list.Items.Count > 0)
+        if (_commandList.Items.Count > 0)
         {
             _selectedIndex = 0;
             UpdateListSelection();
@@ -121,7 +121,7 @@ public partial class CommandPalette : UserControl
                 break;
 
             case Key.Back:
-                if (_input.Text.Length == 0 && _currentOptions != null)
+                if (_filterInput.Text.Length == 0 && _currentOptions != null)
                 {
                     Cancel(); // go back to top-level
                     e.Handled = true;
@@ -135,7 +135,7 @@ public partial class CommandPalette : UserControl
 
     private void MoveSelection(int delta)
     {
-        int count = _list.Items.Count;
+        int count = _commandList.Items.Count;
         if (count == 0) return;
 
         // Revert current preview before moving
@@ -185,12 +185,12 @@ public partial class CommandPalette : UserControl
                 _activeCommand = cmd;
                 _currentOptions = cmd.GetOptions();
                 _prefixText = cmd.Name + ": ";
-                _prefix.Text = _prefixText;
-                _input.Text = "";
+                _filterPrefix.Text = _prefixText;
+                _filterInput.Text = "";
                 _selectedIndex = -1;
                 RefreshList();
                 // Auto-select first
-                if (_list.Items.Count > 0)
+                if (_commandList.Items.Count > 0)
                 {
                     _selectedIndex = 0;
                     UpdateListSelection();
@@ -211,7 +211,7 @@ public partial class CommandPalette : UserControl
 
     private List<PaletteCommand> GetFilteredCommands()
     {
-        var filter = _input.Text.Trim();
+        var filter = _filterInput.Text.Trim();
         if (string.IsNullOrEmpty(filter)) return _commands;
         return _commands.Where(c => c.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();
     }
@@ -219,21 +219,21 @@ public partial class CommandPalette : UserControl
     private List<PaletteOption> GetFilteredOptions()
     {
         if (_currentOptions == null) return [];
-        var filter = _input.Text.Trim();
+        var filter = _filterInput.Text.Trim();
         if (string.IsNullOrEmpty(filter)) return _currentOptions;
         return _currentOptions.Where(o => o.Label.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();
     }
 
     private void RefreshList()
     {
-        _list.Items.Clear();
-        var filter = _input.Text.Trim();
+        _commandList.Items.Clear();
+        var filter = _filterInput.Text.Trim();
         bool belowThreshold = _currentOptions == null && filter.Length < 3;
 
         if (belowThreshold)
         {
             // Not enough characters — show placeholder instead of list
-            _list.Visibility = Visibility.Collapsed;
+            _commandList.Visibility = Visibility.Collapsed;
             _noResults.Visibility = Visibility.Collapsed;
             _placeholder.Visibility = Visibility.Visible;
             return;
@@ -246,7 +246,7 @@ public partial class CommandPalette : UserControl
             foreach (var cmd in GetFilteredCommands())
             {
                 var item = MakeListItem(cmd.Name);
-                _list.Items.Add(item);
+                _commandList.Items.Add(item);
             }
         }
         else
@@ -254,15 +254,15 @@ public partial class CommandPalette : UserControl
             foreach (var opt in GetFilteredOptions())
             {
                 var item = MakeListItem(opt.Label);
-                _list.Items.Add(item);
+                _commandList.Items.Add(item);
             }
         }
 
-        bool empty = _list.Items.Count == 0 && filter.Length > 0;
+        bool empty = _commandList.Items.Count == 0 && filter.Length > 0;
         _noResults.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
-        _list.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+        _commandList.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
 
-        if (_selectedIndex >= 0 && _selectedIndex < _list.Items.Count)
+        if (_selectedIndex >= 0 && _selectedIndex < _commandList.Items.Count)
             UpdateListSelection();
     }
 
@@ -289,7 +289,7 @@ public partial class CommandPalette : UserControl
         // Mouse click to select
         item.MouseLeftButtonUp += (_, _) =>
         {
-            _selectedIndex = _list.Items.IndexOf(item);
+            _selectedIndex = _commandList.Items.IndexOf(item);
             UpdateListSelection();
             Confirm();
         };
@@ -297,7 +297,7 @@ public partial class CommandPalette : UserControl
         // Mouse hover highlight
         item.MouseEnter += (_, _) =>
         {
-            var idx = _list.Items.IndexOf(item);
+            var idx = _commandList.Items.IndexOf(item);
             if (idx == _selectedIndex) return;
 
             // Revert old preview
@@ -320,9 +320,9 @@ public partial class CommandPalette : UserControl
 
     private void UpdateListSelection()
     {
-        for (int i = 0; i < _list.Items.Count; i++)
+        for (int i = 0; i < _commandList.Items.Count; i++)
         {
-            var item = (ListBoxItem)_list.Items[i];
+            var item = (ListBoxItem)_commandList.Items[i];
             if (i == _selectedIndex)
             {
                 item.SetResourceReference(ListBoxItem.BackgroundProperty, "ThemeMenuItemHover");

@@ -27,13 +27,13 @@
                 <!-- Input area -->
                 <Border Background="{DynamicResource ThemeContentBg}">
                     <DockPanel Margin="10,8,10,8">
-                        <TextBlock x:Name="_prefix"
+                        <TextBlock x:Name="_filterPrefix"
                                    DockPanel.Dock="Left"
                                    VerticalAlignment="Center"
                                    FontFamily="Segoe UI"
                                    FontSize="14"
                                    Foreground="{DynamicResource ThemeTextFgMuted}"/>
-                        <TextBox x:Name="_input"
+                        <TextBox x:Name="_filterInput"
                                  BorderThickness="0"
                                  FontFamily="Segoe UI"
                                  FontSize="14"
@@ -50,7 +50,7 @@
                 <Border Height="1" Background="{DynamicResource ThemeMenuPopupBorder}"/>
 
                 <!-- List -->
-                <ListBox x:Name="_list"
+                <ListBox x:Name="_commandList"
                          BorderThickness="0"
                          MaxHeight="320"
                          Padding="0"
