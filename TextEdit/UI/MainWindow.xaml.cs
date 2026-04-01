@@ -57,6 +57,7 @@ public partial class MainWindow : Window
         TabScrollViewer.ScrollChanged += (_, _) => UpdateTabOverflowIndicators();
         StateChanged += OnStateChanged;
         Closing += OnWindowClosing;
+        Activated += (_, _) => CheckAllTabsForExternalChanges();
         ThemeManager.ThemeChanged += (_, _) => { ApplyDwmTheme(); UpdateTabOverflowBrushes(); };
         SourceInitialized += (_, _) =>
         {
@@ -73,6 +74,7 @@ public partial class MainWindow : Window
 
         // Wire up per-tab dirty handler (for tab header updates — lives for the tab's lifetime)
         tab.Editor.DirtyChanged += (_, _) => UpdateTabHeader(tab);
+        tab.FileChangedExternally += OnFileChangedExternally;
 
         tab.HeaderElement = CreateTabHeader(tab);
         TabStrip.Children.Add(tab.HeaderElement);
@@ -171,6 +173,9 @@ public partial class MainWindow : Window
             tab.Editor.CaretMoved -= OnActiveCaretMoved;
             _activeTab = null;
         }
+
+        tab.FileChangedExternally -= OnFileChangedExternally;
+        tab.StopWatching();
 
         // Release undo history and buffer to free memory immediately
         bool wasLarge = tab.Editor.ReleaseResources();
@@ -588,6 +593,9 @@ public partial class MainWindow : Window
 
         _settings.WindowMaximized = WindowState == WindowState.Maximized;
         _settings.Save();
+
+        foreach (var tab in _tabs)
+            tab.StopWatching();
     }
 
     private void UpdateCaretPos()
@@ -645,7 +653,13 @@ public partial class MainWindow : Window
             SaveTabAs(tab);
             return;
         }
-        FileHelper.AtomicWriteText(tab.FilePath, tab.Editor.GetContent(), tab.FileEncoding);
+        tab.SuppressWatcher = true;
+        try
+        {
+            FileHelper.AtomicWriteText(tab.FilePath, tab.Editor.GetContent(), tab.FileEncoding);
+            tab.LastKnownWriteTimeUtc = File.GetLastWriteTimeUtc(tab.FilePath);
+        }
+        finally { tab.SuppressWatcher = false; }
         tab.Editor.MarkClean();
         UpdateTabHeader(tab);
         if (tab == _activeTab) UpdateTitle();
@@ -672,13 +686,75 @@ public partial class MainWindow : Window
         };
         if (dlg.ShowDialog() != true) return;
         tab.FilePath = dlg.FileName;
-        FileHelper.AtomicWriteText(tab.FilePath, tab.Editor.GetContent(), tab.FileEncoding);
+        tab.SuppressWatcher = true;
+        try
+        {
+            FileHelper.AtomicWriteText(tab.FilePath, tab.Editor.GetContent(), tab.FileEncoding);
+        }
+        finally { tab.SuppressWatcher = false; }
+        tab.StartWatching();
         tab.Editor.MarkClean();
         UpdateTabHeader(tab);
         if (tab == _activeTab)
         {
             UpdateTitle();
             UpdateFileType();
+        }
+    }
+
+    private void OnFileChangedExternally(TabInfo tab)
+    {
+        if (tab.IsHandlingExternalChange) return;
+        if (tab.FilePath == null || !File.Exists(tab.FilePath)) return;
+
+        var diskTime = File.GetLastWriteTimeUtc(tab.FilePath);
+        if (diskTime <= tab.LastKnownWriteTimeUtc) return;
+
+        tab.IsHandlingExternalChange = true;
+        try
+        {
+            if (tab.Editor.IsDirty)
+            {
+                var result = MessageBox.Show(this,
+                    $"'{tab.DisplayName}' has been modified externally.\n\nDo you want to reload it? Your unsaved changes will be lost.",
+                    "File Changed", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (result != MessageBoxResult.Yes)
+                {
+                    tab.LastKnownWriteTimeUtc = diskTime;
+                    return;
+                }
+            }
+
+            ReloadTabFromDisk(tab);
+        }
+        finally
+        {
+            tab.IsHandlingExternalChange = false;
+        }
+    }
+
+    private void CheckAllTabsForExternalChanges()
+    {
+        foreach (var tab in _tabs.ToList())
+            OnFileChangedExternally(tab);
+    }
+
+    private void ReloadTabFromDisk(TabInfo tab)
+    {
+        if (tab.FilePath == null || !File.Exists(tab.FilePath)) return;
+
+        try
+        {
+            tab.FileEncoding = FileHelper.DetectEncoding(tab.FilePath);
+            tab.Editor.SetContent(File.ReadAllText(tab.FilePath, tab.FileEncoding));
+            tab.LastKnownWriteTimeUtc = File.GetLastWriteTimeUtc(tab.FilePath);
+            tab.Editor.MarkClean();
+            UpdateTabHeader(tab);
+            if (tab == _activeTab) UpdateTitle();
+        }
+        catch (IOException)
+        {
+            // File may still be locked by the writing process; the watcher will fire again
         }
     }
 
@@ -727,6 +803,7 @@ public partial class MainWindow : Window
             tab.FilePath = fileName;
             tab.FileEncoding = FileHelper.DetectEncoding(fileName);
             tab.Editor.SetContent(File.ReadAllText(fileName, tab.FileEncoding));
+            tab.StartWatching();
             UpdateTabHeader(tab);
             lastTab = tab;
         }
