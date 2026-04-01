@@ -48,9 +48,10 @@ public class FindManager
         }
     }
 
-    public void Clear()
+    public void Clear(bool trimExcess = false)
     {
         _matches.Clear();
+        if (trimExcess) _matches.TrimExcess();
         _currentIndex = -1;
     }
 
