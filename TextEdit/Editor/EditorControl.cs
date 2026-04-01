@@ -1659,10 +1659,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     //  IScrollInfo
     // ──────────────────────────────────────────────────────────────────
+    private const double MinScrollThumbFraction = 0.05;
     public double ExtentWidth => _extent.Width;
     public double ExtentHeight => _extent.Height;
-    public double ViewportWidth => _viewport.Width;
-    public double ViewportHeight => _viewport.Height;
+    public double ViewportWidth => Math.Max(_viewport.Width, _extent.Width * MinScrollThumbFraction);
+    public double ViewportHeight => Math.Max(_viewport.Height, _extent.Height * MinScrollThumbFraction);
     public double HorizontalOffset => _offset.X;
     public double VerticalOffset => _offset.Y;
 
