@@ -151,77 +151,35 @@ Resolved by the FindManager extraction. `SetContent` now calls `_find.Clear()` w
 
 ## STYLE
 
-### Inconsistent variable naming in destructured tuples
+### ~~Inconsistent variable naming in destructured tuples~~ ADDRESSED
 
-Some destructuring uses meaningful names, others use discards inconsistently:
+Standardized all `GetOrdered` destructuring to `(sl, sc, el, ec)` or `(sl, _, el, _)` convention. The `(s, _, e2, _)` form in `GetEditRange()` was the last outlier.
 
-```csharp
-// EditorControl.cs:1158 -- uses e2 for end line
-var (s, _, e2, _) = _selection.GetOrdered(_caretLine, _caretCol);
-
-// EditorControl.cs:1604 -- uses el for the same concept
-var (sl, _, el, _) = _selection.GetOrdered(_caretLine, _caretCol);
-
-// EditorControl.cs:858 -- uses full names
-var (sl, sc, el, ec) = _selection.GetOrdered(_caretLine, _caretCol);
-```
-
-Pick one convention and use it consistently. The `(sl, sc, el, ec)` form is clearest.
-
-**Rating:** STYLE
+~~**Rating:** STYLE~~
 
 ---
 
-### Inconsistent event handler naming
+### ~~Inconsistent event handler naming~~ ADDRESSED
 
-Some handlers use `On` prefix, others don't:
+`CloseTab(TabInfo)` and `StepFontSize(int)` are business logic methods (no `(sender, args)` signature) called BY event handlers, not event handlers themselves. The `On` prefix is correctly reserved for methods with the event handler signature. Naming is already consistent.
 
-```csharp
-// MainWindow.xaml.cs
-private void OnNew(...)          // On-prefix
-private void OnOpen(...)         // On-prefix
-private void CloseTab(...)       // no prefix (also an event handler via click)
-private void OnSettings(...)     // On-prefix
-private void StepFontSize(...)   // no prefix (called from OnKeyDown)
-```
-
-Methods that are direct event handlers should consistently use `On` prefix to distinguish them from business logic methods.
-
-**Rating:** STYLE
+~~**Rating:** STYLE~~
 
 ---
 
-### Inconsistent brace style for single-line methods
+### ~~Inconsistent brace style for single-line methods~~ ADDRESSED
 
-```csharp
-// EditorControl.cs:34 -- expression body
-public int TabSize { get; set; } = 4;
+Resolved during the FontManager extraction. `FontFamilyName` setter now uses expression body (`set => Apply(...)`) consistent with the rest of the codebase.
 
-// EditorControl.cs:102-106 -- block body for simple property
-public string FontFamilyName
-{
-    get => _monoTypeface.FontFamily.Source;
-    set { ApplyFont(value, _fontSize, _fontWeight); }
-}
-```
-
-The codebase generally uses expression bodies for simple members but occasionally mixes in block bodies. This is minor but slightly inconsistent.
-
-**Rating:** STYLE
+~~**Rating:** STYLE~~
 
 ---
 
-### CommandPalette.xaml.cs -- `_input`, `_list`, `_prefix` field names lack descriptive prefix
+### ~~CommandPalette.xaml.cs -- `_input`, `_list`, `_prefix` field names lack descriptive prefix~~ ADDRESSED
 
-```csharp
-// CommandPalette.xaml.cs:43-44
-_prefix.Text = "";
-_input.Text = "";
-```
+Renamed XAML `x:Name` references and corresponding C# fields: `_input` → `_filterInput`, `_list` → `_commandList`, `_prefix` → `_filterPrefix`.
 
-These are XAML `x:Name` references. The underscore prefix is good, but `_input` is extremely generic. `_searchInput` or `_filterInput` would be clearer when reading the C# code in isolation. (This is more of a XAML naming concern.)
-
-**Rating:** STYLE
+~~**Rating:** STYLE~~
 
 ---
 
