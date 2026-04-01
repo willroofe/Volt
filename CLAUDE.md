@@ -19,7 +19,7 @@ No test framework is configured. The running app must be closed before rebuildin
 
 **Single-project solution** with one WPF application project (`TextEdit/`), organized into subdirectories:
 
-- **Editor/** — `EditorControl.cs`, `TextBuffer.cs`, `UndoManager.cs`, `SelectionManager.cs`, `SyntaxManager.cs`, `SyntaxDefinition.cs`
+- **Editor/** — `EditorControl.cs`, `TextBuffer.cs`, `UndoManager.cs`, `SelectionManager.cs`, `FontManager.cs`, `FindManager.cs`, `BracketMatcher.cs`, `SyntaxManager.cs`, `SyntaxDefinition.cs`
 - **Theme/** — `ThemeManager.cs`, `ColorTheme.cs`
 - **UI/** — `MainWindow.xaml/.cs`, `CommandPalette.xaml/.cs`, `FindBar.xaml/.cs`, `SettingsWindow.xaml/.cs`
 - **Resources/** — `Themes/` (default-dark.json, default-light.json, gruvbox-dark.json), `Grammars/` (perl.json) — embedded resources extracted to `%AppData%/TextEdit/` on first run
@@ -29,21 +29,41 @@ All classes remain in the `TextEdit` namespace.
 
 ### EditorControl (`Editor/EditorControl.cs`)
 
-The core of the application — a custom `FrameworkElement` implementing `IScrollInfo`. Everything about editing lives here:
+The core of the application (~1,600 lines) — a custom `FrameworkElement` implementing `IScrollInfo`. Delegates to extracted helper classes for font metrics (`FontManager`), find state (`FindManager`), and bracket matching (`BracketMatcher`).
 
 - **Text buffer**: `TextBuffer` class wrapping `List<string>` line-based storage with mutation methods (`InsertAt`, `DeleteAt`, `ReplaceAt`, `JoinWithNext`, `TruncateAt`), dirty tracking, max-line-length caching, and tab expansion
-- **Rendering**: Custom layered rendering via `DrawingContext` — no WPF TextBox/RichTextBox. Uses direct `GlyphRun`/`DrawGlyphRun` calls that bypass the expensive DWrite shaping pipeline (since we use monospace fonts with pre-expanded tabs). Three `DrawingVisual` layers: `_textVisual` (editor text), `_gutterVisual` (line numbers), `_caretVisual` (cursor). `OnRender` itself only draws cheap background rectangles (current line, selection, find matches, bracket highlights). Text is clipped to the area right of the gutter so horizontal scrolling doesn't bleed into line numbers.
+- **Rendering**: Custom layered rendering via `DrawingContext` — no WPF TextBox/RichTextBox. Uses direct `GlyphRun`/`DrawGlyphRun` calls via `FontManager` that bypass the expensive DWrite shaping pipeline (since we use monospace fonts with pre-expanded tabs). Three `DrawingVisual` layers: `_textVisual` (editor text), `_gutterVisual` (line numbers), `_caretVisual` (cursor). `OnRender` itself only draws cheap background rectangles (current line, selection, find matches, bracket highlights). Text is clipped to the area right of the gutter so horizontal scrolling doesn't bleed into line numbers.
 - **Input**: `OnKeyDown` dispatches to handler methods (`HandleReturn`, `HandleBackspace`, `HandleDelete`, `HandleTab`, `HandleNavigation`, `HandleSelectAll`, `HandleCopy`, `HandleCut`, `HandlePaste`). `OnTextInput` for character input. Mouse handlers for click, drag, double-click word selection.
 - **Scrolling**: `IScrollInfo` implementation, hosted inside a `ScrollViewer` with a custom `ThemedScrollViewer` template (defined in `App.xaml`)
 - **Undo/redo**: Region-based — each `UndoEntry` stores only the affected line range (before/after lines + caret positions). `BeginEdit`/`EndEdit` pattern captures just the changed region. `UndoManager` manages the stacks with a size cap.
 - **Selection**: `SelectionManager` — anchor/caret model with `GetSelectedText`, `DeleteSelection`, `GetOrderedSelection`, and defensive `ClampToBuffer` validation
-- **Font**: Configurable font family (monospace only) and size. Instance fields `_monoTypeface`, `_glyphTypeface`, `_fontSize`, `_charWidth`, `_lineHeight`, `_glyphBaseline` — recomputed via `ApplyFont()`. `ApplyFont` obtains a `GlyphTypeface` for direct GlyphRun rendering (graceful fallback: keeps previous GlyphTypeface if the new font doesn't yield one). `GetMonospaceFonts()` discovers system monospace fonts by comparing `i` vs `M` width.
 - **Caret**: Supports bar and block styles. Block caret draws the character underneath in `EditorBg` color via GlyphRun. Blink rate configurable (0 = off). `ClampCaret()` helper ensures caret stays within buffer bounds.
 - **Colours**: All brush/pen references read from the `ThemeManager` instance property (set by MainWindow). Subscribes to `ThemeManager.ThemeChanged` to `InvalidateVisual()`.
-- **Smart editing**: Auto-close brackets/quotes (suppressed inside strings via `IsCaretInsideString()`), backspace deletes both characters of a pair, smart Enter increases indent after `{`/`(`/`[`, smart backspace snaps to tab stops in leading whitespace.
+- **Smart editing**: Auto-close brackets/quotes (suppressed inside strings via `IsCaretInsideString()`), backspace deletes both characters of a pair, smart Enter increases indent after `{`/`(`/`[`, smart backspace snaps to tab stops in leading whitespace. Bracket pair data lives in `BracketMatcher`.
 - **Performance**: Syntax tokens cached per line index (`_tokenCache`), pruned to a window around the viewport after each render. Text and gutter visuals use a render buffer (±50 lines beyond viewport) — scroll within the buffer is handled by `TranslateTransform` with no re-render. Background line state precomputation via `Dispatcher.BeginInvoke` at idle priority with generation-based cancellation. DPI cached and updated via `OnDpiChanged`. `UpdateExtent` guards against redundant `ScrollOwner.InvalidateScrollInfo()` calls. `OnMouseMove` early-outs when the caret hasn't moved.
-- **Named constants**: `GutterPadding`, `GutterRightMargin`, `GutterSeparatorThickness`, `HorizontalScrollPadding`, `BarCaretWidth`, `DefaultFontSize`, `MouseWheelDeltaUnit`, `ScrollWheelLines`, `RenderBufferLines`, `MaxBracketScanLines`, `PrecomputeBatchSize`
+- **Named constants**: `GutterPadding`, `GutterRightMargin`, `GutterSeparatorThickness`, `HorizontalScrollPadding`, `BarCaretWidth`, `MouseWheelDeltaUnit`, `ScrollWheelLines`, `RenderBufferLines`, `PrecomputeBatchSize`
 - **Public API**: `SetContent(string)`, `GetContent()`, `MarkClean()`, `InvalidateSyntax()`, properties `IsDirty`/`CaretLine`/`CaretCol`/`TabSize`/`BlockCaret`/`CaretBlinkMs`/`FontFamilyName`/`EditorFontSize`/`EditorFontWeight`, events `DirtyChanged`/`CaretMoved`
+
+### Extracted Editor Components
+
+**FontManager** (`Editor/FontManager.cs`) — owns typeface, glyph metrics, DPI, and the monospace font cache:
+- `Apply(familyName, size, weight)` — recomputes `CharWidth`, `LineHeight`, `GlyphBaseline`, fires `FontChanged` event
+- `DrawGlyphRun(dc, text, startIndex, length, x, y, brush)` — pixel-snapped glyph rendering via `GlyphTypeface.CharacterToGlyphMap`
+- `FontFamilyName`, `EditorFontSize`, `EditorFontWeight`, `LineHeightMultiplier` — property setters that call `Apply`
+- `static GetMonospaceFonts()` — cached monospace font discovery (compares `i` vs `M` width)
+- `static DefaultFontFamily()` — returns "Cascadia Code" or "Consolas"
+- Graceful fallback: keeps previous `GlyphTypeface` if the new font doesn't yield one
+
+**FindManager** (`Editor/FindManager.cs`) — owns find/replace match state:
+- `Search(buffer, query, matchCase, caretLine, caretCol)` — populates matches, sets current index
+- `MoveNext()`, `MovePrevious()` — index navigation
+- `GetCurrentMatch()` — returns `(Line, Col, Length)?`
+- `Matches` property (`IReadOnlyList`) for rendering access
+
+**BracketMatcher** (`Editor/BracketMatcher.cs`) — static class with bracket pair data and matching algorithms:
+- `Pairs`, `ClosingBrackets`, `ReversePairs`, `AutoCloseQuotes` — static dictionaries/sets
+- `FindMatch(buffer, caretLine, caretCol)` — returns matching bracket position or null
+- `MaxScanLines = 500` scan limit
 
 ### Theming System
 
