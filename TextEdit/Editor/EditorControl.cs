@@ -13,6 +13,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ── Extracted components ─────────────────────────────────────────
     private readonly TextBuffer _buffer = new();
     private readonly UndoManager _undoManager = new();
+    private int _cleanUndoDepth; // undo stack depth when last marked clean (-1 = unreachable)
     private readonly SelectionManager _selection = new();
 
     // ── Managers (set by MainWindow after construction) ─────────────
@@ -383,9 +384,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
         int lineDelta = _buffer.Count - scope.BufferCount;
         int afterCount = scope.LineCount + lineDelta;
         var after = _buffer.GetLines(scope.StartLine, afterCount);
-        _undoManager.Push(new UndoManager.UndoEntry(
+        bool evicted = _undoManager.Push(new UndoManager.UndoEntry(
             scope.StartLine, scope.Before, after,
             scope.CaretLine, scope.CaretCol, _caretLine, _caretCol));
+        if (evicted && _cleanUndoDepth >= 0)
+            _cleanUndoDepth--;  // -1 means the clean state was evicted and is unreachable
 
         _textVisualDirty = true;
         _bracketMatchDirty = true;
@@ -404,6 +407,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _selection.Clear();
         _bracketMatchDirty = true;
         InvalidateLineStatesFrom(entry.StartLine);
+        _buffer.IsDirty = _undoManager.UndoCount != _cleanUndoDepth;
         UpdateExtent();
         InvalidateText();
     }
@@ -419,6 +423,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _selection.Clear();
         _bracketMatchDirty = true;
         InvalidateLineStatesFrom(entry.StartLine);
+        _buffer.IsDirty = _undoManager.UndoCount != _cleanUndoDepth;
         UpdateExtent();
         InvalidateText();
     }
@@ -1756,6 +1761,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _caretCol = 0;
         _selection.Clear();
         _undoManager.Clear();
+        _cleanUndoDepth = 0;
         _findMatches.Clear();
         _currentMatchIndex = 0;
         _tokenCacheDirty = true;
@@ -1779,6 +1785,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     public void MarkClean()
     {
+        _cleanUndoDepth = _undoManager.UndoCount;
         _buffer.IsDirty = false;
     }
 
