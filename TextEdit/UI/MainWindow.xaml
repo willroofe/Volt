@@ -162,7 +162,7 @@
                     </MenuItem>
                     <MenuItem Header="Save _As..." InputGestureText="Ctrl+Shift+S" Click="OnSaveAs"/>
                     <Separator/>
-                    <MenuItem Header="S_ettings..." Click="OnSettings">
+                    <MenuItem Header="S_ettings..." InputGestureText="Ctrl+Alt+S" Click="OnSettings">
                         <MenuItem.Icon>
                             <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
                         </MenuItem.Icon>
