@@ -14,7 +14,7 @@ No critical findings. The codebase has no issues that fundamentally block mainta
 
 ## MODERATE
 
-### EditorControl.cs (1,924 lines) -- God class / insufficient decomposition
+### ~~EditorControl.cs (1,924 lines) -- God class / insufficient decomposition~~ ADDRESSED
 
 The single largest maintainability concern in the project. `EditorControl` is a ~1,900 line class that owns rendering, input handling, scrolling, undo/redo orchestration, bracket matching, find/replace, caret management, font management, and syntax state tracking. While the `TextBuffer`, `SelectionManager`, and `UndoManager` have been correctly extracted, the remaining surface area makes it difficult to understand, navigate, or safely modify any single concern.
 
@@ -31,62 +31,15 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
 3. **FontManager** -- `ApplyFont`, `GetMonospaceFonts`, `_monoFontCache`, `_monoTypeface`, `_glyphTypeface`, font metrics fields, and `DrawGlyphRun` (lines 102-200, 692-713). Currently interleaved with rendering state.
 
-**Rating:** MODERATE -- not blocking current development, but makes every editor feature change riskier than it needs to be.
+~~**Rating:** MODERATE~~ Extracted `BracketMatcher`, `FindManager`, and `FontManager`. EditorControl reduced from 1,924 to ~1,600 lines.
 
 ---
 
-### MainWindow.xaml.cs (1,039 lines) -- Mixed concerns in window code-behind
+### ~~MainWindow.xaml.cs (1,039 lines) -- Mixed concerns in window code-behind~~ ADDRESSED
 
-`MainWindow` combines window chrome management, tab lifecycle, file I/O, settings orchestration, command palette setup, DWM interop, and keyboard shortcut dispatch. The command palette command definitions alone span 90 lines of lambda closures (lines 943-1038).
+Extracted `DwmHelper` (DWM interop), `FileHelper` (file I/O utilities, file type map, encoding detection), and `CommandPaletteCommands` (90 lines of palette lambdas). `OnNew` delegates to `OnNewTab`. File type switch replaced with `Dictionary` lookup. MainWindow reduced from 1,039 to 860 lines.
 
-```csharp
-// MainWindow.xaml.cs:943-1038
-private void OpenCommandPalette()
-{
-    var commands = new List<PaletteCommand>
-    {
-        new("Change Theme", GetOptions: () => { ... }),
-        new("Change Font Size", GetOptions: () => { ... }),
-        // ... 7 more command definitions with preview/commit/revert lambdas
-    };
-```
-
-**Specific concerns:**
-
-1. **File type detection is hardcoded** (lines 664-693): A 30-entry switch expression mapping extensions to display names duplicates information that could live in grammar definitions or a simple config.
-
-   ```csharp
-   // MainWindow.xaml.cs:664
-   var fileType = ext switch
-   {
-       ".txt" => "Plain Text",
-       ".cs" => "C# Source",
-       ".pl" or ".cgi" => "Perl Script",
-       // ... 25 more entries
-   };
-   ```
-
-2. **`OnNewTab` and `OnNew` are identical** (lines 762-773):
-
-   ```csharp
-   // MainWindow.xaml.cs:762-773
-   private void OnNewTab(object sender, RoutedEventArgs e)
-   {
-       var tab = CreateTab();
-       ActivateTab(tab);
-   }
-
-   private void OnNew(object sender, RoutedEventArgs e)
-   {
-       // Ctrl+N creates a new tab
-       var tab = CreateTab();
-       ActivateTab(tab);
-   }
-   ```
-
-   One should delegate to the other or they should be the same method.
-
-**Rating:** MODERATE -- the file is navigable with section headers, but the mixed concerns make it harder to reason about changes.
+~~**Rating:** MODERATE~~
 
 ---
 
@@ -423,8 +376,10 @@ The main liability is the size of `EditorControl.cs` and `MainWindow.xaml.cs`, w
 
 ### Top 3 Highest-Impact Improvements
 
-1. **Extract FindManager, BracketMatcher, and FontManager from EditorControl** -- This would reduce the class from ~1,900 lines to ~1,100 lines and make each concern independently understandable and testable. Each extraction has clean boundaries and minimal coupling to the rest of the class.
+1. ~~**Extract FindManager, BracketMatcher, and FontManager from EditorControl**~~ **DONE** -- Reduced from ~1,900 to ~1,600 lines. Three extracted classes: `BracketMatcher` (static), `FindManager`, `FontManager`.
 
-2. **Consolidate the repeated edit-handler boilerplate into a shared helper** -- The 6 edit handlers share ~12 lines of identical setup/teardown code. A single `PerformEdit(int startLine, int endLine, Action editBody)` method would eliminate redundancy and ensure consistency (e.g., always calling `UpdateExtent` and `EnsureCaretVisible`).
+2. ~~**Extract DwmHelper, FileHelper, CommandPaletteCommands from MainWindow**~~ **DONE** -- Reduced from 1,039 to 860 lines. DWM interop, file I/O, file type map, and command palette lambdas extracted. `OnNew`/`OnNewTab` deduplication and file type switch → dictionary.
 
-3. **Fix the FindBar toggle-replace duplication** -- This is the most likely source of a near-term bug. `OnToggleReplaceClick` reimplements `SetReplaceVisible` inline instead of calling it, meaning any future styling change to the replace toggle must be made in two places.
+3. **Consolidate the repeated edit-handler boilerplate into a shared helper** -- The 6 edit handlers share ~12 lines of identical setup/teardown code. A single `PerformEdit(int startLine, int endLine, Action editBody)` method would eliminate redundancy and ensure consistency (e.g., always calling `UpdateExtent` and `EnsureCaretVisible`).
+
+4. **Fix the FindBar toggle-replace duplication** -- This is the most likely source of a near-term bug. `OnToggleReplaceClick` reimplements `SetReplaceVisible` inline instead of calling it, meaning any future styling change to the replace toggle must be made in two places.
