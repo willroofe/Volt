@@ -47,13 +47,15 @@ public partial class MainWindow : Window
         ActivateTab(tab);
 
         ApplySettings();
+        UpdateTabOverflowBrushes();
         RestoreWindowPosition();
 
         CmdPalette.Closed += (_, _) => Keyboard.Focus(Editor);
         FindBarControl.Closed += (_, _) => Keyboard.Focus(Editor);
+        TabScrollViewer.ScrollChanged += (_, _) => UpdateTabOverflowIndicators();
         StateChanged += OnStateChanged;
         Closing += OnWindowClosing;
-        ThemeManager.ThemeChanged += (_, _) => ApplyDwmTheme();
+        ThemeManager.ThemeChanged += (_, _) => { ApplyDwmTheme(); UpdateTabOverflowBrushes(); };
         SourceInitialized += (_, _) =>
         {
             ApplyDwmTheme();
@@ -105,8 +107,51 @@ public partial class MainWindow : Window
         UpdateFileType();
         UpdateCaretPos();
         UpdateAllTabHeaders();
+        BringTabIntoView(tab);
 
         Keyboard.Focus(tab.Editor);
+    }
+
+    private void BringTabIntoView(TabInfo tab)
+    {
+        tab.HeaderElement.BringIntoView();
+    }
+
+    private void OnTabScrollViewerMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        TabScrollViewer.ScrollToHorizontalOffset(
+            TabScrollViewer.HorizontalOffset - e.Delta);
+        e.Handled = true;
+    }
+
+    private void UpdateTabOverflowIndicators()
+    {
+        double offset = TabScrollViewer.HorizontalOffset;
+        double scrollable = TabScrollViewer.ScrollableWidth;
+        TabOverflowLeft.Visibility = offset > 1 ? Visibility.Visible : Visibility.Collapsed;
+        TabOverflowRight.Visibility = offset < scrollable - 1 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateTabOverflowBrushes()
+    {
+        var color = (Application.Current.Resources["ThemeTabBarBg"] as SolidColorBrush)?.Color ?? Colors.Black;
+        var transparent = Color.FromArgb(0, color.R, color.G, color.B);
+
+        var leftBrush = new LinearGradientBrush();
+        leftBrush.StartPoint = new Point(0, 0);
+        leftBrush.EndPoint = new Point(1, 0);
+        leftBrush.GradientStops.Add(new GradientStop(color, 0.0));
+        leftBrush.GradientStops.Add(new GradientStop(color, 0.6));
+        leftBrush.GradientStops.Add(new GradientStop(transparent, 1.0));
+        TabOverflowLeft.Background = leftBrush;
+
+        var rightBrush = new LinearGradientBrush();
+        rightBrush.StartPoint = new Point(0, 0);
+        rightBrush.EndPoint = new Point(1, 0);
+        rightBrush.GradientStops.Add(new GradientStop(transparent, 0.0));
+        rightBrush.GradientStops.Add(new GradientStop(color, 0.4));
+        rightBrush.GradientStops.Add(new GradientStop(color, 1.0));
+        TabOverflowRight.Background = rightBrush;
     }
 
     private void CloseTab(TabInfo tab)
@@ -415,12 +460,25 @@ public partial class MainWindow : Window
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == WM_MOUSEHWHEEL && _activeTab != null)
+        if (msg == WM_MOUSEHWHEEL)
         {
             int delta = (short)(wParam.ToInt64() >> 16);
-            _activeTab.Editor.SetHorizontalOffset(
-                _activeTab.Editor.HorizontalOffset + delta);
-            handled = true;
+            var pos = Mouse.GetPosition(TabScrollViewer);
+            bool overTabBar = pos.Y >= 0 && pos.Y <= TabScrollViewer.ActualHeight
+                           && pos.X >= 0 && pos.X <= TabScrollViewer.ActualWidth;
+
+            if (overTabBar)
+            {
+                TabScrollViewer.ScrollToHorizontalOffset(
+                    TabScrollViewer.HorizontalOffset + delta);
+                handled = true;
+            }
+            else if (_activeTab != null)
+            {
+                _activeTab.Editor.SetHorizontalOffset(
+                    _activeTab.Editor.HorizontalOffset + delta);
+                handled = true;
+            }
         }
         return IntPtr.Zero;
     }
