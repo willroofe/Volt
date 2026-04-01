@@ -152,17 +152,22 @@ public class EditorControl : FrameworkElement, IScrollInfo
         InvalidateText();
     }
 
+    /// <summary>Top visible line captured BEFORE font metrics change, used by OnFontChanged.</summary>
+    private int _topLineBeforeFontChange;
+
+    private void OnBeforeFontChanged()
+    {
+        _topLineBeforeFontChange = _font.LineHeight > 0 ? (int)(_offset.Y / _font.LineHeight) : 0;
+    }
+
     private void OnFontChanged()
     {
-        // Preserve the top visible line so the view doesn't jump
-        int topLine = _font.LineHeight > 0 ? (int)(_offset.Y / _font.LineHeight) : 0;
-
         _tokenCacheDirty = true;
         _gutterDigits = 0;
         UpdateExtent();
 
         // Restore scroll position to keep the same line at the top
-        double newOffset = topLine * _font.LineHeight;
+        double newOffset = _topLineBeforeFontChange * _font.LineHeight;
         newOffset = Math.Clamp(newOffset, 0, Math.Max(0, _extent.Height - _viewport.Height));
         _offset.Y = Math.Round(newOffset * _font.Dpi) / _font.Dpi;
         ScrollOwner?.InvalidateScrollInfo();
@@ -172,6 +177,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     public EditorControl()
     {
+        _font.BeforeFontChanged += OnBeforeFontChanged;
         _font.FontChanged += OnFontChanged;
         Focusable = true;
         FocusVisualStyle = null;

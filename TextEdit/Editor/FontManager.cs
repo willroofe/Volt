@@ -59,6 +59,11 @@ public class FontManager
     }
 
     /// <summary>
+    /// Called before Apply() changes metrics so the editor can snapshot scroll state.
+    /// </summary>
+    public event Action? BeforeFontChanged;
+
+    /// <summary>
     /// Called after Apply() so the editor can respond to metrics changes.
     /// </summary>
     public event Action? FontChanged;
@@ -70,6 +75,7 @@ public class FontManager
 
     public void Apply(string familyName, double size, FontWeight weight)
     {
+        BeforeFontChanged?.Invoke();
         _fontWeight = weight;
         _monoTypeface = new Typeface(new FontFamily(familyName), FontStyles.Normal, weight, FontStretches.Normal);
         _fontSize = size;
