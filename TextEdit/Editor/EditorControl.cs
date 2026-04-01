@@ -330,15 +330,27 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private void Undo()
     {
-        var entry = _undoManager.Undo();
-        if (entry == null) return;
-        _buffer.ReplaceLines(entry.StartLine, entry.After.Count, entry.Before);
-        _caretLine = entry.CaretLineBefore;
-        _caretCol = entry.CaretColBefore;
+        var obj = _undoManager.Undo();
+        if (obj == null) return;
+
+        if (obj is UndoManager.UndoEntry entry)
+        {
+            _buffer.ReplaceLines(entry.StartLine, entry.After.Count, entry.Before);
+            _caretLine = entry.CaretLineBefore;
+            _caretCol = entry.CaretColBefore;
+            InvalidateLineStatesFrom(entry.StartLine);
+        }
+        else if (obj is UndoManager.IndentEntry indent)
+        {
+            ApplyIndentEntry(indent, reverse: true);
+            _caretLine = indent.CaretLineBefore;
+            _caretCol = indent.CaretColBefore;
+            InvalidateLineStatesFrom(indent.StartLine);
+        }
+
         ClampCaret();
         _selection.Clear();
         _bracketMatchDirty = true;
-        InvalidateLineStatesFrom(entry.StartLine);
         _buffer.IsDirty = _undoManager.UndoCount != _cleanUndoDepth;
         UpdateExtent();
         InvalidateText();
@@ -346,18 +358,45 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private void Redo()
     {
-        var entry = _undoManager.Redo();
-        if (entry == null) return;
-        _buffer.ReplaceLines(entry.StartLine, entry.Before.Count, entry.After);
-        _caretLine = entry.CaretLineAfter;
-        _caretCol = entry.CaretColAfter;
+        var obj = _undoManager.Redo();
+        if (obj == null) return;
+
+        if (obj is UndoManager.UndoEntry entry)
+        {
+            _buffer.ReplaceLines(entry.StartLine, entry.Before.Count, entry.After);
+            _caretLine = entry.CaretLineAfter;
+            _caretCol = entry.CaretColAfter;
+            InvalidateLineStatesFrom(entry.StartLine);
+        }
+        else if (obj is UndoManager.IndentEntry indent)
+        {
+            ApplyIndentEntry(indent, reverse: false);
+            _caretLine = indent.CaretLineAfter;
+            _caretCol = indent.CaretColAfter;
+            InvalidateLineStatesFrom(indent.StartLine);
+        }
+
         ClampCaret();
         _selection.Clear();
         _bracketMatchDirty = true;
-        InvalidateLineStatesFrom(entry.StartLine);
         _buffer.IsDirty = _undoManager.UndoCount != _cleanUndoDepth;
         UpdateExtent();
         InvalidateText();
+    }
+
+    private void ApplyIndentEntry(UndoManager.IndentEntry indent, bool reverse)
+    {
+        bool add = indent.IsIndent != reverse; // indent+undo = remove, unindent+undo = add
+        for (int i = 0; i < indent.LineCount; i++)
+        {
+            int spaces = indent.SpacesPerLine[i];
+            if (spaces == 0) continue;
+            int lineIdx = indent.StartLine + i;
+            if (add)
+                _buffer.InsertAt(lineIdx, 0, new string(' ', spaces));
+            else
+                _buffer.DeleteAt(lineIdx, 0, spaces);
+        }
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -1183,10 +1222,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
     {
         ResetPreferredCol();
         var (sl, el) = GetEditRange();
-        var scope = BeginEdit(sl, el);
 
         if (_selection.HasSelection && sl != el)
         {
+            int caretLineBefore = _caretLine, caretColBefore = _caretCol;
+            int lineCount = el - sl + 1;
+            var spacesPerLine = new int[lineCount];
+
             for (int i = sl; i <= el; i++)
             {
                 if (shift)
@@ -1194,6 +1236,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     int remove = 0;
                     while (remove < TabSize && remove < _buffer[i].Length && _buffer[i][remove] == ' ')
                         remove++;
+                    spacesPerLine[i - sl] = remove;
                     if (remove > 0)
                     {
                         _buffer.DeleteAt(i, 0, remove);
@@ -1203,18 +1246,31 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 }
                 else
                 {
+                    spacesPerLine[i - sl] = TabSize;
                     _buffer.InsertAt(i, 0, new string(' ', TabSize));
                     if (i == _caretLine) _caretCol += TabSize;
                     if (i == _selection.AnchorLine) _selection.AnchorCol += TabSize;
                 }
             }
-            EndEdit(scope);
+
+            bool evicted = _undoManager.Push(new UndoManager.IndentEntry(
+                sl, lineCount, spacesPerLine, !shift,
+                caretLineBefore, caretColBefore, _caretLine, _caretCol));
+            if (evicted && _cleanUndoDepth >= 0)
+                _cleanUndoDepth--;
+            _textVisualDirty = true;
+            _bracketMatchDirty = true;
+            InvalidateLineStatesFrom(sl);
+            _buffer.IsDirty = true;
+
             _selection.HasSelection = true;
             UpdateExtent();
             EnsureCaretVisible();
             ResetCaret();
             return;
         }
+
+        var scope = BeginEdit(sl, el);
         if (!shift)
         {
             DeleteSelectionIfPresent();
@@ -1508,6 +1564,21 @@ public class EditorControl : FrameworkElement, IScrollInfo
     }
 
     public string GetContent() => _buffer.GetContent();
+
+    /// <summary>
+    /// Release undo history, buffer, and caches to free memory when closing a tab.
+    /// Returns true if the released data was large enough to warrant a GC.
+    /// </summary>
+    public bool ReleaseResources()
+    {
+        bool large = _buffer.Count > 10_000 || _undoManager.UndoCount > 50;
+        _undoManager.Clear();
+        _buffer.Clear();
+        _tokenCache.Clear();
+        _lineStates.Clear();
+        _find.Clear();
+        return large;
+    }
 
     public void InvalidateSyntax()
     {
