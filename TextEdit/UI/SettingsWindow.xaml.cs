@@ -43,7 +43,7 @@ public partial class SettingsWindow : Window
         FindBarPosBox.SelectedIndex = findBarPosition == "Top" ? 0 : 1;
 
         // Populate font family dropdown
-        _fontNames = EditorControl.GetMonospaceFonts();
+        _fontNames = FontManager.GetMonospaceFonts();
         foreach (var name in _fontNames)
             FontFamilyBox.Items.Add(name);
         int fi = _fontNames.IndexOf(currentFontFamily);

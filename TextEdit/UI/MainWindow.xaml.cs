@@ -969,7 +969,7 @@ public partial class MainWindow : Window
             new("Change Font Family", GetOptions: () =>
             {
                 var original = Editor.FontFamilyName;
-                return EditorControl.GetMonospaceFonts().Select(name => new PaletteOption(
+                return FontManager.GetMonospaceFonts().Select(name => new PaletteOption(
                     name,
                     ApplyPreview: () => { foreach (var t in _tabs) t.Editor.FontFamilyName = name; },
                     Commit: () => { _settings.Editor.Font.Family = name; _settings.Save(); },
