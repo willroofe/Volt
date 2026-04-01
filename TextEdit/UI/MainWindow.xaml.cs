@@ -892,7 +892,6 @@ public partial class MainWindow : Window
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
     }
 
-    private void OnCloseTab(object sender, RoutedEventArgs e) => CloseTab(_activeTab!);
     private void OnClose(object sender, RoutedEventArgs e) => Close();
     private void OnExit(object sender, RoutedEventArgs e) => Close();
 

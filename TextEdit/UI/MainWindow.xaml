@@ -40,6 +40,7 @@
                                    IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
                                    Placement="Bottom"
                                    HorizontalOffset="1"
+                                   VerticalOffset="-4"
                                    AllowsTransparency="True"
                                    Focusable="False"
                                    PopupAnimation="None">
@@ -160,8 +161,6 @@
                         </MenuItem.Icon>
                     </MenuItem>
                     <MenuItem Header="Save _As..." InputGestureText="Ctrl+Shift+S" Click="OnSaveAs"/>
-                    <Separator/>
-                    <MenuItem Header="_Close Tab" InputGestureText="Ctrl+W" Click="OnCloseTab"/>
                     <Separator/>
                     <MenuItem Header="S_ettings..." Click="OnSettings">
                         <MenuItem.Icon>
