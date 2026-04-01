@@ -21,7 +21,7 @@ No test framework is configured. The running app must be closed before rebuildin
 
 - **Editor/** — `EditorControl.cs`, `TextBuffer.cs`, `UndoManager.cs`, `SelectionManager.cs`, `FontManager.cs`, `FindManager.cs`, `BracketMatcher.cs`, `SyntaxManager.cs`, `SyntaxDefinition.cs`
 - **Theme/** — `ThemeManager.cs`, `ColorTheme.cs`
-- **UI/** — `MainWindow.xaml/.cs`, `CommandPalette.xaml/.cs`, `FindBar.xaml/.cs`, `SettingsWindow.xaml/.cs`, `TabInfo.cs`, `DwmHelper.cs`, `FileHelper.cs`, `CommandPaletteCommands.cs`
+- **UI/** — `MainWindow.xaml/.cs`, `CommandPalette.xaml/.cs`, `FindBar.xaml/.cs`, `SettingsWindow.xaml/.cs` (uses `SettingsSnapshot` record), `TabInfo.cs`, `DwmHelper.cs`, `FileHelper.cs`, `CommandPaletteCommands.cs`
 - **Resources/** — `Themes/` (default-dark.json, default-light.json, gruvbox-dark.json), `Grammars/` (perl.json) — embedded resources extracted to `%AppData%/TextEdit/` on first run
 - **Root** — `App.xaml/.cs`, `AppSettings.cs`, `AssemblyInfo.cs`
 
@@ -29,12 +29,12 @@ All classes remain in the `TextEdit` namespace.
 
 ### EditorControl (`Editor/EditorControl.cs`)
 
-The core of the application (~1,650 lines) — a custom `FrameworkElement` implementing `IScrollInfo`. Delegates to extracted helper classes for font metrics/glyph rendering (`FontManager`), find/replace state (`FindManager`), and bracket matching (`BracketMatcher`).
+The core of the application (~1,600 lines) — a custom `FrameworkElement` implementing `IScrollInfo`. Delegates to extracted helper classes for font metrics/glyph rendering (`FontManager`), find/replace state (`FindManager`), and bracket matching (`BracketMatcher`).
 
 - **Rendering**: Three `DrawingVisual` layers (`_textVisual`, `_gutterVisual`, `_caretVisual`). `OnRender` draws background rectangles (current line, selection, find matches, bracket highlights). Text rendering uses `FontManager.DrawGlyphRun` — direct `GlyphRun` calls bypassing DWrite shaping. Text clipped to the area right of the gutter.
 - **Input**: `OnKeyDown` dispatches to `Handle*` methods. `OnTextInput` for character input. Mouse handlers for click, drag, double-click word selection.
 - **Scrolling**: `IScrollInfo` implementation with render buffer (±50 lines beyond viewport) — scroll within the buffer uses `TranslateTransform` with no re-render.
-- **Undo/redo**: Region-based via `BeginEdit`/`EndEdit` pattern — each entry stores only the affected line range.
+- **Undo/redo**: Region-based via `BeginEdit`/`EndEdit` pattern — each entry stores only the affected line range. Edit handlers use shared helpers `GetEditRange()`, `DeleteSelectionIfPresent()`, and `FinishEdit()` for consistent pre/post boilerplate.
 - **Smart editing**: Auto-close brackets/quotes (suppressed inside strings), smart indent after openers, tab-stop-aware backspace. Bracket pair data lives in `BracketMatcher`.
 - **Performance**: Syntax token cache pruned to viewport window. Background line state precomputation at idle priority with generation-based cancellation. `UpdateExtent` guards against redundant `InvalidateScrollInfo()`.
 
@@ -85,7 +85,7 @@ UI shell (~830 lines) with tab management, file I/O, settings, and keyboard shor
 - **Dead zone overlay** (6px) at bottom of menu bar prevents accidental hover on adjacent menu items when moving toward dropdown.
 - **EditorControl never caches brushes locally** — always reads from the `ThemeManager` instance property so theme changes take effect immediately.
 - **Grammar rule order matters** — rules are applied in definition order, first match wins. Strings should come before comments (so `#` inside strings isn't treated as a comment).
-- **Syntax tokenization uses `LineState` for multi-line strings** — unclosed quotes carry state across lines via `EnsureLineStates()`. Other token types are per-line only. String interpolation and escape sequences are post-processed on double-quoted string tokens.
+- **Syntax tokenization uses `LineState` for multi-line constructs** — tracks unclosed quotes, block comments, heredocs, and open regex delimiters across lines via `EnsureLineStates()`. `ContinueOpenRegex` must mark `claimed[]` on continuation lines to prevent post-rule detection from corrupting the open regex state. String interpolation and escape sequences are post-processed on double-quoted string tokens.
 - **Built-in resource files are always overwritten on startup** — themes and grammars shipped as embedded resources are re-extracted to `%AppData%/TextEdit/` each launch so embedded fixes take effect. User-created files (not matching built-in names) are left untouched.
 - **GlyphRun rendering**: All text drawing uses `FontManager.DrawGlyphRun` (not `FormattedText`/`DrawText`). This bypasses DWrite shaping — critical for scroll performance. When drawing syntax-highlighted lines, gaps between tokens must be filled with `EditorFg` (tokens don't cover the full line).
 - **Performance-sensitive code paths**: `OnRender`, `OnKeyDown`/`OnTextInput`, `OnMouseMove` during drag, and `UpdateExtent` are hot paths. Never use `FormattedText` in rendering loops. Avoid unconditional `InvalidateVisual()` or `ScrollOwner.InvalidateScrollInfo()` — always guard with change-detection.
