@@ -1,0 +1,62 @@
+{
+  "name": "Markdown",
+  "extensions": [".md", ".markdown", ".mdown", ".mkd"],
+  "rules": [
+    {
+      "pattern": "^#{1,6}\\s+.*$",
+      "scope": "keyword"
+    },
+    {
+      "pattern": "^\\s{0,3}(?:[-*_]\\s*){3,}$",
+      "scope": "comment"
+    },
+    {
+      "pattern": "`{3}.*$",
+      "scope": "string"
+    },
+    {
+      "pattern": "`[^`]+`",
+      "scope": "string"
+    },
+    {
+      "pattern": "(?<![\\w*])\\*\\*[^*]+\\*\\*(?![\\w*])",
+      "scope": "function"
+    },
+    {
+      "pattern": "(?<![\\w_])__[^_]+__(?![\\w_])",
+      "scope": "function"
+    },
+    {
+      "pattern": "(?<![\\w*])\\*[^*]+\\*(?![\\w*])",
+      "scope": "variable"
+    },
+    {
+      "pattern": "(?<![\\w_])_[^_]+_(?![\\w_])",
+      "scope": "variable"
+    },
+    {
+      "pattern": "~~[^~]+~~",
+      "scope": "comment"
+    },
+    {
+      "pattern": "!?\\[[^\\]]*\\]\\([^)]*\\)",
+      "scope": "type"
+    },
+    {
+      "pattern": "!?\\[[^\\]]*\\]\\[[^\\]]*\\]",
+      "scope": "type"
+    },
+    {
+      "pattern": "^\\s*>+",
+      "scope": "comment"
+    },
+    {
+      "pattern": "^\\s*[-*+]\\s",
+      "scope": "operator"
+    },
+    {
+      "pattern": "^\\s*\\d+\\.\\s",
+      "scope": "operator"
+    }
+  ]
+}
