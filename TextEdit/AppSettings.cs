@@ -13,6 +13,7 @@ public class FontSettings
     public string? Family { get; set; }
     public double Size { get; set; } = 14;
     public string Weight { get; set; } = "Normal";
+    public double LineHeight { get; set; } = 1.0;
 }
 
 public class CaretSettings
@@ -52,6 +53,7 @@ public class AppSettings
     public static readonly double[] FontSizeOptions = [8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 36];
     public static readonly int[] TabSizeOptions = [2, 4, 8];
     public static readonly string[] FontWeightOptions = ["Thin", "ExtraLight", "Light", "Normal", "Medium", "SemiBold", "Bold", "ExtraBold", "Black"];
+    public static readonly double[] LineHeightOptions = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2.0];
 
     public void Save()
     {

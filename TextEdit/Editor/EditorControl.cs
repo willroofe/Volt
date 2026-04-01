@@ -111,6 +111,18 @@ public class EditorControl : FrameworkElement, IScrollInfo
     }
 
     private FontWeight _fontWeight = FontWeights.Normal;
+    private double _lineHeightMultiplier = 1.0;
+
+    public double LineHeightMultiplier
+    {
+        get => _lineHeightMultiplier;
+        set
+        {
+            if (Math.Abs(value - _lineHeightMultiplier) < 0.001) return;
+            _lineHeightMultiplier = value;
+            ApplyFont(_monoTypeface.FontFamily.Source, _fontSize, _fontWeight);
+        }
+    }
 
     public string EditorFontWeight
     {
@@ -144,7 +156,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         var sample = new FormattedText("X", CultureInfo.InvariantCulture,
             FlowDirection.LeftToRight, _monoTypeface, _fontSize, Brushes.White, _dpi);
         _charWidth = Math.Round(sample.WidthIncludingTrailingWhitespace * _dpi) / _dpi;
-        _lineHeight = Math.Round(sample.Height * _dpi) / _dpi;
+        _lineHeight = Math.Round(sample.Height * _lineHeightMultiplier * _dpi) / _dpi;
         _glyphBaseline = sample.Baseline;
 
         _tokenCacheDirty = true;

@@ -11,6 +11,7 @@ public partial class SettingsWindow : Window
     public double SelectedFontSize { get; private set; }
     public string SelectedFontWeight { get; private set; }
     public string ColorThemeName { get; private set; }
+    public double SelectedLineHeight { get; private set; }
     public string FindBarPosition { get; private set; }
 
     public event EventHandler? Applied;
@@ -20,8 +21,8 @@ public partial class SettingsWindow : Window
     private readonly List<string> _fontNames;
 
     public SettingsWindow(ThemeManager themeManager, int currentTabSize, bool blockCaret, int caretBlinkMs,
-        string currentFontFamily, double currentFontSize, string currentFontWeight, string currentColorTheme,
-        string findBarPosition)
+        string currentFontFamily, double currentFontSize, string currentFontWeight, double currentLineHeight,
+        string currentColorTheme, string findBarPosition)
     {
         _themeManager = themeManager;
         InitializeComponent();
@@ -31,6 +32,7 @@ public partial class SettingsWindow : Window
         SelectedFontFamily = currentFontFamily;
         SelectedFontSize = currentFontSize;
         SelectedFontWeight = currentFontWeight;
+        SelectedLineHeight = currentLineHeight;
         ColorThemeName = currentColorTheme;
         FindBarPosition = findBarPosition;
 
@@ -58,6 +60,12 @@ public partial class SettingsWindow : Window
             FontWeightBox.Items.Add(w);
         int wi = Array.IndexOf(AppSettings.FontWeightOptions, currentFontWeight);
         FontWeightBox.SelectedIndex = wi >= 0 ? wi : Array.IndexOf(AppSettings.FontWeightOptions, "Normal");
+
+        // Populate line height dropdown
+        foreach (var lh in AppSettings.LineHeightOptions)
+            LineHeightBox.Items.Add(lh.ToString("0.0") + "x");
+        int li = Array.IndexOf(AppSettings.LineHeightOptions, currentLineHeight);
+        LineHeightBox.SelectedIndex = li >= 0 ? li : 0;
 
         // Populate color theme dropdown
         _themeNames = _themeManager.GetAvailableThemes();
@@ -93,6 +101,7 @@ public partial class SettingsWindow : Window
         SelectedFontFamily = _fontNames[FontFamilyBox.SelectedIndex];
         SelectedFontSize = AppSettings.FontSizeOptions[FontSizeBox.SelectedIndex];
         SelectedFontWeight = AppSettings.FontWeightOptions[FontWeightBox.SelectedIndex];
+        SelectedLineHeight = AppSettings.LineHeightOptions[LineHeightBox.SelectedIndex];
         ColorThemeName = _themeNames[ColorThemeBox.SelectedIndex];
         FindBarPosition = FindBarPosBox.SelectedIndex == 0 ? "Top" : "Bottom";
     }
