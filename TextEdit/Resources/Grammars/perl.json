@@ -59,6 +59,10 @@
       "scope": "type"
     },
     {
+      "pattern": "\\b[A-Z]\\w*(?=->)",
+      "scope": "type"
+    },
+    {
       "pattern": "\\w+(?=\\s*=>)",
       "scope": "hashkey"
     },
