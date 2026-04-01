@@ -681,27 +681,37 @@ public partial class MainWindow : Window
     {
         var dlg = new OpenFileDialog
         {
-            Filter = "All Files (*.*)|*.*|Text Files (*.txt)|*.txt|Perl Files (*.pl)|*.pl"
+            Filter = "All Files (*.*)|*.*|Text Files (*.txt)|*.txt|Perl Files (*.pl)|*.pl",
+            Multiselect = true
         };
         if (dlg.ShowDialog() != true) return;
 
-        // Reuse current tab if it is untitled and clean
-        TabInfo tab;
-        if (_activeTab != null && _activeTab.FilePath == null && !_activeTab.Editor.IsDirty)
+        TabInfo? lastTab = null;
+        foreach (var fileName in dlg.FileNames)
         {
-            tab = _activeTab;
-        }
-        else
-        {
-            tab = CreateTab();
+            // Reuse current tab if it is untitled and clean (first file only)
+            TabInfo tab;
+            if (lastTab == null && _activeTab != null && _activeTab.FilePath == null && !_activeTab.Editor.IsDirty)
+            {
+                tab = _activeTab;
+            }
+            else
+            {
+                tab = CreateTab();
+            }
+
+            tab.FilePath = fileName;
+            tab.FileEncoding = DetectEncoding(fileName);
+            tab.Editor.SetContent(File.ReadAllText(fileName, tab.FileEncoding));
+            UpdateTabHeader(tab);
+            lastTab = tab;
         }
 
-        tab.FilePath = dlg.FileName;
-        tab.FileEncoding = DetectEncoding(dlg.FileName);
-        tab.Editor.SetContent(File.ReadAllText(dlg.FileName, tab.FileEncoding));
-        UpdateTabHeader(tab);
-        ActivateTab(tab);
-        FindBarControl.RefreshSearch();
+        if (lastTab != null)
+        {
+            ActivateTab(lastTab);
+            FindBarControl.RefreshSearch();
+        }
     }
 
     private void OnSave(object sender, RoutedEventArgs e)
