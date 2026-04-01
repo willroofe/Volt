@@ -21,16 +21,23 @@ public class UndoManager
 
     public bool CanUndo => _undoStack.Count > 0;
     public bool CanRedo => _redoStack.Count > 0;
+    public int UndoCount => _undoStack.Count;
 
     /// <summary>
     /// Push a region-based undo entry. Clears the redo stack.
     /// </summary>
-    public void Push(UndoEntry entry)
+    /// <summary>
+    /// Push a region-based undo entry. Clears the redo stack.
+    /// Returns true if the oldest entry was evicted due to the size cap.
+    /// </summary>
+    public bool Push(UndoEntry entry)
     {
         _undoStack.Add(entry);
-        if (_undoStack.Count > MaxEntries)
+        bool evicted = _undoStack.Count > MaxEntries;
+        if (evicted)
             _undoStack.RemoveAt(0);
         _redoStack.Clear();
+        return evicted;
     }
 
     /// <summary>
