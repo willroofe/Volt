@@ -530,10 +530,11 @@ public partial class MainWindow : Window
 
     private void RestoreWindowPosition()
     {
-        if (_settings.WindowWidth.HasValue && _settings.WindowHeight.HasValue)
+        if (_settings.WindowLeft.HasValue && _settings.WindowTop.HasValue
+            && _settings.WindowWidth.HasValue && _settings.WindowHeight.HasValue)
         {
-            double left = _settings.WindowLeft!.Value;
-            double top = _settings.WindowTop!.Value;
+            double left = _settings.WindowLeft.Value;
+            double top = _settings.WindowTop.Value;
             double width = _settings.WindowWidth.Value;
             double height = _settings.WindowHeight.Value;
 
@@ -811,7 +812,7 @@ public partial class MainWindow : Window
         else if (ctrl && shift && e.Key == Key.S) { OnSaveAs(this, new RoutedEventArgs()); e.Handled = true; }
         else if (ctrl && (Keyboard.Modifiers & ModifierKeys.Alt) != 0 && (e.Key == Key.S || e.SystemKey == Key.S)) { OnSettings(this, new RoutedEventArgs()); e.Handled = true; }
         else if (ctrl && !shift && e.Key == Key.S) { OnSave(this, new RoutedEventArgs()); e.Handled = true; }
-        else if (ctrl && !shift && e.Key == Key.W) { CloseTab(_activeTab!); e.Handled = true; }
+        else if (ctrl && !shift && e.Key == Key.W) { if (_activeTab != null) CloseTab(_activeTab); e.Handled = true; }
         else if (ctrl && (e.Key == Key.OemPlus || e.Key == Key.Add)) { StepFontSize(1); e.Handled = true; }
         else if (ctrl && (e.Key == Key.OemMinus || e.Key == Key.Subtract)) { StepFontSize(-1); e.Handled = true; }
         else base.OnKeyDown(e);

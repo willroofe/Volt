@@ -76,11 +76,16 @@ public class FontManager
         Dpi = VisualTreeHelper.GetDpi(new DrawingVisual()).PixelsPerDip;
 
         GlyphTypeface? gt = null;
-        if (_monoTypeface.TryGetGlyphTypeface(out gt)) { }
-        else
+        if (!_monoTypeface.TryGetGlyphTypeface(out gt))
         {
             foreach (var face in new FontFamily(familyName).GetTypefaces())
                 if (face.TryGetGlyphTypeface(out gt)) break;
+        }
+        // Fall back to Consolas if the requested font has no glyph typeface
+        if (gt == null)
+        {
+            var fallback = new Typeface(new FontFamily("Consolas"), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+            fallback.TryGetGlyphTypeface(out gt);
         }
         if (gt != null) _glyphTypeface = gt;
 

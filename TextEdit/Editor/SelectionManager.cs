@@ -73,13 +73,15 @@ public class SelectionManager
         var (sl, sc, el, ec) = GetOrdered(caretLine, caretCol);
         if (sl == el)
         {
-            buffer.NotifyLineChanging(sl);
-            buffer[sl] = buffer[sl][..sc] + buffer[sl][ec..];
+            buffer.DeleteAt(sl, sc, ec - sc);
         }
         else
         {
-            buffer[sl] = buffer[sl][..sc] + buffer[el][ec..];
+            // Keep the prefix of the start line and suffix of the end line
+            string merged = buffer[sl][..sc] + buffer[el][ec..];
             buffer.RemoveRange(sl + 1, el - sl);
+            buffer.NotifyLineChanging(sl);
+            buffer[sl] = merged;
         }
         HasSelection = false;
         return (sl, sc);

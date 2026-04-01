@@ -15,6 +15,14 @@ dotnet run --project TextEdit/TextEdit.csproj
 
 No test framework is configured. The running app must be closed before rebuilding (the exe gets locked).
 
+**Benchmarks** (`TextEdit.Benchmarks/` — BenchmarkDotNet, InProcess toolchain for .NET 10 + WPF):
+
+```bash
+dotnet run -c Release --project TextEdit.Benchmarks              # all benchmarks
+dotnet run -c Release --project TextEdit.Benchmarks -- --filter *Tokenize*   # specific suite
+dotnet run -c Release --project TextEdit.Benchmarks -- --list flat            # list available
+```
+
 ## Architecture
 
 **Single-project solution** with one WPF application project (`TextEdit/`), organized into subdirectories:
@@ -29,14 +37,15 @@ All classes remain in the `TextEdit` namespace.
 
 ### EditorControl (`Editor/EditorControl.cs`)
 
-The core of the application (~1,600 lines) — a custom `FrameworkElement` implementing `IScrollInfo`. Delegates to extracted helper classes for font metrics/glyph rendering (`FontManager`), find/replace state (`FindManager`), and bracket matching (`BracketMatcher`).
+The core of the application (~1,700 lines) — a custom `FrameworkElement` implementing `IScrollInfo`. Delegates to extracted helper classes for font metrics/glyph rendering (`FontManager`), find/replace state (`FindManager`), and bracket matching (`BracketMatcher`).
 
 - **Rendering**: Three `DrawingVisual` layers (`_textVisual`, `_gutterVisual`, `_caretVisual`). `OnRender` draws background rectangles (current line, selection, find matches, bracket highlights). Text rendering uses `FontManager.DrawGlyphRun` — direct `GlyphRun` calls bypassing DWrite shaping. Text clipped to the area right of the gutter.
 - **Input**: `OnKeyDown` dispatches to `Handle*` methods. `OnTextInput` for character input. Mouse handlers for click, drag, double-click word selection.
 - **Scrolling**: `IScrollInfo` implementation with render buffer (±50 lines beyond viewport) — scroll within the buffer uses `TranslateTransform` with no re-render.
-- **Undo/redo**: Region-based via `BeginEdit`/`EndEdit` pattern — each entry stores only the affected line range. Edit handlers use shared helpers `GetEditRange()`, `DeleteSelectionIfPresent()`, and `FinishEdit()` for consistent pre/post boilerplate.
+- **Undo/redo**: Two entry types in `UndoManager`: `UndoEntry` (region-based, stores affected line range before/after) for general edits via `BeginEdit`/`EndEdit`, and `IndentEntry` (compact, stores only `int[]` of spaces-per-line) for multi-line indent/unindent. Edit handlers use shared helpers `GetEditRange()`, `DeleteSelectionIfPresent()`, and `FinishEdit()` for consistent pre/post boilerplate. `Undo()`/`Redo()` in EditorControl dispatch on entry type with a defensive `else throw` for unknown types.
 - **Smart editing**: Auto-close brackets/quotes (suppressed inside strings), smart indent after openers, tab-stop-aware backspace. Bracket pair data lives in `BracketMatcher`.
-- **Performance**: Syntax token cache pruned to viewport window. Background line state precomputation at idle priority with generation-based cancellation. `UpdateExtent` guards against redundant `InvalidateScrollInfo()`.
+- **Performance**: Syntax token cache pruned to viewport window (reusable `_pruneKeys` list avoids per-render allocation). Background line state precomputation at idle priority with generation-based cancellation. `UpdateExtent` guards against redundant `InvalidateScrollInfo()`. Find match rendering uses binary search for O(log n + visible) instead of scanning all matches.
+- **Memory**: `ReleaseResources()` clears undo, buffer, and caches with `TrimExcess()` on tab close. `CloseTab` triggers forced compacting GC for large files to return memory to the OS.
 
 ### Theming System
 
@@ -67,7 +76,7 @@ Unified JSON-based theming — one theme file controls everything (editor, chrom
 
 ### MainWindow (`UI/MainWindow.xaml` + `.cs`)
 
-UI shell (~830 lines) with tab management, file I/O, settings, and keyboard shortcuts. Delegates to:
+UI shell (~840 lines) with tab management, file I/O, settings, and keyboard shortcuts. Delegates to:
 - **FileHelper** (`UI/FileHelper.cs`) — `AtomicWriteText`, `DetectEncoding`, file type name lookup
 - **CommandPaletteCommands** (`UI/CommandPaletteCommands.cs`) — builds command list with preview/commit/revert lambdas
 - **DwmHelper** (`UI/DwmHelper.cs`) — DWM window attribute management
@@ -87,7 +96,7 @@ UI shell (~830 lines) with tab management, file I/O, settings, and keyboard shor
 - **Grammar rule order matters** — rules are applied in definition order, first match wins. Strings should come before comments (so `#` inside strings isn't treated as a comment).
 - **Syntax tokenization uses `LineState` for multi-line constructs** — tracks unclosed quotes, block comments, heredocs, and open regex delimiters across lines via `EnsureLineStates()`. `ContinueOpenRegex` must mark `claimed[]` on continuation lines to prevent post-rule detection from corrupting the open regex state. String interpolation and escape sequences are post-processed on double-quoted string tokens.
 - **Built-in resource files are always overwritten on startup** — themes and grammars shipped as embedded resources are re-extracted to `%AppData%/TextEdit/` each launch so embedded fixes take effect. User-created files (not matching built-in names) are left untouched.
-- **GlyphRun rendering**: All text drawing uses `FontManager.DrawGlyphRun` (not `FormattedText`/`DrawText`). This bypasses DWrite shaping — critical for scroll performance. When drawing syntax-highlighted lines, gaps between tokens must be filled with `EditorFg` (tokens don't cover the full line).
+- **GlyphRun rendering**: All text drawing uses `FontManager.DrawGlyphRun` (not `FormattedText`/`DrawText`). This bypasses DWrite shaping — critical for scroll performance. Advance widths are cached in a shared `_uniformAdvanceWidths` array (all values identical for monospace) passed via `ArraySegment<double>` to avoid per-call allocation. When drawing syntax-highlighted lines, gaps between tokens must be filled with `EditorFg` (tokens don't cover the full line).
 - **Performance-sensitive code paths**: `OnRender`, `OnKeyDown`/`OnTextInput`, `OnMouseMove` during drag, and `UpdateExtent` are hot paths. Never use `FormattedText` in rendering loops. Avoid unconditional `InvalidateVisual()` or `ScrollOwner.InvalidateScrollInfo()` — always guard with change-detection.
-- **Text buffer mutations**: Always use `TextBuffer` methods (`InsertAt`, `DeleteAt`, `ReplaceAt`, `JoinWithNext`, `TruncateAt`) — they handle max-line-length cache invalidation internally.
+- **Text buffer mutations**: Always use `TextBuffer` methods (`InsertAt`, `DeleteAt`, `ReplaceAt`, `JoinWithNext`, `TruncateAt`) — they handle max-line-length cache invalidation internally. These use `string.Concat` with `AsSpan` to avoid intermediate string allocations.
 - **Defensive bounds clamping**: `ClampCaret()` in EditorControl and `ClampToBuffer()` in SelectionManager ensure positions are valid before indexing. Call after undo/redo restores and before bracket matching.
