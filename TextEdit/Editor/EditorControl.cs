@@ -294,12 +294,20 @@ public class EditorControl : FrameworkElement, IScrollInfo
         bool evicted = _undoManager.Push(new UndoManager.UndoEntry(
             scope.StartLine, scope.Before, after,
             scope.CaretLine, scope.CaretCol, _caretLine, _caretCol));
-        if (evicted && _cleanUndoDepth >= 0)
-            _cleanUndoDepth--;
+        MarkEditDirty(evicted, scope.StartLine);
+    }
 
+    /// <summary>
+    /// Shared post-edit bookkeeping: update dirty flags, line states, and clean depth.
+    /// Called by both EndEdit (for UndoEntry) and HandleTab (for IndentEntry).
+    /// </summary>
+    private void MarkEditDirty(bool undoEntryEvicted, int dirtyFromLine)
+    {
+        if (undoEntryEvicted && _cleanUndoDepth >= 0)
+            _cleanUndoDepth--;
         _textVisualDirty = true;
         _bracketMatchDirty = true;
-        InvalidateLineStatesFrom(scope.StartLine);
+        InvalidateLineStatesFrom(dirtyFromLine);
         _buffer.IsDirty = true;
     }
 
@@ -1106,7 +1114,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         var scope = BeginEdit(sl, el);
         DeleteSelectionIfPresent();
 
-        var indent = _buffer[_caretLine][..^(_buffer[_caretLine].TrimStart().Length)];
+        var currentLine = _buffer[_caretLine];
+        var indent = currentLine[..(currentLine.Length - currentLine.TrimStart().Length)];
         var rest = _buffer.TruncateAt(_caretLine, _caretCol);
 
         bool betweenBrackets = _caretCol > 0 && rest.Length > 0
@@ -1258,12 +1267,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             bool evicted = _undoManager.Push(new UndoManager.IndentEntry(
                 sl, lineCount, spacesPerLine, !shift,
                 caretLineBefore, caretColBefore, _caretLine, _caretCol));
-            if (evicted && _cleanUndoDepth >= 0)
-                _cleanUndoDepth--;
-            _textVisualDirty = true;
-            _bracketMatchDirty = true;
-            InvalidateLineStatesFrom(sl);
-            _buffer.IsDirty = true;
+            MarkEditDirty(evicted, sl);
 
             _selection.HasSelection = true;
             UpdateExtent();

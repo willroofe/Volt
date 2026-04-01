@@ -86,7 +86,10 @@ public class ThemeManager
                 var theme = ColorTheme.LoadFromFile(file);
                 if (theme != null) _themeCache.Add(theme);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to load theme '{file}': {ex.Message}");
+            }
         }
         return _themeCache;
     }
