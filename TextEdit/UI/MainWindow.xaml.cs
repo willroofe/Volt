@@ -19,7 +19,7 @@ public partial class MainWindow : Window
     // Tab drag-to-reorder state
     private TabInfo? _dragTab;
     private Point _dragStartPos;
-    private bool _isDragging;
+    private bool _isTabDragging;
     private int _dragTargetIndex = -1;
     private System.Windows.Controls.Primitives.Popup? _dragGhost;
 
@@ -223,7 +223,7 @@ public partial class MainWindow : Window
             ActivateTab(tab);
             _dragTab = tab;
             _dragStartPos = e.GetPosition(TabStrip);
-            _isDragging = false;
+            _isTabDragging = false;
             _dragTargetIndex = -1;
             header.CaptureMouse();
             e.Handled = true;
@@ -233,11 +233,11 @@ public partial class MainWindow : Window
         {
             if (_dragTab != tab || e.LeftButton != MouseButtonState.Pressed) return;
             var pos = e.GetPosition(TabStrip);
-            if (!_isDragging)
+            if (!_isTabDragging)
             {
                 if (Math.Abs(pos.X - _dragStartPos.X) < SystemParameters.MinimumHorizontalDragDistance)
                     return;
-                _isDragging = true;
+                _isTabDragging = true;
                 ShowDragGhost(tab);
                 header.Opacity = 0.4;
             }
@@ -250,7 +250,7 @@ public partial class MainWindow : Window
             if (_dragTab == tab)
             {
                 header.ReleaseMouseCapture();
-                if (_isDragging)
+                if (_isTabDragging)
                 {
                     header.Opacity = 1.0;
                     HideDragGhost();
@@ -259,7 +259,7 @@ public partial class MainWindow : Window
                         CommitTabReorder(tab, _dragTargetIndex);
                 }
                 _dragTab = null;
-                _isDragging = false;
+                _isTabDragging = false;
                 _dragTargetIndex = -1;
             }
         };
@@ -731,9 +731,11 @@ public partial class MainWindow : Window
 
     private void OnSettings(object sender, RoutedEventArgs e)
     {
-        var dlg = new SettingsWindow(ThemeManager, Editor.TabSize, _settings.Editor.Caret.BlockCaret, _settings.Editor.Caret.BlinkMs,
-            Editor.FontFamilyName, Editor.EditorFontSize, Editor.EditorFontWeight, Editor.LineHeightMultiplier,
-            _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition) { Owner = this };
+        var snapshot = new SettingsSnapshot(
+            Editor.TabSize, _settings.Editor.Caret.BlockCaret, _settings.Editor.Caret.BlinkMs,
+            Editor.FontFamilyName, Editor.EditorFontSize, Editor.EditorFontWeight,
+            Editor.LineHeightMultiplier, _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition);
+        var dlg = new SettingsWindow(ThemeManager, snapshot) { Owner = this };
         dlg.Applied += (_, _) => ApplySettingsFromDialog(dlg);
         if (dlg.ShowDialog() == true)
             ApplySettingsFromDialog(dlg);

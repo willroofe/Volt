@@ -93,128 +93,59 @@ Removed during the FontManager extraction — all call sites now use `col * _fon
 
 ## MINOR
 
-### EditorControl.cs -- Repetitive edit handler boilerplate
+### ~~EditorControl.cs -- Repetitive edit handler boilerplate~~ ADDRESSED
 
-Every edit handler (`HandleReturn`, `HandleBackspace`, `HandleDelete`, `HandleTab`, `HandlePaste`, `OnTextInput`) follows the same pattern:
+Extracted three shared helpers: `GetEditRange()` (returns selection-aware line range), `DeleteSelectionIfPresent()`, and `FinishEdit(scope)` (wraps `EndEdit` + `_selection.Clear()` + `UpdateExtent()` + `EnsureCaretVisible()` + `ResetCaret()`). All 6 edit handlers now use these helpers, eliminating ~40 lines of duplicated boilerplate.
 
-```csharp
-ResetPreferredCol();
-int sl = _caretLine, el = _caretLine;
-if (_selection.HasSelection)
-{
-    var (s, _, e2, _) = _selection.GetOrdered(_caretLine, _caretCol);
-    sl = s; el = e2;
-}
-var scope = BeginEdit(sl, el);
-if (_selection.HasSelection)
-    (_caretLine, _caretCol) = _selection.DeleteSelection(_buffer, _caretLine, _caretCol);
-// ... actual edit logic ...
-EndEdit(scope);
-_selection.Clear();
-UpdateExtent();
-EnsureCaretVisible();
-ResetCaret();
-```
-
-This 12-line boilerplate appears 6 times. A helper method like `EditAction(Action editBody)` that wraps the common pre/post pattern would eliminate ~60 lines and reduce the chance of forgetting a step.
-
-**Rating:** MINOR -- works correctly but is repetitive.
+~~**Rating:** MINOR~~
 
 ---
 
-### SettingsWindow.xaml.cs -- Constructor parameter count (line 23)
+### ~~SettingsWindow.xaml.cs -- Constructor parameter count (line 23)~~ ADDRESSED
 
-The constructor takes 10 positional parameters of mixed types. This makes call sites fragile and hard to read.
+Introduced `SettingsSnapshot` record to bundle the 9 settings parameters. Constructor now takes `(ThemeManager themeManager, SettingsSnapshot snapshot)`.
 
-```csharp
-// SettingsWindow.xaml.cs:23-25
-public SettingsWindow(ThemeManager themeManager, int currentTabSize, bool blockCaret, int caretBlinkMs,
-    string currentFontFamily, double currentFontSize, string currentFontWeight, double currentLineHeight,
-    string currentColorTheme, string findBarPosition)
-```
-
-A record or settings snapshot object would be clearer:
-
-```csharp
-// Suggested
-public SettingsWindow(ThemeManager themeManager, AppSettings settings)
-```
-
-**Rating:** MINOR -- functional but easy to get wrong at call sites.
+~~**Rating:** MINOR~~
 
 ---
 
-### ThemeManager.cs / SyntaxManager.cs -- Inconsistent resource overwrite strategy
+### ~~ThemeManager.cs / SyntaxManager.cs -- Inconsistent resource overwrite strategy~~ ADDRESSED
 
-`SyntaxManager.EnsureDefaultGrammars()` (line 548) always overwrites built-in grammars, and `ThemeManager.EnsureDefaultThemes()` (line 148) also always overwrites. However, the CLAUDE.md says "Default resource files in `%AppData%` are only written if absent". The code and documentation are out of sync.
+CLAUDE.md was already updated in a prior session to say "Built-in resource files are always overwritten on startup". Code and documentation are now in sync.
 
-```csharp
-// SyntaxManager.cs:552
-// Always overwrite built-in grammars so embedded fixes take effect
-
-// ThemeManager.cs:158
-// Always overwrite built-in themes so embedded fixes take effect
-```
-
-**Rating:** MINOR -- the code behavior is intentional, but the CLAUDE.md documentation is stale.
+~~**Rating:** MINOR~~
 
 ---
 
-### ColorTheme.cs -- `GetScopeBrush` catches an exception that `ParseBrush` already handles (lines 87-92)
+### ~~ColorTheme.cs -- `GetScopeBrush` catches an exception that `ParseBrush` already handles (lines 87-92)~~ ADDRESSED
 
-```csharp
-// ColorTheme.cs:87-92
-public SolidColorBrush? GetScopeBrush(string scope)
-{
-    if (!Scopes.TryGetValue(scope, out var hex)) return null;
-    try { return ParseBrush(hex); }
-    catch { return null; }
-}
-```
+Removed the redundant outer `try-catch`. `GetScopeBrush` now calls `ParseBrush` directly.
 
-`ParseBrush` already catches exceptions and returns a magenta fallback. The outer try-catch is redundant.
-
-**Rating:** MINOR -- no functional impact, just unnecessary defensive code.
+~~**Rating:** MINOR~~
 
 ---
 
-### MainWindow.xaml.cs -- `_isDragging` name collision with EditorControl
+### ~~MainWindow.xaml.cs -- `_isDragging` name collision with EditorControl~~ ADDRESSED
 
-Both `MainWindow` (line 25) and `EditorControl` (line 239) have `_isDragging` fields with completely different semantics (tab drag vs mouse text selection). While they're in different classes and don't conflict at compile time, the shared name can confuse during cross-file searches and debugging.
+Renamed to `_isTabDragging` in MainWindow (all 6 references).
 
-**Rating:** MINOR -- `_isTabDragging` in MainWindow would be clearer.
-
----
-
-### EditorControl.cs -- Magic number 67 in `SetPosition` (FindBar.cs:37)
-
-```csharp
-// FindBar.xaml.cs:37
-Margin = top ? new Thickness(0, 67, 0, 0) : new Thickness(0, 0, 0, 44);
-```
-
-These magic numbers (67px top margin, 44px bottom margin) presumably correspond to the title bar + tab bar height and the status bar height respectively. They should be named constants or derived from the actual element sizes.
-
-**Rating:** MINOR -- will break silently if the title bar or status bar height changes.
+~~**Rating:** MINOR~~
 
 ---
 
-### EditorControl.cs -- `_currentMatchIndex` initialized to 0 in `SetContent` but -1 elsewhere
+### ~~EditorControl.cs -- Magic number 67 in `SetPosition` (FindBar.cs:37)~~ ADDRESSED
 
-```csharp
-// EditorControl.cs:1774
-_currentMatchIndex = 0;   // in SetContent
+Replaced with named constants `FindBarTopMargin` (67 = title bar + tab bar height) and `FindBarBottomMargin` (44 = status bar height) in FindBar.
 
-// EditorControl.cs:1810
-_currentMatchIndex = -1;  // in SetFindMatches
+~~**Rating:** MINOR~~
 
-// EditorControl.cs:1852
-_currentMatchIndex = -1;  // in ClearFindMatches
-```
+---
 
-With `_findMatches` cleared, index 0 is technically out of bounds. Should consistently use -1 to mean "no match".
+### ~~EditorControl.cs -- `_currentMatchIndex` initialized to 0 in `SetContent` but -1 elsewhere~~ ADDRESSED
 
-**Rating:** MINOR -- unlikely to cause visible bugs but logically inconsistent.
+Resolved by the FindManager extraction. `SetContent` now calls `_find.Clear()` which consistently sets `_currentIndex = -1`. No direct `_currentMatchIndex` field remains in EditorControl.
+
+~~**Rating:** MINOR~~
 
 ---
 
@@ -308,6 +239,6 @@ The main liability is the size of `EditorControl.cs` and `MainWindow.xaml.cs`, w
 
 2. ~~**Extract DwmHelper, FileHelper, CommandPaletteCommands from MainWindow**~~ **DONE** -- Reduced from 1,039 to 860 lines. DWM interop, file I/O, file type map, and command palette lambdas extracted. `OnNew`/`OnNewTab` deduplication and file type switch → dictionary.
 
-3. **Consolidate the repeated edit-handler boilerplate into a shared helper** -- The 6 edit handlers share ~12 lines of identical setup/teardown code. A single `PerformEdit(int startLine, int endLine, Action editBody)` method would eliminate redundancy and ensure consistency (e.g., always calling `UpdateExtent` and `EnsureCaretVisible`).
+3. ~~**Consolidate the repeated edit-handler boilerplate into a shared helper**~~ **DONE** -- Extracted `GetEditRange()`, `DeleteSelectionIfPresent()`, and `FinishEdit(scope)`. All 6 edit handlers refactored to use them.
 
-4. **Fix the FindBar toggle-replace duplication** -- This is the most likely source of a near-term bug. `OnToggleReplaceClick` reimplements `SetReplaceVisible` inline instead of calling it, meaning any future styling change to the replace toggle must be made in two places.
+4. ~~**Fix the FindBar toggle-replace duplication**~~ **DONE** -- `OnToggleReplaceClick` now delegates to `SetReplaceVisible`.
