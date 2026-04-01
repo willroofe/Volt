@@ -116,12 +116,13 @@
                                         BorderBrush="{DynamicResource ThemeMenuPopupBorder}"
                                         BorderThickness="1" CornerRadius="3"
                                         MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
-                                        Margin="0,1,4,4" Padding="0,3">
+                                        Margin="0,1,4,4">
                                     <Border.Effect>
                                         <DropShadowEffect ShadowDepth="1" Opacity="0.2" BlurRadius="4"/>
                                     </Border.Effect>
-                                    <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
-                                        <StackPanel IsItemsHost="True"
+                                    <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto"
+                                                  CanContentScroll="False">
+                                        <StackPanel IsItemsHost="True" Margin="0,2"
                                                     KeyboardNavigation.DirectionalNavigation="Contained"/>
                                     </ScrollViewer>
                                 </Border>
