@@ -65,9 +65,47 @@ public class SyntaxManager
         outState = DefaultState;
         if (_activeGrammar == null) return [];
 
-        var bcs = _activeGrammar.BlockComments;
+        // Handle full-line continuation states (block comment, heredoc, regex)
+        var result = TryTokenizeBlockComment(line, inState, ref outState);
+        if (result != null) return result;
 
-        // Handle block comment continuation (e.g. POD, __DATA__)
+        result = TryTokenizeHeredocContinuation(line, inState, ref outState);
+        if (result != null) return result;
+
+        var claimed = new bool[line.Length];
+        var tokens = new List<SyntaxToken>();
+        int ruleStart = 0;
+
+        // Handle partial-line continuations (regex close, string close)
+        ruleStart = ContinueOpenRegex(line, inState, tokens, claimed, ref outState);
+        ruleStart = ContinueOpenString(line, inState, tokens, claimed, ruleStart, ref outState);
+        if (outState.OpenQuote != null && ruleStart == 0)
+        {
+            // Entire line still inside a string — return early
+            if (_activeGrammar.Interpolation != null)
+                tokens = ExpandInterpolation(tokens, line, _activeGrammar.Interpolation);
+            return tokens;
+        }
+
+        // Apply grammar rules and claim tokens
+        ApplyGrammarRules(line, ruleStart, tokens, claimed);
+
+        // Post-rule detection: heredocs, unclaimed regexes, unclosed strings
+        DetectHeredocMarker(line, tokens, claimed, ref outState);
+        DetectRegexPatterns(line, tokens, claimed, ref outState);
+        DetectUnclosedStringAtEOL(line, tokens, claimed, ref outState);
+
+        if (_activeGrammar.Interpolation != null)
+            tokens = ExpandInterpolation(tokens, line, _activeGrammar.Interpolation);
+        tokens.Sort((a, b) => a.Start.CompareTo(b.Start));
+        return tokens;
+    }
+
+    private List<SyntaxToken>? TryTokenizeBlockComment(string line, LineState inState, ref LineState outState)
+    {
+        var bcs = _activeGrammar!.BlockComments;
+
+        // Continue existing block comment
         if (inState.BlockCommentIndex >= 0 && bcs != null && inState.BlockCommentIndex < bcs.Count)
         {
             var bc = bcs[inState.BlockCommentIndex];
@@ -89,70 +127,73 @@ public class SyntaxManager
             }
         }
 
-        // Handle heredoc continuation
-        if (inState.HeredocDelimiter != null)
+        return null;
+    }
+
+    private List<SyntaxToken>? TryTokenizeHeredocContinuation(string line, LineState inState, ref LineState outState)
+    {
+        if (inState.HeredocDelimiter == null) return null;
+
+        bool isEnd = line.TrimStart() == inState.HeredocDelimiter;
+        outState = isEnd ? DefaultState : inState;
+        if (line.Length > 0)
         {
-            bool isEnd = line.TrimStart() == inState.HeredocDelimiter;
-            outState = isEnd ? DefaultState : inState;
+            var hdTokens = new List<SyntaxToken> { new(0, line.Length, "string") };
+            if (inState.HeredocInterpolate && _activeGrammar!.Interpolation != null)
+                hdTokens = ExpandInterpolation(hdTokens, line, _activeGrammar.Interpolation);
+            return hdTokens;
+        }
+        return [];
+    }
+
+    private int ContinueOpenRegex(string line, LineState inState,
+        List<SyntaxToken> tokens, bool[] claimed, ref LineState outState)
+    {
+        if (inState.OpenRegexDelimiter is not char regexDelim) return 0;
+
+        var (endPos, remaining) = ScanForRegexClose(line, 0, regexDelim, inState.RegexClosesNeeded);
+        if (remaining > 0)
+        {
+            outState = new LineState(null, -1, null, true, regexDelim, remaining);
             if (line.Length > 0)
-            {
-                var hdTokens = new List<SyntaxToken> { new(0, line.Length, "string") };
-                if (inState.HeredocInterpolate && _activeGrammar.Interpolation != null)
-                    hdTokens = ExpandInterpolation(hdTokens, line, _activeGrammar.Interpolation);
-                return hdTokens;
-            }
-            return [];
+                tokens.Add(new SyntaxToken(0, line.Length, "regex"));
+            return line.Length;
         }
+        while (endPos < line.Length && "msixpodualngcer".Contains(line[endPos]))
+            endPos++;
+        tokens.Add(new SyntaxToken(0, endPos, "regex"));
+        for (int i = 0; i < endPos; i++) claimed[i] = true;
+        return endPos;
+    }
 
-        var claimed = new bool[line.Length];
-        var tokens = new List<SyntaxToken>();
-        int ruleStart = 0; // where to start applying regex rules
+    private int ContinueOpenString(string line, LineState inState,
+        List<SyntaxToken> tokens, bool[] claimed, int ruleStart, ref LineState outState)
+    {
+        if (inState.OpenQuote is not char openQ) return ruleStart;
 
-        // If continuing a regex from the previous line, find the closing delimiter
-        if (inState.OpenRegexDelimiter is char regexDelim)
+        int closePos = FindClosingQuote(line, 0, openQ);
+        if (closePos < 0)
         {
-            var (endPos, remaining) = ScanForRegexClose(line, 0, regexDelim, inState.RegexClosesNeeded);
-            if (remaining > 0)
-            {
-                // Entire line is still inside the regex
-                outState = new LineState(null, -1, null, true, regexDelim, remaining);
-                return line.Length > 0 ? [new SyntaxToken(0, line.Length, "regex")] : [];
-            }
-            // Regex closes — scan for trailing flags
-            while (endPos < line.Length && "msixpodualngcer".Contains(line[endPos]))
-                endPos++;
-            tokens.Add(new SyntaxToken(0, endPos, "regex"));
-            for (int i = 0; i < endPos; i++) claimed[i] = true;
-            ruleStart = endPos;
+            outState = inState;
+            if (line.Length > 0)
+                tokens.Add(new SyntaxToken(0, line.Length, "string"));
+            return 0; // signals entire line is a string
         }
+        int len = closePos + 1;
+        tokens.Add(new SyntaxToken(0, len, "string"));
+        for (int i = 0; i < len; i++) claimed[i] = true;
+        return len;
+    }
 
-        // If continuing a string from the previous line, find the closing quote
-        if (inState.OpenQuote is char openQ)
-        {
-            int closePos = FindClosingQuote(line, 0, openQ);
-            if (closePos < 0)
-            {
-                // Entire line is still inside the string
-                outState = inState;
-                if (line.Length > 0)
-                    tokens.Add(new SyntaxToken(0, line.Length, "string"));
-                if (_activeGrammar.Interpolation != null)
-                    tokens = ExpandInterpolation(tokens, line, _activeGrammar.Interpolation);
-                return tokens;
-            }
-            // String closes at closePos (inclusive of the quote character)
-            int len = closePos + 1;
-            tokens.Add(new SyntaxToken(0, len, "string"));
-            for (int i = 0; i < len; i++) claimed[i] = true;
-            ruleStart = len;
-        }
-
+    private void ApplyGrammarRules(string line, int ruleStart,
+        List<SyntaxToken> tokens, bool[] claimed)
+    {
         // Collect all candidate matches with rule priority.
         // Uses Match() in a loop advancing by 1 rather than Matches() so that
         // overlapping matches (e.g. #.*$ at every # position) are all captured
         // as candidates — the greedy claiming pass then picks the right one.
         var candidates = new List<(int Priority, int Start, int Length, string Scope)>();
-        for (int r = 0; r < _activeGrammar.Rules.Count; r++)
+        for (int r = 0; r < _activeGrammar!.Rules.Count; r++)
         {
             var rule = _activeGrammar.Rules[r];
             if (rule.CompiledRegex == null) continue;
@@ -172,10 +213,8 @@ public class SyntaxManager
             catch (RegexMatchTimeoutException) { }
         }
 
-        // Sort by position first, then by rule priority (earlier rule wins ties)
         candidates.Sort((a, b) => a.Start != b.Start ? a.Start.CompareTo(b.Start) : a.Priority.CompareTo(b.Priority));
 
-        // Greedily claim left-to-right: earliest position wins, rule priority breaks ties
         foreach (var (_, start, length, scope) in candidates)
         {
             bool overlap = false;
@@ -187,84 +226,71 @@ public class SyntaxManager
 
             for (int i = start; i < start + length; i++)
                 claimed[i] = true;
-
             tokens.Add(new SyntaxToken(start, length, scope));
         }
+    }
 
-        // Detect heredoc markers (e.g. <<EOF, <<~'END')
-        var hd = _activeGrammar.Heredoc;
-        if (hd?.CompiledRegex != null)
+    private void DetectHeredocMarker(string line,
+        List<SyntaxToken> tokens, bool[] claimed, ref LineState outState)
+    {
+        var hd = _activeGrammar!.Heredoc;
+        if (hd?.CompiledRegex == null) return;
+
+        var hMatch = hd.CompiledRegex.Match(line);
+        if (!hMatch.Success) return;
+
+        bool hdOverlap = false;
+        for (int i = hMatch.Index; i < hMatch.Index + hMatch.Length; i++)
+            if (claimed[i]) { hdOverlap = true; break; }
+        if (hdOverlap) return;
+
+        for (int i = hMatch.Index; i < hMatch.Index + hMatch.Length; i++)
+            claimed[i] = true;
+        tokens.Add(new SyntaxToken(hMatch.Index, hMatch.Length, "string"));
+
+        string delimiter = "";
+        bool interpolate = true;
+        for (int g = 1; g < hMatch.Groups.Count; g++)
         {
-            var hMatch = hd.CompiledRegex.Match(line);
-            if (hMatch.Success)
+            if (hMatch.Groups[g].Success)
             {
-                bool hdOverlap = false;
-                for (int i = hMatch.Index; i < hMatch.Index + hMatch.Length; i++)
-                    if (claimed[i]) { hdOverlap = true; break; }
-
-                if (!hdOverlap)
-                {
-                    for (int i = hMatch.Index; i < hMatch.Index + hMatch.Length; i++)
-                        claimed[i] = true;
-                    tokens.Add(new SyntaxToken(hMatch.Index, hMatch.Length, "string"));
-
-                    // Extract delimiter from first matching capture group
-                    string delimiter = "";
-                    bool interpolate = true;
-                    for (int g = 1; g < hMatch.Groups.Count; g++)
-                    {
-                        if (hMatch.Groups[g].Success)
-                        {
-                            delimiter = hMatch.Groups[g].Value;
-                            interpolate = g != hd.NoInterpolationGroup;
-                            break;
-                        }
-                    }
-                    if (!string.IsNullOrEmpty(delimiter))
-                        outState = new LineState(null, -1, delimiter, interpolate);
-                }
+                delimiter = hMatch.Groups[g].Value;
+                interpolate = g != hd.NoInterpolationGroup;
+                break;
             }
         }
+        if (!string.IsNullOrEmpty(delimiter))
+            outState = new LineState(null, -1, delimiter, interpolate);
+    }
 
-        // Detect regex patterns that grammar rules missed (paired delimiters, multi-line).
-        // This runs before unclosed string detection so regex content isn't misread as strings.
-        if (outState.HeredocDelimiter == null)
-        {
-            var regexMatch = DetectUnclaimedRegex(line, tokens, claimed);
-            if (regexMatch != null)
-            {
-                var (startPos, endPos, delim, closesRemaining) = regexMatch.Value;
-                int end = closesRemaining > 0 ? line.Length : endPos;
-                // Remove grammar rule tokens that were spuriously matched inside the regex
-                tokens.RemoveAll(t => t.Start >= startPos && t.Start < end);
-                tokens.Add(new SyntaxToken(startPos, end - startPos, "regex"));
-                for (int i = startPos; i < end; i++) claimed[i] = true;
-                if (closesRemaining > 0)
-                    outState = new LineState(null, -1, null, true, delim, closesRemaining);
-            }
-        }
+    private void DetectRegexPatterns(string line,
+        List<SyntaxToken> tokens, bool[] claimed, ref LineState outState)
+    {
+        if (outState.HeredocDelimiter != null) return;
 
-        // Detect if the line ends with an unclosed string (skip if heredoc or regex already set)
-        if (outState.HeredocDelimiter == null && outState.OpenRegexDelimiter == null)
-        {
-            outState = DetectUnclosedString(line, tokens);
+        var regexMatch = DetectUnclaimedRegex(line, tokens, claimed);
+        if (regexMatch == null) return;
 
-            // If we detected an unclosed string, extend a string token to end of line
-            if (outState.OpenQuote != null)
-            {
-                int openPos = FindOpeningQuote(line, claimed, outState.OpenQuote.Value);
-                if (openPos >= 0)
-                {
-                    int len = line.Length - openPos;
-                    tokens.Add(new SyntaxToken(openPos, len, "string"));
-                }
-            }
-        }
+        var (startPos, endPos, delim, closesRemaining) = regexMatch.Value;
+        int end = closesRemaining > 0 ? line.Length : endPos;
+        tokens.RemoveAll(t => t.Start >= startPos && t.Start < end);
+        tokens.Add(new SyntaxToken(startPos, end - startPos, "regex"));
+        for (int i = startPos; i < end; i++) claimed[i] = true;
+        if (closesRemaining > 0)
+            outState = new LineState(null, -1, null, true, delim, closesRemaining);
+    }
 
-        if (_activeGrammar.Interpolation != null)
-            tokens = ExpandInterpolation(tokens, line, _activeGrammar.Interpolation);
-        tokens.Sort((a, b) => a.Start.CompareTo(b.Start));
-        return tokens;
+    private void DetectUnclosedStringAtEOL(string line,
+        List<SyntaxToken> tokens, bool[] claimed, ref LineState outState)
+    {
+        if (outState.HeredocDelimiter != null || outState.OpenRegexDelimiter != null) return;
+
+        outState = DetectUnclosedString(line, tokens);
+        if (outState.OpenQuote == null) return;
+
+        int openPos = FindOpeningQuote(line, claimed, outState.OpenQuote.Value);
+        if (openPos >= 0)
+            tokens.Add(new SyntaxToken(openPos, line.Length - openPos, "string"));
     }
 
     /// <summary>Find closing quote in line, respecting backslash escapes.</summary>

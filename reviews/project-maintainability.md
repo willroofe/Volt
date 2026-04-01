@@ -43,123 +43,51 @@ Extracted `DwmHelper` (DWM interop), `FileHelper` (file I/O utilities, file type
 
 ---
 
-### MainWindow.xaml.cs -- Tab header construction in code-behind (lines 195-316)
+### ~~MainWindow.xaml.cs -- Tab header construction in code-behind (lines 195-316)~~ ADDRESSED
 
-`CreateTabHeader` builds a complex visual tree (Border > DockPanel > TextBlock + Button with custom ControlTemplate) entirely in procedural C#. This is 120 lines of imperative UI construction that bypasses WPF's declarative templating, making it harder to adjust styling and impossible to preview in a designer.
+Close button template moved to `TabCloseButton` XAML style in App.xaml. Procedural `ControlTemplate`/`FrameworkElementFactory` code replaced with a single `Style = FindResource("TabCloseButton")` call.
 
-```csharp
-// MainWindow.xaml.cs:226-239
-var closeBtnTemplate = new ControlTemplate(typeof(Button));
-var closeBorder = new FrameworkElementFactory(typeof(Border), "Bd");
-closeBorder.SetValue(Border.BackgroundProperty, Brushes.Transparent);
-closeBorder.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
-var closeContent = new FrameworkElementFactory(typeof(ContentPresenter));
-// ... 10 more lines of programmatic template construction
-```
-
-A `DataTemplate` in XAML with an `ItemsControl` bound to the tab collection would be cleaner and more maintainable.
-
-**Rating:** MODERATE -- functional but fights the framework.
+~~**Rating:** MODERATE~~
 
 ---
 
-### SyntaxManager.cs -- `Tokenize` method complexity (lines 63-268)
+### ~~SyntaxManager.cs -- `Tokenize` method complexity (lines 63-268)~~ ADDRESSED
 
-The main `Tokenize` method is 205 lines with deep nesting, multiple early returns, and interleaved handling of block comments, heredocs, regexes, strings, and normal rules. The method manages 6 different tokenization modes and mutates local arrays in complex ways.
+Decomposed into 8 focused private methods: `TryTokenizeBlockComment`, `TryTokenizeHeredocContinuation`, `ContinueOpenRegex`, `ContinueOpenString`, `ApplyGrammarRules`, `DetectHeredocMarker`, `DetectRegexPatterns`, `DetectUnclosedStringAtEOL`. The main `Tokenize` method is now a ~30-line orchestrator.
 
-```csharp
-// SyntaxManager.cs:63
-public List<SyntaxToken> Tokenize(string line, LineState inState, out LineState outState)
-{
-    outState = DefaultState;
-    if (_activeGrammar == null) return [];
-    // ... 205 lines of interleaved tokenization logic
-}
-```
-
-The individual sections (block comment continuation, heredoc continuation, regex continuation, rule matching, unclosed string detection) are mostly self-contained and could be extracted into private methods to reduce cognitive load.
-
-**Rating:** MODERATE -- the method works correctly but is difficult to follow and risky to modify.
+~~**Rating:** MODERATE~~
 
 ---
 
-### SelectionManager.cs -- `ClampToBuffer` mutates anchor via side effect (lines 29-36)
+### ~~SelectionManager.cs -- `ClampToBuffer` mutates anchor via side effect (lines 29-36)~~ ADDRESSED
 
-`ClampToBuffer` takes `caretLine`/`caretCol` as `ref` parameters but also silently mutates the instance's `AnchorLine`/`AnchorCol`. This is a non-obvious side effect that a caller would not expect from the method name.
+Made `public` with XML doc comment explicitly documenting the dual mutation of both anchor and caret positions.
 
-```csharp
-// SelectionManager.cs:29-36
-private void ClampToBuffer(TextBuffer buffer, ref int caretLine, ref int caretCol)
-{
-    int maxLine = Math.Max(0, buffer.Count - 1);
-    AnchorLine = Math.Clamp(AnchorLine, 0, maxLine);  // side effect on instance state
-    AnchorCol = Math.Clamp(AnchorCol, 0, buffer[AnchorLine].Length);
-    caretLine = Math.Clamp(caretLine, 0, maxLine);
-    caretCol = Math.Clamp(caretCol, 0, buffer[caretLine].Length);
-}
-```
-
-**Rating:** MODERATE -- could cause subtle bugs if anchor mutation is not expected.
+~~**Rating:** MODERATE~~
 
 ---
 
-### UndoManager.cs -- Duplicate XML doc comments (lines 27-32)
+### ~~UndoManager.cs -- Duplicate XML doc comments (lines 27-32)~~ ADDRESSED
 
-```csharp
-// UndoManager.cs:27-32
-/// <summary>
-/// Push a region-based undo entry. Clears the redo stack.
-/// </summary>
-/// <summary>
-/// Push a region-based undo entry. Clears the redo stack.
-/// Returns true if the oldest entry was evicted due to the size cap.
-/// </summary>
-public bool Push(UndoEntry entry)
-```
+Removed the stale duplicate `<summary>` tag.
 
-Two consecutive `<summary>` tags -- the first is stale and should be removed.
-
-**Rating:** MODERATE -- misleading documentation.
+~~**Rating:** MODERATE~~
 
 ---
 
-### FindBar.cs -- Duplicated replace-toggle logic (lines 51-68 vs 99-105)
+### ~~FindBar.cs -- Duplicated replace-toggle logic (lines 51-68 vs 99-105)~~ ADDRESSED
 
-`ToggleReplace` and `OnToggleReplaceClick` independently implement the same toggle behavior with slight differences in structure. If one is modified, the other must be updated in sync.
+`OnToggleReplaceClick` now calls `SetReplaceVisible(show)` instead of reimplementing the visibility/angle/margin logic inline.
 
-```csharp
-// FindBar.xaml.cs:51-62 (ToggleReplace)
-bool show = _replaceRow.Visibility != Visibility.Visible;
-SetReplaceVisible(show);
-if (show)
-    Dispatcher.BeginInvoke(..., () => Keyboard.Focus(_replaceInput));
-
-// FindBar.xaml.cs:99-105 (OnToggleReplaceClick)
-bool show = _replaceRow.Visibility != Visibility.Visible;
-_replaceRow.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-_toggleTransform.Angle = show ? 180 : 0;
-_findRow.Margin = new Thickness(8, 6, 8, show ? 2 : 6);
-```
-
-`OnToggleReplaceClick` should call `SetReplaceVisible(show)` instead of reimplementing the logic inline.
-
-**Rating:** MODERATE -- violation of DRY that will cause bugs when one path is updated but not the other.
+~~**Rating:** MODERATE~~
 
 ---
 
-### EditorControl.cs -- `ColToPixelX` is dead weight (lines 687-690)
+### ~~EditorControl.cs -- `ColToPixelX` is dead weight (lines 687-690)~~ ADDRESSED
 
-```csharp
-// EditorControl.cs:687-690
-private double ColToPixelX(string line, int col)
-{
-    return col * _charWidth;
-}
-```
+Removed during the FontManager extraction — all call sites now use `col * _font.CharWidth` directly.
 
-The `line` parameter is never used. Every call site could be replaced with `col * _charWidth` directly, or the parameter should be removed. The method exists in case non-monospace support is added, but currently it obscures what's actually happening.
-
-**Rating:** MODERATE -- misleading API that suggests line content affects positioning.
+~~**Rating:** MODERATE~~
 
 ---
 

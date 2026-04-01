@@ -25,9 +25,6 @@ public class UndoManager
 
     /// <summary>
     /// Push a region-based undo entry. Clears the redo stack.
-    /// </summary>
-    /// <summary>
-    /// Push a region-based undo entry. Clears the redo stack.
     /// Returns true if the oldest entry was evicted due to the size cap.
     /// </summary>
     public bool Push(UndoEntry entry)
