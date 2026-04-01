@@ -200,17 +200,38 @@
                         </ControlTemplate>
                     </Button.Template>
                 </Button>
-                <ScrollViewer HorizontalScrollBarVisibility="Hidden"
-                              VerticalScrollBarVisibility="Disabled"
-                              CanContentScroll="False">
-                    <Grid>
-                        <StackPanel x:Name="TabStrip" Orientation="Horizontal"/>
-                        <Border x:Name="TabDropIndicator" Width="2"
-                                HorizontalAlignment="Left" VerticalAlignment="Stretch"
-                                Background="{DynamicResource ThemeTextFg}"
-                                Visibility="Collapsed" IsHitTestVisible="False"/>
-                    </Grid>
-                </ScrollViewer>
+                <Grid>
+                    <ScrollViewer x:Name="TabScrollViewer"
+                                  HorizontalScrollBarVisibility="Hidden"
+                                  VerticalScrollBarVisibility="Disabled"
+                                  CanContentScroll="False"
+                                  PreviewMouseWheel="OnTabScrollViewerMouseWheel">
+                        <Grid>
+                            <StackPanel x:Name="TabStrip" Orientation="Horizontal"/>
+                            <Border x:Name="TabDropIndicator" Width="2"
+                                    HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                                    Background="{DynamicResource ThemeTextFg}"
+                                    Visibility="Collapsed" IsHitTestVisible="False"/>
+                        </Grid>
+                    </ScrollViewer>
+                    <!-- Overflow fade indicators with arrow glyphs -->
+                    <Border x:Name="TabOverflowLeft" Width="32"
+                            HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                            IsHitTestVisible="False" Visibility="Collapsed">
+                        <TextBlock Text="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                   Foreground="{DynamicResource ThemeTextFg}"
+                                   HorizontalAlignment="Left" VerticalAlignment="Center"
+                                   Margin="6,0,0,0"/>
+                    </Border>
+                    <Border x:Name="TabOverflowRight" Width="32"
+                            HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                            IsHitTestVisible="False" Visibility="Collapsed">
+                        <TextBlock Text="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                   Foreground="{DynamicResource ThemeTextFg}"
+                                   HorizontalAlignment="Right" VerticalAlignment="Center"
+                                   Margin="0,0,6,0"/>
+                    </Border>
+                </Grid>
             </DockPanel>
         </Border>
 
