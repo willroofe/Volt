@@ -157,6 +157,7 @@ public class SyntaxManager
             outState = new LineState(null, -1, null, true, regexDelim, remaining);
             if (line.Length > 0)
                 tokens.Add(new SyntaxToken(0, line.Length, "regex"));
+            for (int i = 0; i < line.Length; i++) claimed[i] = true;
             return line.Length;
         }
         while (endPos < line.Length && "msixpodualngcer".Contains(line[endPos]))
@@ -266,7 +267,7 @@ public class SyntaxManager
     private void DetectRegexPatterns(string line,
         List<SyntaxToken> tokens, bool[] claimed, ref LineState outState)
     {
-        if (outState.HeredocDelimiter != null) return;
+        if (outState.HeredocDelimiter != null || outState.OpenRegexDelimiter != null) return;
 
         var regexMatch = DetectUnclaimedRegex(line, tokens, claimed);
         if (regexMatch == null) return;
