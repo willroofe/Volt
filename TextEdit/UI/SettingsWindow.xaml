@@ -319,6 +319,11 @@
                         <ComboBox x:Name="FontWeightBox" Width="140" Height="26"
                                   HorizontalAlignment="Left" Margin="0,0,0,16"
                                   VerticalContentAlignment="Center" FontSize="13"/>
+
+                        <TextBlock Text="Line height" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="LineHeightBox" Width="80" Height="26"
+                                  HorizontalAlignment="Left" Margin="0,0,0,16"
+                                  VerticalContentAlignment="Center" FontSize="13"/>
                     </StackPanel>
                 </ScrollViewer>
 

@@ -538,6 +538,7 @@ public partial class MainWindow : Window
         if (_settings.Editor.Font.Family != null) editor.FontFamilyName = _settings.Editor.Font.Family;
         editor.EditorFontSize = _settings.Editor.Font.Size;
         editor.EditorFontWeight = _settings.Editor.Font.Weight;
+        editor.LineHeightMultiplier = _settings.Editor.Font.LineHeight;
     }
 
     private void RestoreWindowPosition()
@@ -816,8 +817,8 @@ public partial class MainWindow : Window
     private void OnSettings(object sender, RoutedEventArgs e)
     {
         var dlg = new SettingsWindow(ThemeManager, Editor.TabSize, _settings.Editor.Caret.BlockCaret, _settings.Editor.Caret.BlinkMs,
-            Editor.FontFamilyName, Editor.EditorFontSize, Editor.EditorFontWeight, _settings.Application.ColorTheme,
-            _settings.Editor.Find.BarPosition) { Owner = this };
+            Editor.FontFamilyName, Editor.EditorFontSize, Editor.EditorFontWeight, Editor.LineHeightMultiplier,
+            _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition) { Owner = this };
         dlg.Applied += (_, _) => ApplySettingsFromDialog(dlg);
         if (dlg.ShowDialog() == true)
             ApplySettingsFromDialog(dlg);
@@ -831,6 +832,7 @@ public partial class MainWindow : Window
         _settings.Editor.Font.Family = dlg.SelectedFontFamily;
         _settings.Editor.Font.Size = dlg.SelectedFontSize;
         _settings.Editor.Font.Weight = dlg.SelectedFontWeight;
+        _settings.Editor.Font.LineHeight = dlg.SelectedLineHeight;
         _settings.Application.ColorTheme = dlg.ColorThemeName;
         _settings.Editor.Find.BarPosition = dlg.FindBarPosition;
         _settings.Save();
@@ -947,6 +949,17 @@ public partial class MainWindow : Window
                     ApplyPreview: () => { foreach (var t in _tabs) t.Editor.EditorFontWeight = w; },
                     Commit: () => { _settings.Editor.Font.Weight = w; _settings.Save(); },
                     Revert: () => { foreach (var t in _tabs) t.Editor.EditorFontWeight = original; }
+                )).ToList();
+            }),
+
+            new("Change Line Height", GetOptions: () =>
+            {
+                var original = Editor.LineHeightMultiplier;
+                return AppSettings.LineHeightOptions.Select(lh => new PaletteOption(
+                    lh.ToString("0.0") + "x",
+                    ApplyPreview: () => { foreach (var t in _tabs) t.Editor.LineHeightMultiplier = lh; },
+                    Commit: () => { _settings.Editor.Font.LineHeight = lh; _settings.Save(); },
+                    Revert: () => { foreach (var t in _tabs) t.Editor.LineHeightMultiplier = original; }
                 )).ToList();
             }),
 
