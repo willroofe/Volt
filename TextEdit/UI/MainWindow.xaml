@@ -128,7 +128,7 @@
                             </Setter>
                         </Style>
                     </MenuItem.ItemContainerStyle>
-                    <MenuItem Header="_New" InputGestureText="Ctrl+N" Click="OnNew"/>
+                    <MenuItem Header="_New Tab" InputGestureText="Ctrl+N" Click="OnNew"/>
                     <MenuItem Header="_Open..." InputGestureText="Ctrl+O" Click="OnOpen">
                         <MenuItem.Icon>
                             <TextBlock Text="&#xE838;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
@@ -141,6 +141,8 @@
                         </MenuItem.Icon>
                     </MenuItem>
                     <MenuItem Header="Save _As..." InputGestureText="Ctrl+Shift+S" Click="OnSaveAs"/>
+                    <Separator/>
+                    <MenuItem Header="_Close Tab" InputGestureText="Ctrl+W" Click="OnCloseTab"/>
                     <Separator/>
                     <MenuItem Header="S_ettings..." Click="OnSettings">
                         <MenuItem.Icon>
@@ -170,6 +172,48 @@
 
         <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource ThemeBorderBrush}"/>
 
+        <!-- Tab bar -->
+        <Border DockPanel.Dock="Top" Background="{DynamicResource ThemeTabBarBg}"
+                BorderBrush="{DynamicResource ThemeTabBorder}" BorderThickness="0,0,0,1"
+                WindowChrome.IsHitTestVisibleInChrome="True">
+            <DockPanel Height="33">
+                <Button x:Name="NewTabButton" DockPanel.Dock="Right"
+                        Width="28" Height="28" Margin="4,0"
+                        Content="&#xE710;"
+                        FontFamily="Segoe MDL2 Assets" FontSize="10"
+                        Foreground="{DynamicResource ThemeButtonFg}"
+                        Background="Transparent" BorderThickness="0"
+                        Focusable="False" Cursor="Hand"
+                        Click="OnNewTab"
+                        ToolTip="New Tab (Ctrl+N)">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Bd" Background="Transparent" CornerRadius="3">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background"
+                                            Value="{DynamicResource ThemeButtonHover}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+                <ScrollViewer HorizontalScrollBarVisibility="Hidden"
+                              VerticalScrollBarVisibility="Disabled"
+                              CanContentScroll="False">
+                    <Grid>
+                        <StackPanel x:Name="TabStrip" Orientation="Horizontal"/>
+                        <Border x:Name="TabDropIndicator" Width="2"
+                                HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                                Background="{DynamicResource ThemeTextFg}"
+                                Visibility="Collapsed" IsHitTestVisible="False"/>
+                    </Grid>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
         <!-- Status bar -->
         <Border DockPanel.Dock="Bottom" Background="{DynamicResource ThemeChromeBrush}" Height="24">
             <Grid Margin="8,0">
@@ -185,13 +229,8 @@
         </Border>
         <Border DockPanel.Dock="Bottom" Height="1" Background="{DynamicResource ThemeBorderBrush}"/>
 
-        <ScrollViewer HorizontalScrollBarVisibility="Visible"
-                      VerticalScrollBarVisibility="Visible"
-                      CanContentScroll="True"
-                      Template="{StaticResource ThemedScrollViewer}"
-                      WindowChrome.IsHitTestVisibleInChrome="True">
-            <local:EditorControl x:Name="Editor" />
-        </ScrollViewer>
+        <Border x:Name="EditorHost"
+                WindowChrome.IsHitTestVisibleInChrome="True"/>
     </DockPanel>
 
     <!-- Find bar overlay -->

@@ -30,7 +30,12 @@
     "navHover": "#32302F",
     "scrollBackground": "#32302F",
     "scrollThumb": "#504945",
-    "scrollThumbHover": "#665C54"
+    "scrollThumbHover": "#665C54",
+    "tabBarBackground": "#1D2021",
+    "tabActive": "#282828",
+    "tabInactive": "#1D2021",
+    "tabHover": "#32302F",
+    "tabBorder": "#3C3836"
   },
   "scopes": {
     "comment": "#928374",

@@ -22,6 +22,11 @@
         <SolidColorBrush x:Key="ThemeScrollBg" Color="#E0E0E0"/>
         <SolidColorBrush x:Key="ThemeScrollThumb" Color="#C0C0C0"/>
         <SolidColorBrush x:Key="ThemeScrollThumbHover" Color="#A0A0A0"/>
+        <SolidColorBrush x:Key="ThemeTabBarBg" Color="#E0E0E0"/>
+        <SolidColorBrush x:Key="ThemeTabActive" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="ThemeTabInactive" Color="#D8D8D8"/>
+        <SolidColorBrush x:Key="ThemeTabHover" Color="#EBEBEB"/>
+        <SolidColorBrush x:Key="ThemeTabBorder" Color="#D0D0D0"/>
 
         <!-- Title bar buttons (shared by MainWindow and SettingsWindow) -->
         <Style x:Key="TitleBarButton" TargetType="Button">

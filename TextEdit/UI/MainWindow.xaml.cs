@@ -3,6 +3,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -12,9 +13,18 @@ namespace TextEdit;
 
 public partial class MainWindow : Window
 {
-    private string? _filePath;
-    private Encoding _fileEncoding = new UTF8Encoding(false);
+    private readonly List<TabInfo> _tabs = [];
+    private TabInfo? _activeTab;
     private AppSettings _settings;
+
+    // Tab drag-to-reorder state
+    private TabInfo? _dragTab;
+    private Point _dragStartPos;
+    private bool _isDragging;
+    private int _dragTargetIndex = -1;
+    private System.Windows.Controls.Primitives.Popup? _dragGhost;
+
+    private EditorControl Editor => _activeTab!.Editor;
 
     private ThemeManager ThemeManager => App.Current.ThemeManager;
     private SyntaxManager SyntaxManager => App.Current.SyntaxManager;
@@ -29,15 +39,16 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        Editor.ThemeManager = ThemeManager;
-        Editor.SyntaxManager = SyntaxManager;
         _settings = AppSettings.Load();
+
+        // Create the initial tab
+        var tab = CreateTab();
+        ActivateTab(tab);
+
         ApplySettings();
         RestoreWindowPosition();
-        Editor.DirtyChanged += (_, _) => UpdateTitle();
-        Editor.CaretMoved += (_, _) => UpdateCaretPos();
+
         CmdPalette.Closed += (_, _) => Keyboard.Focus(Editor);
-        FindBarControl.SetEditor(Editor);
         FindBarControl.Closed += (_, _) => Keyboard.Focus(Editor);
         StateChanged += OnStateChanged;
         Closing += OnWindowClosing;
@@ -45,12 +56,362 @@ public partial class MainWindow : Window
         SourceInitialized += (_, _) => ApplyDwmTheme();
     }
 
+    private TabInfo CreateTab(string? filePath = null)
+    {
+        var tab = new TabInfo(ThemeManager, SyntaxManager) { FilePath = filePath };
+        _tabs.Add(tab);
+
+        // Wire up per-tab dirty handler (for tab header updates — lives for the tab's lifetime)
+        tab.Editor.DirtyChanged += (_, _) => UpdateTabHeader(tab);
+
+        tab.HeaderElement = CreateTabHeader(tab);
+        TabStrip.Children.Add(tab.HeaderElement);
+        return tab;
+    }
+
+    private void ActivateTab(TabInfo tab)
+    {
+        // Unhook events from previous active tab
+        if (_activeTab != null)
+        {
+            _activeTab.Editor.DirtyChanged -= OnActiveDirtyChanged;
+            _activeTab.Editor.CaretMoved -= OnActiveCaretMoved;
+        }
+
+        _activeTab = tab;
+
+        // Swap the editor into the host
+        EditorHost.Child = tab.ScrollHost;
+
+        // Hook events for the new active tab
+        tab.Editor.DirtyChanged += OnActiveDirtyChanged;
+        tab.Editor.CaretMoved += OnActiveCaretMoved;
+
+        // Update FindBar to target the new editor
+        FindBarControl.SetEditor(tab.Editor);
+        FindBarControl.RefreshSearch();
+
+        // Apply current settings to the editor
+        ApplySettingsToEditor(tab.Editor);
+
+        // Update UI
+        UpdateTitle();
+        UpdateFileType();
+        UpdateCaretPos();
+        UpdateAllTabHeaders();
+
+        Keyboard.Focus(tab.Editor);
+    }
+
+    private void CloseTab(TabInfo tab)
+    {
+        if (tab.Editor.IsDirty && !PromptSaveTab(tab)) return;
+
+        int idx = _tabs.IndexOf(tab);
+        _tabs.Remove(tab);
+        TabStrip.Children.Remove(tab.HeaderElement);
+
+        // Unhook events if this was the active tab
+        if (tab == _activeTab)
+        {
+            tab.Editor.DirtyChanged -= OnActiveDirtyChanged;
+            tab.Editor.CaretMoved -= OnActiveCaretMoved;
+            _activeTab = null;
+        }
+
+        if (_tabs.Count == 0)
+        {
+            // Always keep at least one tab
+            var newTab = CreateTab();
+            ActivateTab(newTab);
+        }
+        else if (_activeTab == null)
+        {
+            int nextIdx = Math.Min(idx, _tabs.Count - 1);
+            ActivateTab(_tabs[nextIdx]);
+        }
+    }
+
+    private Border CreateTabHeader(TabInfo tab)
+    {
+        var textBlock = new TextBlock
+        {
+            Text = tab.DisplayName,
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(10, 0, 6, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxWidth = 150
+        };
+        textBlock.SetResourceReference(TextBlock.ForegroundProperty, "ThemeTextFg");
+
+        var closeBtn = new Button
+        {
+            Content = "\uE8BB",
+            FontFamily = new FontFamily("Segoe MDL2 Assets"),
+            FontSize = 8,
+            Width = 20,
+            Height = 20,
+            Margin = new Thickness(0, 0, 4, 0),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Focusable = false,
+            Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        closeBtn.SetResourceReference(Button.ForegroundProperty, "ThemeTextFgMuted");
+
+        // Close button template with hover effect
+        var closeBtnTemplate = new ControlTemplate(typeof(Button));
+        var closeBorder = new FrameworkElementFactory(typeof(Border), "Bd");
+        closeBorder.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+        closeBorder.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
+        var closeContent = new FrameworkElementFactory(typeof(ContentPresenter));
+        closeContent.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        closeContent.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+        closeBorder.AppendChild(closeContent);
+        closeBtnTemplate.VisualTree = closeBorder;
+        var hoverTrigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hoverTrigger.Setters.Add(new Setter(Border.BackgroundProperty,
+            new DynamicResourceExtension("ThemeButtonHover"), "Bd"));
+        closeBtnTemplate.Triggers.Add(hoverTrigger);
+        closeBtn.Template = closeBtnTemplate;
+
+        closeBtn.Click += (_, _) => CloseTab(tab);
+
+        var panel = new DockPanel { VerticalAlignment = VerticalAlignment.Center };
+        DockPanel.SetDock(closeBtn, Dock.Right);
+        panel.Children.Add(closeBtn);
+        panel.Children.Add(textBlock);
+
+        var header = new Border
+        {
+            Child = panel,
+            Height = 33,
+            MinWidth = 60,
+            Cursor = Cursors.Hand,
+            BorderThickness = new Thickness(0, 0, 1, 0)
+        };
+        header.SetResourceReference(Border.BorderBrushProperty, "ThemeTabBorder");
+
+        // Click to activate + drag to reorder
+        header.MouseLeftButtonDown += (_, e) =>
+        {
+            ActivateTab(tab);
+            _dragTab = tab;
+            _dragStartPos = e.GetPosition(TabStrip);
+            _isDragging = false;
+            _dragTargetIndex = -1;
+            header.CaptureMouse();
+            e.Handled = true;
+        };
+
+        header.MouseMove += (_, e) =>
+        {
+            if (_dragTab != tab || e.LeftButton != MouseButtonState.Pressed) return;
+            var pos = e.GetPosition(TabStrip);
+            if (!_isDragging)
+            {
+                if (Math.Abs(pos.X - _dragStartPos.X) < SystemParameters.MinimumHorizontalDragDistance)
+                    return;
+                _isDragging = true;
+                ShowDragGhost(tab);
+                header.Opacity = 0.4;
+            }
+            UpdateDragGhost(e);
+            UpdateDropIndicator(pos.X, _tabs.IndexOf(tab));
+        };
+
+        header.MouseLeftButtonUp += (_, e) =>
+        {
+            if (_dragTab == tab)
+            {
+                header.ReleaseMouseCapture();
+                if (_isDragging)
+                {
+                    header.Opacity = 1.0;
+                    HideDragGhost();
+                    TabDropIndicator.Visibility = Visibility.Collapsed;
+                    if (_dragTargetIndex >= 0)
+                        CommitTabReorder(tab, _dragTargetIndex);
+                }
+                _dragTab = null;
+                _isDragging = false;
+                _dragTargetIndex = -1;
+            }
+        };
+
+        // Middle-click to close tab
+        header.MouseDown += (_, e) =>
+        {
+            if (e.ChangedButton == MouseButton.Middle)
+            {
+                CloseTab(tab);
+                e.Handled = true;
+            }
+        };
+
+        return header;
+    }
+
+    private void ShowDragGhost(TabInfo tab)
+    {
+        var text = new TextBlock
+        {
+            Text = tab.DisplayName,
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(10, 0, 10, 0)
+        };
+        text.SetResourceReference(TextBlock.ForegroundProperty, "ThemeTextFg");
+
+        var border = new Border
+        {
+            Child = text,
+            Height = 30,
+            MinWidth = 60,
+            CornerRadius = new CornerRadius(4),
+            Opacity = 0.85
+        };
+        border.SetResourceReference(Border.BackgroundProperty, "ThemeTabActive");
+        border.SetResourceReference(Border.BorderBrushProperty, "ThemeTabBorder");
+        border.BorderThickness = new Thickness(1);
+
+        _dragGhost = new System.Windows.Controls.Primitives.Popup
+        {
+            Child = border,
+            AllowsTransparency = true,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.AbsolutePoint,
+            IsHitTestVisible = false,
+            IsOpen = true
+        };
+    }
+
+    private void UpdateDragGhost(MouseEventArgs e)
+    {
+        if (_dragGhost == null) return;
+        var screenPos = PointToScreen(e.GetPosition(this));
+        // PointToScreen returns physical pixels; Popup offsets use DIPs — convert back
+        var source = PresentationSource.FromVisual(this);
+        double dpiScale = source?.CompositionTarget?.TransformFromDevice.M11 ?? 1.0;
+        _dragGhost.HorizontalOffset = screenPos.X * dpiScale + 12;
+        _dragGhost.VerticalOffset = screenPos.Y * dpiScale + 4;
+    }
+
+    private void HideDragGhost()
+    {
+        if (_dragGhost != null)
+        {
+            _dragGhost.IsOpen = false;
+            _dragGhost = null;
+        }
+    }
+
+    private void UpdateDropIndicator(double mouseX, int dragSourceIdx)
+    {
+        // Calculate the insertion index and the X position for the indicator line
+        double offset = 0;
+        int insertIdx = -1;
+        double indicatorX = 0;
+
+        for (int i = 0; i < TabStrip.Children.Count; i++)
+        {
+            if (TabStrip.Children[i] is FrameworkElement el)
+            {
+                double width = el.ActualWidth;
+                double midpoint = offset + width / 2;
+                if (mouseX < midpoint)
+                {
+                    insertIdx = i;
+                    indicatorX = offset;
+                    break;
+                }
+                offset += width;
+            }
+        }
+
+        if (insertIdx < 0)
+        {
+            // Past the last tab — insert at end
+            insertIdx = TabStrip.Children.Count;
+            indicatorX = offset;
+        }
+
+        // If dropping at the same position or adjacent (no actual move), hide indicator
+        if (insertIdx == dragSourceIdx || insertIdx == dragSourceIdx + 1)
+        {
+            TabDropIndicator.Visibility = Visibility.Collapsed;
+            _dragTargetIndex = -1;
+            return;
+        }
+
+        _dragTargetIndex = insertIdx > dragSourceIdx ? insertIdx - 1 : insertIdx;
+        TabDropIndicator.Visibility = Visibility.Visible;
+        TabDropIndicator.Margin = new Thickness(indicatorX - 1, 0, 0, 0);
+    }
+
+    private void CommitTabReorder(TabInfo tab, int targetIdx)
+    {
+        int currentIdx = _tabs.IndexOf(tab);
+        if (targetIdx == currentIdx) return;
+
+        _tabs.RemoveAt(currentIdx);
+        _tabs.Insert(targetIdx, tab);
+
+        TabStrip.Children.Remove(tab.HeaderElement);
+        TabStrip.Children.Insert(targetIdx, tab.HeaderElement);
+    }
+
+    private void UpdateTabHeader(TabInfo tab)
+    {
+        if (tab.HeaderElement?.Child is DockPanel panel)
+        {
+            // TextBlock is the last child (fill)
+            foreach (var child in panel.Children)
+            {
+                if (child is TextBlock tb)
+                {
+                    var name = tab.DisplayName;
+                    tb.Text = tab.Editor.IsDirty ? "\u2022 " + name : name;
+                    break;
+                }
+            }
+        }
+        // Also update window title if this is the active tab
+        if (tab == _activeTab) UpdateTitle();
+    }
+
+    private void UpdateAllTabHeaders()
+    {
+        foreach (var tab in _tabs)
+        {
+            var isActive = tab == _activeTab;
+            if (tab.HeaderElement != null)
+            {
+                tab.HeaderElement.SetResourceReference(Border.BackgroundProperty,
+                    isActive ? "ThemeTabActive" : "ThemeTabInactive");
+            }
+        }
+    }
+
+    private void SwitchTab(int direction)
+    {
+        if (_tabs.Count <= 1 || _activeTab == null) return;
+        int idx = _tabs.IndexOf(_activeTab);
+        int next = (idx + direction + _tabs.Count) % _tabs.Count;
+        ActivateTab(_tabs[next]);
+    }
+
+    private void OnActiveDirtyChanged(object? sender, EventArgs e) => UpdateTitle();
+    private void OnActiveCaretMoved(object? sender, EventArgs e) => UpdateCaretPos();
+
     private void ApplyDwmTheme()
     {
         if (PresentationSource.FromVisual(this) is not HwndSource source) return;
         var hwnd = source.Handle;
 
-        // Determine if theme is dark by checking luminance of the editor background
         var bg = ThemeManager.EditorBg as SolidColorBrush;
         if (bg == null) return;
         var c = bg.Color;
@@ -59,7 +420,6 @@ public partial class MainWindow : Window
         int darkMode = isDark ? 1 : 0;
         DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
 
-        // Set caption and border color to match the title bar theme
         var chromeBrush = Application.Current.Resources["ThemeChromeBrush"] as SolidColorBrush;
         if (chromeBrush != null)
         {
@@ -74,8 +434,6 @@ public partial class MainWindow : Window
     {
         if (WindowState == WindowState.Maximized)
         {
-            // When maximized, Windows extends the window beyond screen edges
-            // by the resize border thickness. Compensate with padding.
             var thickness = SystemParameters.WindowResizeBorderThickness;
             BorderThickness = new Thickness(
                 thickness.Left + 1, thickness.Top + 1,
@@ -91,13 +449,19 @@ public partial class MainWindow : Window
 
     private void ApplySettings()
     {
-        Editor.TabSize = _settings.Editor.TabSize;
-        Editor.BlockCaret = _settings.Editor.Caret.BlockCaret;
-        Editor.CaretBlinkMs = _settings.Editor.Caret.BlinkMs;
-        if (_settings.Editor.Font.Family != null) Editor.FontFamilyName = _settings.Editor.Font.Family;
-        Editor.EditorFontSize = _settings.Editor.Font.Size;
-        Editor.EditorFontWeight = _settings.Editor.Font.Weight;
+        foreach (var tab in _tabs)
+            ApplySettingsToEditor(tab.Editor);
         FindBarControl.SetPosition(_settings.Editor.Find.BarPosition);
+    }
+
+    private void ApplySettingsToEditor(EditorControl editor)
+    {
+        editor.TabSize = _settings.Editor.TabSize;
+        editor.BlockCaret = _settings.Editor.Caret.BlockCaret;
+        editor.CaretBlinkMs = _settings.Editor.Caret.BlinkMs;
+        if (_settings.Editor.Font.Family != null) editor.FontFamilyName = _settings.Editor.Font.Family;
+        editor.EditorFontSize = _settings.Editor.Font.Size;
+        editor.EditorFontWeight = _settings.Editor.Font.Weight;
     }
 
     private void RestoreWindowPosition()
@@ -109,7 +473,6 @@ public partial class MainWindow : Window
             double width = _settings.WindowWidth.Value;
             double height = _settings.WindowHeight.Value;
 
-            // Validate that at least 100x100 of the window is visible on the virtual screen
             double vsLeft = SystemParameters.VirtualScreenLeft;
             double vsTop = SystemParameters.VirtualScreenTop;
             double vsRight = vsLeft + SystemParameters.VirtualScreenWidth;
@@ -128,7 +491,6 @@ public partial class MainWindow : Window
                 Width = width;
                 Height = height;
             }
-            // else: fall through to default CenterScreen placement
         }
 
         if (_settings.WindowMaximized)
@@ -137,6 +499,20 @@ public partial class MainWindow : Window
 
     private void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        // Prompt save for each dirty tab
+        foreach (var tab in _tabs.ToList())
+        {
+            if (tab.Editor.IsDirty)
+            {
+                ActivateTab(tab);
+                if (!PromptSaveTab(tab))
+                {
+                    e.Cancel = true;
+                    return;
+                }
+            }
+        }
+
         if (WindowState == WindowState.Normal)
         {
             _settings.WindowLeft = Left;
@@ -151,21 +527,25 @@ public partial class MainWindow : Window
 
     private void UpdateCaretPos()
     {
+        if (_activeTab == null) return;
         CaretPosText.Text = $"Ln {Editor.CaretLine + 1}, Col {Editor.CaretCol + 1}";
     }
 
     private string GetEncodingLabel()
     {
-        if (_fileEncoding is UTF8Encoding utf8)
+        if (_activeTab == null) return "UTF-8";
+        var enc = _activeTab.FileEncoding;
+        if (enc is UTF8Encoding utf8)
             return utf8.GetPreamble().Length > 0 ? "UTF-8 BOM" : "UTF-8";
-        if (_fileEncoding is UnicodeEncoding)
+        if (enc is UnicodeEncoding)
             return "UTF-16";
-        return _fileEncoding.EncodingName;
+        return enc.EncodingName;
     }
 
     private void UpdateFileType()
     {
-        var ext = _filePath != null ? Path.GetExtension(_filePath).ToLowerInvariant() : "";
+        if (_activeTab == null) return;
+        var ext = _activeTab.FilePath != null ? Path.GetExtension(_activeTab.FilePath).ToLowerInvariant() : "";
         SyntaxManager.SetLanguageByExtension(ext);
         Editor.InvalidateSyntax();
         var fileType = ext switch
@@ -203,61 +583,113 @@ public partial class MainWindow : Window
 
     private void UpdateTitle()
     {
-        var name = _filePath != null ? Path.GetFileName(_filePath) : "Untitled";
+        if (_activeTab == null) return;
+        var name = _activeTab.FilePath != null ? Path.GetFileName(_activeTab.FilePath) : "Untitled";
         var title = (Editor.IsDirty ? "\u2022 " : "") + $"TextEdit \u2014 {name}";
         Title = title;
         TitleText.Text = title;
     }
 
-    private bool PromptSaveIfDirty()
+    private bool PromptSaveTab(TabInfo tab)
     {
-        if (!Editor.IsDirty) return true;
-        var name = _filePath != null ? Path.GetFileName(_filePath) : "Untitled";
+        if (!tab.Editor.IsDirty) return true;
+        var name = tab.FilePath != null ? Path.GetFileName(tab.FilePath) : "Untitled";
         var result = MessageBox.Show(
             $"Do you want to save changes to {name}?",
             "TextEdit", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
         if (result == MessageBoxResult.Cancel) return false;
-        if (result == MessageBoxResult.Yes) OnSave(this, new RoutedEventArgs());
-        return !Editor.IsDirty || result == MessageBoxResult.No;
+        if (result == MessageBoxResult.Yes) SaveTab(tab);
+        return !tab.Editor.IsDirty || result == MessageBoxResult.No;
+    }
+
+    private void SaveTab(TabInfo tab)
+    {
+        if (tab.FilePath == null)
+        {
+            SaveTabAs(tab);
+            return;
+        }
+        AtomicWriteText(tab.FilePath, tab.Editor.GetContent(), tab.FileEncoding);
+        tab.Editor.MarkClean();
+        UpdateTabHeader(tab);
+        if (tab == _activeTab) UpdateTitle();
+    }
+
+    private void SaveTabAs(TabInfo tab)
+    {
+        int filterIndex = 1;
+        if (tab.FilePath != null)
+        {
+            var ext = Path.GetExtension(tab.FilePath).ToLowerInvariant();
+            filterIndex = ext switch
+            {
+                ".pl" => 2,
+                ".txt" => 1,
+                _ => 3
+            };
+        }
+        var dlg = new SaveFileDialog
+        {
+            Filter = string.Join("|", SaveFilters),
+            FilterIndex = filterIndex,
+            FileName = tab.FilePath != null ? Path.GetFileName(tab.FilePath) : ""
+        };
+        if (dlg.ShowDialog() != true) return;
+        tab.FilePath = dlg.FileName;
+        AtomicWriteText(tab.FilePath, tab.Editor.GetContent(), tab.FileEncoding);
+        tab.Editor.MarkClean();
+        UpdateTabHeader(tab);
+        if (tab == _activeTab)
+        {
+            UpdateTitle();
+            UpdateFileType();
+        }
+    }
+
+    private void OnNewTab(object sender, RoutedEventArgs e)
+    {
+        var tab = CreateTab();
+        ActivateTab(tab);
     }
 
     private void OnNew(object sender, RoutedEventArgs e)
     {
-        if (!PromptSaveIfDirty()) return;
-        _filePath = null;
-        _fileEncoding = new UTF8Encoding(false);
-        Editor.SetContent("");
-        UpdateTitle();
-        UpdateFileType();
-        FindBarControl.RefreshSearch();
+        // Ctrl+N creates a new tab
+        var tab = CreateTab();
+        ActivateTab(tab);
     }
 
     private void OnOpen(object sender, RoutedEventArgs e)
     {
-        if (!PromptSaveIfDirty()) return;
         var dlg = new OpenFileDialog
         {
             Filter = "All Files (*.*)|*.*|Text Files (*.txt)|*.txt|Perl Files (*.pl)|*.pl"
         };
         if (dlg.ShowDialog() != true) return;
-        _filePath = dlg.FileName;
-        _fileEncoding = DetectEncoding(_filePath);
-        Editor.SetContent(File.ReadAllText(_filePath, _fileEncoding));
-        UpdateTitle();
-        UpdateFileType();
+
+        // Reuse current tab if it is untitled and clean
+        TabInfo tab;
+        if (_activeTab != null && _activeTab.FilePath == null && !_activeTab.Editor.IsDirty)
+        {
+            tab = _activeTab;
+        }
+        else
+        {
+            tab = CreateTab();
+        }
+
+        tab.FilePath = dlg.FileName;
+        tab.FileEncoding = DetectEncoding(dlg.FileName);
+        tab.Editor.SetContent(File.ReadAllText(dlg.FileName, tab.FileEncoding));
+        UpdateTabHeader(tab);
+        ActivateTab(tab);
         FindBarControl.RefreshSearch();
     }
 
     private void OnSave(object sender, RoutedEventArgs e)
     {
-        if (_filePath == null)
-        {
-            OnSaveAs(sender, e);
-            return;
-        }
-        AtomicWriteText(_filePath, Editor.GetContent(), _fileEncoding);
-        Editor.MarkClean();
-        UpdateTitle();
+        if (_activeTab == null) return;
+        SaveTab(_activeTab);
     }
 
     private static readonly string[] SaveFilters =
@@ -265,29 +697,8 @@ public partial class MainWindow : Window
 
     private void OnSaveAs(object sender, RoutedEventArgs e)
     {
-        int filterIndex = 1; // default to .txt
-        if (_filePath != null)
-        {
-            var ext = Path.GetExtension(_filePath).ToLowerInvariant();
-            filterIndex = ext switch
-            {
-                ".pl" => 2,
-                ".txt" => 1,
-                _ => 3 // All Files
-            };
-        }
-        var dlg = new SaveFileDialog
-        {
-            Filter = string.Join("|", SaveFilters),
-            FilterIndex = filterIndex,
-            FileName = _filePath != null ? Path.GetFileName(_filePath) : ""
-        };
-        if (dlg.ShowDialog() != true) return;
-        _filePath = dlg.FileName;
-        AtomicWriteText(_filePath, Editor.GetContent(), _fileEncoding);
-        Editor.MarkClean();
-        UpdateTitle();
-        UpdateFileType();
+        if (_activeTab == null) return;
+        SaveTabAs(_activeTab);
     }
 
     private static void AtomicWriteText(string path, string content, Encoding encoding)
@@ -307,13 +718,13 @@ public partial class MainWindow : Window
         if (read >= 3 && bom[0] == 0xEF && bom[1] == 0xBB && bom[2] == 0xBF)
             return new UTF8Encoding(true);
         if (read >= 2 && bom[0] == 0xFF && bom[1] == 0xFE)
-            return new UnicodeEncoding(false, true); // UTF-16 LE
+            return new UnicodeEncoding(false, true);
         if (read >= 2 && bom[0] == 0xFE && bom[1] == 0xFF)
-            return new UnicodeEncoding(true, true); // UTF-16 BE
+            return new UnicodeEncoding(true, true);
         if (read >= 4 && bom[0] == 0 && bom[1] == 0 && bom[2] == 0xFE && bom[3] == 0xFF)
-            return new UTF32Encoding(true, true); // UTF-32 BE
+            return new UTF32Encoding(true, true);
 
-        return new UTF8Encoding(false); // default: UTF-8 without BOM
+        return new UTF8Encoding(false);
     }
 
     private void OnSettings(object sender, RoutedEventArgs e)
@@ -345,7 +756,6 @@ public partial class MainWindow : Window
     {
         if (e.ChangedButton == MouseButton.Left)
         {
-            // Close any open menu, then allow drag
             Keyboard.ClearFocus();
             DragMove();
         }
@@ -358,8 +768,21 @@ public partial class MainWindow : Window
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
     }
 
+    private void OnCloseTab(object sender, RoutedEventArgs e) => CloseTab(_activeTab!);
     private void OnClose(object sender, RoutedEventArgs e) => Close();
     private void OnExit(object sender, RoutedEventArgs e) => Close();
+
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+
+        // Intercept Ctrl+Tab before WPF's built-in tab navigation
+        if (ctrl && !shift && e.Key == Key.Tab) { SwitchTab(+1); e.Handled = true; return; }
+        if (ctrl && shift && e.Key == Key.Tab) { SwitchTab(-1); e.Handled = true; return; }
+
+        base.OnPreviewKeyDown(e);
+    }
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
@@ -373,6 +796,7 @@ public partial class MainWindow : Window
         else if (ctrl && shift && e.Key == Key.P) { OpenCommandPalette(); e.Handled = true; }
         else if (ctrl && shift && e.Key == Key.S) { OnSaveAs(this, new RoutedEventArgs()); e.Handled = true; }
         else if (ctrl && !shift && e.Key == Key.S) { OnSave(this, new RoutedEventArgs()); e.Handled = true; }
+        else if (ctrl && !shift && e.Key == Key.W) { CloseTab(_activeTab!); e.Handled = true; }
         else if (ctrl && (e.Key == Key.OemPlus || e.Key == Key.Add)) { StepFontSize(1); e.Handled = true; }
         else if (ctrl && (e.Key == Key.OemMinus || e.Key == Key.Subtract)) { StepFontSize(-1); e.Handled = true; }
         else base.OnKeyDown(e);
@@ -382,11 +806,13 @@ public partial class MainWindow : Window
     {
         var sizes = AppSettings.FontSizeOptions;
         int idx = Array.IndexOf(sizes, Editor.EditorFontSize);
-        if (idx < 0) idx = Array.IndexOf(sizes, 14); // fallback to default
+        if (idx < 0) idx = Array.IndexOf(sizes, 14);
         int next = idx + direction;
         if (next < 0 || next >= sizes.Length) return;
-        Editor.EditorFontSize = sizes[next];
-        _settings.Editor.Font.Size = sizes[next];
+        var newSize = sizes[next];
+        foreach (var tab in _tabs)
+            tab.Editor.EditorFontSize = newSize;
+        _settings.Editor.Font.Size = newSize;
         _settings.Save();
     }
 
@@ -410,9 +836,9 @@ public partial class MainWindow : Window
                 var original = Editor.EditorFontSize;
                 return AppSettings.FontSizeOptions.Select(size => new PaletteOption(
                     size.ToString(),
-                    ApplyPreview: () => Editor.EditorFontSize = size,
+                    ApplyPreview: () => { foreach (var t in _tabs) t.Editor.EditorFontSize = size; },
                     Commit: () => { _settings.Editor.Font.Size = size; _settings.Save(); },
-                    Revert: () => Editor.EditorFontSize = original
+                    Revert: () => { foreach (var t in _tabs) t.Editor.EditorFontSize = original; }
                 )).ToList();
             }),
 
@@ -421,9 +847,9 @@ public partial class MainWindow : Window
                 var original = Editor.FontFamilyName;
                 return EditorControl.GetMonospaceFonts().Select(name => new PaletteOption(
                     name,
-                    ApplyPreview: () => Editor.FontFamilyName = name,
+                    ApplyPreview: () => { foreach (var t in _tabs) t.Editor.FontFamilyName = name; },
                     Commit: () => { _settings.Editor.Font.Family = name; _settings.Save(); },
-                    Revert: () => Editor.FontFamilyName = original
+                    Revert: () => { foreach (var t in _tabs) t.Editor.FontFamilyName = original; }
                 )).ToList();
             }),
 
@@ -432,9 +858,9 @@ public partial class MainWindow : Window
                 var original = Editor.EditorFontWeight;
                 return AppSettings.FontWeightOptions.Select(w => new PaletteOption(
                     w,
-                    ApplyPreview: () => Editor.EditorFontWeight = w,
+                    ApplyPreview: () => { foreach (var t in _tabs) t.Editor.EditorFontWeight = w; },
                     Commit: () => { _settings.Editor.Font.Weight = w; _settings.Save(); },
-                    Revert: () => Editor.EditorFontWeight = original
+                    Revert: () => { foreach (var t in _tabs) t.Editor.EditorFontWeight = original; }
                 )).ToList();
             }),
 
@@ -443,18 +869,21 @@ public partial class MainWindow : Window
                 var original = Editor.TabSize;
                 return AppSettings.TabSizeOptions.Select(size => new PaletteOption(
                     size.ToString(),
-                    ApplyPreview: () => { Editor.TabSize = size; Editor.InvalidateVisual(); },
+                    ApplyPreview: () => { foreach (var t in _tabs) { t.Editor.TabSize = size; t.Editor.InvalidateVisual(); } },
                     Commit: () => { _settings.Editor.TabSize = size; _settings.Save(); },
-                    Revert: () => { Editor.TabSize = original; Editor.InvalidateVisual(); }
+                    Revert: () => { foreach (var t in _tabs) { t.Editor.TabSize = original; t.Editor.InvalidateVisual(); } }
                 )).ToList();
             }),
 
             new("Toggle Block Caret", Toggle: () =>
             {
                 _settings.Editor.Caret.BlockCaret = !_settings.Editor.Caret.BlockCaret;
-                Editor.BlockCaret = _settings.Editor.Caret.BlockCaret;
+                foreach (var t in _tabs)
+                {
+                    t.Editor.BlockCaret = _settings.Editor.Caret.BlockCaret;
+                    t.Editor.InvalidateVisual();
+                }
                 _settings.Save();
-                Editor.InvalidateVisual();
             }),
 
             new("Find Bar Position", GetOptions: () =>

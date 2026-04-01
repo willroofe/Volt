@@ -39,6 +39,11 @@ public class ChromeColors
     [JsonPropertyName("scrollBackground")] public string ScrollBackground { get; set; } = "#E0E0E0";
     [JsonPropertyName("scrollThumb")] public string ScrollThumb { get; set; } = "#C0C0C0";
     [JsonPropertyName("scrollThumbHover")] public string ScrollThumbHover { get; set; } = "#A0A0A0";
+    [JsonPropertyName("tabBarBackground")] public string TabBarBackground { get; set; } = "#E0E0E0";
+    [JsonPropertyName("tabActive")] public string TabActive { get; set; } = "#FFFFFF";
+    [JsonPropertyName("tabInactive")] public string TabInactive { get; set; } = "#D8D8D8";
+    [JsonPropertyName("tabHover")] public string TabHover { get; set; } = "#EBEBEB";
+    [JsonPropertyName("tabBorder")] public string TabBorder { get; set; } = "#D0D0D0";
 }
 
 public class ColorTheme

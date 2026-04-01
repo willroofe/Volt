@@ -138,6 +138,11 @@ public class ThemeManager
         res["ThemeScrollBg"] = ColorTheme.ParseBrush(c.ScrollBackground);
         res["ThemeScrollThumb"] = ColorTheme.ParseBrush(c.ScrollThumb);
         res["ThemeScrollThumbHover"] = ColorTheme.ParseBrush(c.ScrollThumbHover);
+        res["ThemeTabBarBg"] = ColorTheme.ParseBrush(c.TabBarBackground);
+        res["ThemeTabActive"] = ColorTheme.ParseBrush(c.TabActive);
+        res["ThemeTabInactive"] = ColorTheme.ParseBrush(c.TabInactive);
+        res["ThemeTabHover"] = ColorTheme.ParseBrush(c.TabHover);
+        res["ThemeTabBorder"] = ColorTheme.ParseBrush(c.TabBorder);
     }
 
     private void EnsureDefaultThemes()
