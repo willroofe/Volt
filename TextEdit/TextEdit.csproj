@@ -6,11 +6,16 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <UseWPF>true</UseWPF>
+        <ApplicationIcon>Resources\TextEdit.ico</ApplicationIcon>
     </PropertyGroup>
 
     <ItemGroup>
         <EmbeddedResource Include="Resources\Themes\*.json" />
         <EmbeddedResource Include="Resources\Grammars\*.json" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Resource Include="Resources\TextEdit.ico" />
     </ItemGroup>
 
 </Project>
