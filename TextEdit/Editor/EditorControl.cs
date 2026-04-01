@@ -70,6 +70,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     // ── Syntax token cache ────────────────────────────────────────────
     private readonly Dictionary<int, (string content, LineState inState, List<SyntaxToken> tokens)> _tokenCache = new();
+    private readonly List<int> _pruneKeys = new();
     private bool _tokenCacheDirty;
 
     // ── Multi-line syntax state ────────────────────────────────────
@@ -366,7 +367,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
     {
         EnsureLineStates(_caretLine);
         var inState = _caretLine < _lineStates.Count ? _lineStates[_caretLine] : SyntaxManager.DefaultState;
-        var tokens = SyntaxManager.Tokenize(line, inState, out _);
+        List<SyntaxToken> tokens;
+        if (_tokenCache.TryGetValue(_caretLine, out var cached) && cached.content == line && cached.inState == inState)
+            tokens = cached.tokens;
+        else
+            tokens = SyntaxManager.Tokenize(line, inState, out _);
         if (tokens.Count > 0)
         {
             foreach (var token in tokens)
@@ -664,10 +669,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         if (_find.MatchCount > 0)
         {
-            for (int m = 0; m < _find.Matches.Count; m++)
+            int lo = 0, hi = _find.Matches.Count - 1;
+            while (lo <= hi)
+            {
+                int mid = (lo + hi) / 2;
+                if (_find.Matches[mid].Line < firstLine) lo = mid + 1; else hi = mid - 1;
+            }
+            for (int m = lo; m < _find.Matches.Count; m++)
             {
                 var (mLine, mCol, mLen) = _find.Matches[m];
-                if (mLine < firstLine || mLine > lastLine) continue;
+                if (mLine > lastLine) break;
                 double pxStart = mCol * _font.CharWidth;
                 double pxEnd = (mCol + mLen) * _font.CharWidth;
                 double mx = _gutterWidth + GutterPadding + pxStart - _offset.X;
@@ -785,11 +796,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
             int margin = drawLast - drawFirst + 1;
             int pruneBelow = drawFirst - margin;
             int pruneAbove = drawLast + margin;
-            var keysToRemove = new List<int>();
+            _pruneKeys.Clear();
             foreach (var key in _tokenCache.Keys)
                 if (key < pruneBelow || key > pruneAbove)
-                    keysToRemove.Add(key);
-            foreach (var key in keysToRemove)
+                    _pruneKeys.Add(key);
+            foreach (var key in _pruneKeys)
                 _tokenCache.Remove(key);
         }
     }

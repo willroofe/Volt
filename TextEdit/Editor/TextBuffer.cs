@@ -43,7 +43,10 @@ public class TextBuffer
         {
             if (_maxLineLengthDirty)
             {
-                _maxLineLength = _lines.Count > 0 ? _lines.Max(l => l.Length) : 0;
+                int max = 0;
+                for (int i = 0; i < _lines.Count; i++)
+                    if (_lines[i].Length > max) max = _lines[i].Length;
+                _maxLineLength = max;
                 _maxLineLengthDirty = false;
             }
             return _maxLineLength;
@@ -141,21 +144,21 @@ public class TextBuffer
     public void InsertAt(int line, int col, string text)
     {
         NotifyLineChanging(line);
-        _lines[line] = _lines[line][..col] + text + _lines[line][col..];
+        _lines[line] = string.Concat(_lines[line].AsSpan(0, col), text, _lines[line].AsSpan(col));
     }
 
     /// <summary>Delete a range of characters from a line.</summary>
     public void DeleteAt(int line, int col, int length)
     {
         NotifyLineChanging(line);
-        _lines[line] = _lines[line][..col] + _lines[line][(col + length)..];
+        _lines[line] = string.Concat(_lines[line].AsSpan(0, col), _lines[line].AsSpan(col + length));
     }
 
     /// <summary>Replace a range of characters in a line with new text.</summary>
     public void ReplaceAt(int line, int col, int length, string text)
     {
         NotifyLineChanging(line);
-        _lines[line] = _lines[line][..col] + text + _lines[line][(col + length)..];
+        _lines[line] = string.Concat(_lines[line].AsSpan(0, col), text, _lines[line].AsSpan(col + length));
     }
 
     /// <summary>Join a line with the next line, removing the next line.</summary>
