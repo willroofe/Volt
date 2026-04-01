@@ -128,23 +128,26 @@ public class SyntaxManager
             ruleStart = len;
         }
 
-        // Collect all candidate matches with rule priority
+        // Collect all candidate matches with rule priority.
+        // Uses Match() in a loop advancing by 1 rather than Matches() so that
+        // overlapping matches (e.g. #.*$ at every # position) are all captured
+        // as candidates — the greedy claiming pass then picks the right one.
         var candidates = new List<(int Priority, int Start, int Length, string Scope)>();
         for (int r = 0; r < _activeGrammar.Rules.Count; r++)
         {
             var rule = _activeGrammar.Rules[r];
             if (rule.CompiledRegex == null) continue;
 
-            MatchCollection matches;
-            try { matches = rule.CompiledRegex.Matches(line, ruleStart); }
-            catch (RegexMatchTimeoutException) { continue; }
-
             try
             {
-                foreach (Match match in matches)
+                int searchFrom = ruleStart;
+                while (searchFrom < line.Length)
                 {
-                    if (match.Length == 0) continue;
-                    candidates.Add((r, match.Index, match.Length, rule.Scope));
+                    var match = rule.CompiledRegex.Match(line, searchFrom);
+                    if (!match.Success) break;
+                    if (match.Length > 0)
+                        candidates.Add((r, match.Index, match.Length, rule.Scope));
+                    searchFrom = match.Index + 1;
                 }
             }
             catch (RegexMatchTimeoutException) { }
