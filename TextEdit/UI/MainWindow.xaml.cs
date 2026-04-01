@@ -698,7 +698,7 @@ public partial class MainWindow : Window
     {
         if (_activeTab == null) return;
         var name = _activeTab.FilePath != null ? Path.GetFileName(_activeTab.FilePath) : "Untitled";
-        var title = (Editor.IsDirty ? "\u2022 " : "") + $"TextEdit \u2014 {name}";
+        var title = (Editor.IsDirty ? "\u2022 " : "") + name;
         Title = title;
         TitleText.Text = title;
     }
