@@ -26,7 +26,11 @@ public class SelectionManager
         AnchorCol = col;
     }
 
-    private void ClampToBuffer(TextBuffer buffer, ref int caretLine, ref int caretCol)
+    /// <summary>
+    /// Clamps both anchor and caret positions to valid buffer bounds.
+    /// Mutates AnchorLine/AnchorCol as well as the ref caret parameters.
+    /// </summary>
+    public void ClampToBuffer(TextBuffer buffer, ref int caretLine, ref int caretCol)
     {
         int maxLine = Math.Max(0, buffer.Count - 1);
         AnchorLine = Math.Clamp(AnchorLine, 0, maxLine);

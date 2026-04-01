@@ -99,9 +99,7 @@ public partial class FindBar : UserControl
     private void OnToggleReplaceClick(object sender, RoutedEventArgs e)
     {
         bool show = _replaceRow.Visibility != Visibility.Visible;
-        _replaceRow.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        _toggleTransform.Angle = show ? 180 : 0;
-        _findRow.Margin = new Thickness(8, 6, 8, show ? 2 : 6);
+        SetReplaceVisible(show);
     }
 
     private void OnPrevClick(object sender, RoutedEventArgs e)

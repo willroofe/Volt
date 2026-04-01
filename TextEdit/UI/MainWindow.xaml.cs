@@ -199,38 +199,7 @@ public partial class MainWindow : Window
         };
         textBlock.SetResourceReference(TextBlock.ForegroundProperty, "ThemeTextFg");
 
-        var closeBtn = new Button
-        {
-            Content = "\uE8BB",
-            FontFamily = new FontFamily("Segoe MDL2 Assets"),
-            FontSize = 8,
-            Width = 20,
-            Height = 20,
-            Margin = new Thickness(0, 0, 4, 0),
-            Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            Focusable = false,
-            Cursor = Cursors.Hand,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        closeBtn.SetResourceReference(Button.ForegroundProperty, "ThemeTextFgMuted");
-
-        // Close button template with hover effect
-        var closeBtnTemplate = new ControlTemplate(typeof(Button));
-        var closeBorder = new FrameworkElementFactory(typeof(Border), "Bd");
-        closeBorder.SetValue(Border.BackgroundProperty, Brushes.Transparent);
-        closeBorder.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
-        var closeContent = new FrameworkElementFactory(typeof(ContentPresenter));
-        closeContent.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-        closeContent.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
-        closeBorder.AppendChild(closeContent);
-        closeBtnTemplate.VisualTree = closeBorder;
-        var hoverTrigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-        hoverTrigger.Setters.Add(new Setter(Border.BackgroundProperty,
-            new DynamicResourceExtension("ThemeButtonHover"), "Bd"));
-        closeBtnTemplate.Triggers.Add(hoverTrigger);
-        closeBtn.Template = closeBtnTemplate;
-
+        var closeBtn = new Button { Style = (Style)FindResource("TabCloseButton") };
         closeBtn.Click += (_, _) => CloseTab(tab);
 
         var panel = new DockPanel { VerticalAlignment = VerticalAlignment.Center };
