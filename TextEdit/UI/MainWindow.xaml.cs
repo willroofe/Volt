@@ -638,9 +638,9 @@ public partial class MainWindow : Window
     {
         if (!tab.Editor.IsDirty) return true;
         var name = tab.FilePath != null ? Path.GetFileName(tab.FilePath) : "Untitled";
-        var result = MessageBox.Show(
+        var result = ThemedMessageBox.Show(this,
             $"Do you want to save changes to {name}?",
-            "TextEdit", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+            "TextEdit", MessageBoxButton.YesNoCancel);
         if (result == MessageBoxResult.Cancel) return false;
         if (result == MessageBoxResult.Yes) SaveTab(tab);
         return !tab.Editor.IsDirty || result == MessageBoxResult.No;
@@ -661,8 +661,8 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             tab.StartWatching();
-            MessageBox.Show(this, $"Could not save '{tab.DisplayName}':\n\n{ex.Message}",
-                "Save Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            ThemedMessageBox.Show(this, $"Could not save '{tab.DisplayName}':\n\n{ex.Message}",
+                "Save Failed");
             return;
         }
         tab.StartWatching();
@@ -700,8 +700,8 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             tab.StartWatching();
-            MessageBox.Show(this, $"Could not save '{tab.DisplayName}':\n\n{ex.Message}",
-                "Save Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            ThemedMessageBox.Show(this, $"Could not save '{tab.DisplayName}':\n\n{ex.Message}",
+                "Save Failed");
             return;
         }
         tab.StartWatching();
@@ -727,9 +727,9 @@ public partial class MainWindow : Window
         {
             if (tab.Editor.IsDirty)
             {
-                var result = MessageBox.Show(this,
+                var result = ThemedMessageBox.Show(this,
                     $"'{tab.DisplayName}' has been modified externally.\n\nDo you want to reload it? Your unsaved changes will be lost.",
-                    "File Changed", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                    "File Changed", MessageBoxButton.YesNo);
                 if (result != MessageBoxResult.Yes)
                 {
                     tab.LastKnownWriteTimeUtc = diskTime;
