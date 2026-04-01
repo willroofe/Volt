@@ -87,8 +87,7 @@ public class ColorTheme
     public SolidColorBrush? GetScopeBrush(string scope)
     {
         if (!Scopes.TryGetValue(scope, out var hex)) return null;
-        try { return ParseBrush(hex); }
-        catch { return null; }
+        return ParseBrush(hex);
     }
 
     public static ColorTheme? LoadFromFile(string path)

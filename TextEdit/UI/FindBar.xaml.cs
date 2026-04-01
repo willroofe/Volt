@@ -7,6 +7,9 @@ namespace TextEdit;
 
 public partial class FindBar : UserControl
 {
+    private const double FindBarTopMargin = 67;    // title bar + tab bar height
+    private const double FindBarBottomMargin = 44;  // status bar height
+
     private bool _matchCase;
     private EditorControl? _editor;
 
@@ -33,7 +36,7 @@ public partial class FindBar : UserControl
     {
         bool top = position == "Top";
         VerticalAlignment = top ? VerticalAlignment.Top : VerticalAlignment.Bottom;
-        Margin = top ? new Thickness(0, 67, 0, 0) : new Thickness(0, 0, 0, 44);
+        Margin = top ? new Thickness(0, FindBarTopMargin, 0, 0) : new Thickness(0, 0, 0, FindBarBottomMargin);
         _panel.VerticalAlignment = top ? VerticalAlignment.Top : VerticalAlignment.Bottom;
         _panel.Margin = new Thickness(0, 8, 0, 8);
     }

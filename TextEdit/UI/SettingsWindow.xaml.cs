@@ -2,6 +2,11 @@ using System.Windows;
 
 namespace TextEdit;
 
+public record SettingsSnapshot(
+    int TabSize, bool BlockCaret, int CaretBlinkMs,
+    string FontFamily, double FontSize, string FontWeight,
+    double LineHeight, string ColorTheme, string FindBarPosition);
+
 public partial class SettingsWindow : Window
 {
     public int TabSize { get; private set; }
@@ -20,58 +25,56 @@ public partial class SettingsWindow : Window
     private readonly List<string> _themeNames;
     private readonly List<string> _fontNames;
 
-    public SettingsWindow(ThemeManager themeManager, int currentTabSize, bool blockCaret, int caretBlinkMs,
-        string currentFontFamily, double currentFontSize, string currentFontWeight, double currentLineHeight,
-        string currentColorTheme, string findBarPosition)
+    public SettingsWindow(ThemeManager themeManager, SettingsSnapshot snapshot)
     {
         _themeManager = themeManager;
         InitializeComponent();
-        TabSize = currentTabSize;
-        BlockCaret = blockCaret;
-        CaretBlinkMs = caretBlinkMs;
-        SelectedFontFamily = currentFontFamily;
-        SelectedFontSize = currentFontSize;
-        SelectedFontWeight = currentFontWeight;
-        SelectedLineHeight = currentLineHeight;
-        ColorThemeName = currentColorTheme;
-        FindBarPosition = findBarPosition;
+        TabSize = snapshot.TabSize;
+        BlockCaret = snapshot.BlockCaret;
+        CaretBlinkMs = snapshot.CaretBlinkMs;
+        SelectedFontFamily = snapshot.FontFamily;
+        SelectedFontSize = snapshot.FontSize;
+        SelectedFontWeight = snapshot.FontWeight;
+        SelectedLineHeight = snapshot.LineHeight;
+        ColorThemeName = snapshot.ColorTheme;
+        FindBarPosition = snapshot.FindBarPosition;
 
-        int index = Array.IndexOf(AppSettings.TabSizeOptions, currentTabSize);
+        int index = Array.IndexOf(AppSettings.TabSizeOptions, snapshot.TabSize);
         TabSizeBox.SelectedIndex = index >= 0 ? index : 1;
-        CaretStyleBox.SelectedIndex = blockCaret ? 1 : 0;
-        CaretBlinkSlider.Value = caretBlinkMs;
-        FindBarPosBox.SelectedIndex = findBarPosition == "Top" ? 0 : 1;
+        CaretStyleBox.SelectedIndex = snapshot.BlockCaret ? 1 : 0;
+        CaretBlinkSlider.Value = snapshot.CaretBlinkMs;
+        FindBarPosBox.SelectedIndex = snapshot.FindBarPosition == "Top" ? 0 : 1;
 
         // Populate font family dropdown
         _fontNames = FontManager.GetMonospaceFonts();
         foreach (var name in _fontNames)
             FontFamilyBox.Items.Add(name);
-        int fi = _fontNames.IndexOf(currentFontFamily);
+        int fi = _fontNames.IndexOf(snapshot.FontFamily);
         FontFamilyBox.SelectedIndex = fi >= 0 ? fi : 0;
 
         // Populate font size dropdown
         foreach (var size in AppSettings.FontSizeOptions)
             FontSizeBox.Items.Add(size.ToString());
-        int si = Array.IndexOf(AppSettings.FontSizeOptions, currentFontSize);
+        int si = Array.IndexOf(AppSettings.FontSizeOptions, snapshot.FontSize);
         FontSizeBox.SelectedIndex = si >= 0 ? si : Array.IndexOf(AppSettings.FontSizeOptions, 14);
 
         // Populate font weight dropdown
         foreach (var w in AppSettings.FontWeightOptions)
             FontWeightBox.Items.Add(w);
-        int wi = Array.IndexOf(AppSettings.FontWeightOptions, currentFontWeight);
+        int wi = Array.IndexOf(AppSettings.FontWeightOptions, snapshot.FontWeight);
         FontWeightBox.SelectedIndex = wi >= 0 ? wi : Array.IndexOf(AppSettings.FontWeightOptions, "Normal");
 
         // Populate line height dropdown
         foreach (var lh in AppSettings.LineHeightOptions)
             LineHeightBox.Items.Add(lh.ToString("0.0") + "x");
-        int li = Array.IndexOf(AppSettings.LineHeightOptions, currentLineHeight);
+        int li = Array.IndexOf(AppSettings.LineHeightOptions, snapshot.LineHeight);
         LineHeightBox.SelectedIndex = li >= 0 ? li : 0;
 
         // Populate color theme dropdown
         _themeNames = _themeManager.GetAvailableThemes();
         foreach (var name in _themeNames)
             ColorThemeBox.Items.Add(name);
-        int ti = _themeNames.IndexOf(currentColorTheme);
+        int ti = _themeNames.IndexOf(snapshot.ColorTheme);
         ColorThemeBox.SelectedIndex = ti >= 0 ? ti : 0;
     }
 
