@@ -7,10 +7,11 @@ namespace TextEdit;
 
 public record SyntaxToken(int Start, int Length, string Scope);
 
-/// <summary>Tracks whether a line ends inside an unclosed string, block comment, or heredoc.</summary>
+/// <summary>Tracks whether a line ends inside an unclosed string, block comment, heredoc, or regex.</summary>
 /// <param name="BlockCommentIndex">Index into grammar's BlockComments list, or -1 if not in a block comment.</param>
 public record LineState(char? OpenQuote, int BlockCommentIndex = -1,
-    string? HeredocDelimiter = null, bool HeredocInterpolate = true);
+    string? HeredocDelimiter = null, bool HeredocInterpolate = true,
+    char? OpenRegexDelimiter = null, int RegexClosesNeeded = 0);
 
 public class SyntaxManager
 {
@@ -106,6 +107,24 @@ public class SyntaxManager
         var claimed = new bool[line.Length];
         var tokens = new List<SyntaxToken>();
         int ruleStart = 0; // where to start applying regex rules
+
+        // If continuing a regex from the previous line, find the closing delimiter
+        if (inState.OpenRegexDelimiter is char regexDelim)
+        {
+            var (endPos, remaining) = ScanForRegexClose(line, 0, regexDelim, inState.RegexClosesNeeded);
+            if (remaining > 0)
+            {
+                // Entire line is still inside the regex
+                outState = new LineState(null, -1, null, true, regexDelim, remaining);
+                return line.Length > 0 ? [new SyntaxToken(0, line.Length, "regex")] : [];
+            }
+            // Regex closes — scan for trailing flags
+            while (endPos < line.Length && "msixpodualngcer".Contains(line[endPos]))
+                endPos++;
+            tokens.Add(new SyntaxToken(0, endPos, "regex"));
+            for (int i = 0; i < endPos; i++) claimed[i] = true;
+            ruleStart = endPos;
+        }
 
         // If continuing a string from the previous line, find the closing quote
         if (inState.OpenQuote is char openQ)
@@ -207,22 +226,35 @@ public class SyntaxManager
             }
         }
 
-        // Detect if the line ends with an unclosed string (skip if heredoc already set)
+        // Detect regex patterns that grammar rules missed (paired delimiters, multi-line).
+        // This runs before unclosed string detection so regex content isn't misread as strings.
         if (outState.HeredocDelimiter == null)
+        {
+            var regexMatch = DetectUnclaimedRegex(line, tokens, claimed);
+            if (regexMatch != null)
+            {
+                var (startPos, endPos, delim, closesRemaining) = regexMatch.Value;
+                int end = closesRemaining > 0 ? line.Length : endPos;
+                // Remove grammar rule tokens that were spuriously matched inside the regex
+                tokens.RemoveAll(t => t.Start >= startPos && t.Start < end);
+                tokens.Add(new SyntaxToken(startPos, end - startPos, "regex"));
+                for (int i = startPos; i < end; i++) claimed[i] = true;
+                if (closesRemaining > 0)
+                    outState = new LineState(null, -1, null, true, delim, closesRemaining);
+            }
+        }
+
+        // Detect if the line ends with an unclosed string (skip if heredoc or regex already set)
+        if (outState.HeredocDelimiter == null && outState.OpenRegexDelimiter == null)
         {
             outState = DetectUnclosedString(line, tokens);
 
             // If we detected an unclosed string, extend a string token to end of line
             if (outState.OpenQuote != null)
             {
-                // Find the partial string token (the one whose opening quote starts the
-                // unclosed string) and extend it to the end of the line.
-                // The partial match won't have been captured by the regex (it requires a
-                // closing quote), so scan for the opening quote in unclaimed positions.
                 int openPos = FindOpeningQuote(line, claimed, outState.OpenQuote.Value);
                 if (openPos >= 0)
                 {
-                    // Claim from openPos to end of line as string
                     int len = line.Length - openPos;
                     tokens.Add(new SyntaxToken(openPos, len, "string"));
                 }
@@ -289,6 +321,140 @@ public class SyntaxManager
             }
         }
         return new LineState(openQuote);
+    }
+
+    /// <summary>Map opening bracket to its closing pair, or return the same char for non-paired delimiters.</summary>
+    private static char RegexCloseDelimiter(char open) => open switch
+    {
+        '{' => '}', '[' => ']', '(' => ')', '<' => '>',
+        _ => open
+    };
+
+    /// <summary>Scan for regex closing delimiter(s), respecting backslash escapes and nested paired delimiters.</summary>
+    private static (int EndPos, int Remaining) ScanForRegexClose(
+        string line, int start, char openDelim, int closesNeeded)
+    {
+        char closeDelim = RegexCloseDelimiter(openDelim);
+        bool paired = openDelim != closeDelim;
+        int pos = start;
+        int remaining = closesNeeded;
+
+        while (remaining > 0)
+        {
+            int depth = 0;
+            while (pos < line.Length)
+            {
+                if (line[pos] == '\\' && pos + 1 < line.Length) { pos += 2; continue; }
+                if (paired && line[pos] == openDelim) { depth++; pos++; continue; }
+                if (line[pos] == closeDelim)
+                {
+                    if (depth > 0) { depth--; pos++; continue; }
+                    pos++; remaining--; break;
+                }
+                pos++;
+            }
+
+            if (pos >= line.Length) break;
+
+            // For paired delimiters (e.g. s{pat}{repl}), find the next opening delimiter
+            if (remaining > 0 && paired)
+            {
+                while (pos < line.Length && char.IsWhiteSpace(line[pos])) pos++;
+                if (pos >= line.Length || line[pos] != openDelim) break;
+                pos++;
+            }
+        }
+
+        return (pos, remaining);
+    }
+
+    /// <summary>
+    /// Detect regex patterns not matched by grammar rules (paired delimiters like m{...},
+    /// and multi-line regexes). Returns start/end positions, the opening delimiter, and
+    /// how many closes remain (0 = fully closed on this line, >0 = multi-line).
+    /// </summary>
+    private static (int StartPos, int EndPos, char Delimiter, int ClosesRemaining)? DetectUnclaimedRegex(
+        string line, List<SyntaxToken> tokens, bool[] claimed)
+    {
+        // After =~ or !~ operator, bare /regex/ is allowed
+        foreach (var token in tokens)
+        {
+            if (token.Scope != "operator" || token.Start + token.Length > line.Length) continue;
+            string op = line.Substring(token.Start, token.Length);
+            if (op != "=~" && op != "!~") continue;
+
+            int pos = token.Start + token.Length;
+            while (pos < line.Length && char.IsWhiteSpace(line[pos])) pos++;
+            if (pos >= line.Length || claimed[pos]) continue;
+
+            var result = TryParseRegex(line, pos, allowBareSlash: true);
+            if (result != null) return result;
+        }
+
+        // Standalone m, qr, s, tr, y at unclaimed word boundary
+        for (int i = 0; i < line.Length; i++)
+        {
+            if (claimed[i]) continue;
+            if (i > 0 && (char.IsLetterOrDigit(line[i - 1]) || line[i - 1] == '_')) continue;
+
+            char c = line[i];
+            if (c != 'm' && c != 's' && c != 'y' && c != 't' && c != 'q') continue;
+
+            var result = TryParseRegex(line, i, allowBareSlash: false);
+            if (result != null) return result;
+        }
+
+        return null;
+    }
+
+    /// <summary>Try to parse a regex at the given position. Returns match info for both
+    /// closed (paired-delimiter) and unclosed (multi-line) regexes.</summary>
+    private static (int StartPos, int EndPos, char Delimiter, int ClosesRemaining)? TryParseRegex(
+        string line, int pos, bool allowBareSlash)
+    {
+        if (pos >= line.Length) return null;
+
+        int startPos = pos;
+        char delim;
+        int closesNeeded;
+        int contentStart;
+
+        char c = line[pos];
+        if (c == '/' && allowBareSlash)
+        {
+            delim = '/'; closesNeeded = 1; contentStart = pos + 1;
+        }
+        else if ((c == 'm' || c == 's' || c == 'y') && pos + 1 < line.Length
+                 && !char.IsLetterOrDigit(line[pos + 1]) && !char.IsWhiteSpace(line[pos + 1]))
+        {
+            delim = line[pos + 1];
+            closesNeeded = c == 'm' ? 1 : 2;
+            contentStart = pos + 2;
+        }
+        else if ((c == 't' || c == 'q') && pos + 2 < line.Length && line[pos + 1] == 'r'
+                 && !char.IsLetterOrDigit(line[pos + 2]) && !char.IsWhiteSpace(line[pos + 2]))
+        {
+            delim = line[pos + 2];
+            closesNeeded = c == 't' ? 2 : 1; // tr needs 2 closes, qr needs 1
+            contentStart = pos + 3;
+        }
+        else return null;
+
+        var (endPos, remaining) = ScanForRegexClose(line, contentStart, delim, closesNeeded);
+
+        // For closed regexes, only return if grammar rules couldn't handle it
+        // (paired delimiters like {}, [], (), <>)
+        if (remaining == 0)
+        {
+            bool paired = delim != RegexCloseDelimiter(delim);
+            if (!paired) return null; // grammar rules handle non-paired single-line regexes
+
+            // Scan for trailing flags
+            while (endPos < line.Length && "msixpodualngcer".Contains(line[endPos]))
+                endPos++;
+        }
+
+        return (startPos, endPos, delim, remaining);
     }
 
     private static List<SyntaxToken> ExpandInterpolation(List<SyntaxToken> tokens, string line, InterpolationDef interp)
