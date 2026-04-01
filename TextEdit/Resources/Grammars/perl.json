@@ -79,7 +79,7 @@
       "scope": "variable"
     },
     {
-      "pattern": "(?:\\b|(?<=\\s))(?:=>|->|=~|!~|&&|\\|\\||//|\\.\\.|\\.\\.\\.|\\b(?:not|and|or|xor|eq|ne|lt|gt|le|ge|cmp)\\b)",
+      "pattern": "->|(?:\\b|(?<=\\s))(?:=>|=~|!~|&&|\\|\\||//|\\.\\.|\\.\\.\\.|\\b(?:not|and|or|xor|eq|ne|lt|gt|le|ge|cmp)\\b)",
       "scope": "operator"
     },
     {
