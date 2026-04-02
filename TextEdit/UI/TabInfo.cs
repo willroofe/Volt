@@ -2,11 +2,14 @@ using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 
 namespace TextEdit;
 
 public class TabInfo
 {
+    private const int DebounceMsec = 200;
+
     public string? FilePath { get; set; }
     public Encoding FileEncoding { get; set; } = new UTF8Encoding(false);
     public EditorControl Editor { get; }
@@ -22,6 +25,7 @@ public class TabInfo
     public bool IsHandlingExternalChange { get; set; }
 
     private FileSystemWatcher? _watcher;
+    private DispatcherTimer? _debounceTimer;
 
     /// <summary>Fired (on the UI thread) when the file is modified externally.</summary>
     public event Action<TabInfo>? FileChangedExternally;
@@ -70,10 +74,28 @@ public class TabInfo
             _watcher.Dispose();
             _watcher = null;
         }
+        _debounceTimer?.Stop();
+        _debounceTimer = null;
     }
 
     private void OnWatcherChanged(object sender, FileSystemEventArgs e)
     {
-        Application.Current?.Dispatcher?.BeginInvoke(() => FileChangedExternally?.Invoke(this));
+        // Debounce: FileSystemWatcher fires multiple times per write and we may
+        // read mid-write if we act immediately.  Restart the timer on each event
+        // so we wait until the burst settles before reloading.
+        Application.Current?.Dispatcher?.BeginInvoke(() =>
+        {
+            if (_debounceTimer == null)
+            {
+                _debounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(DebounceMsec) };
+                _debounceTimer.Tick += (_, _) =>
+                {
+                    _debounceTimer.Stop();
+                    FileChangedExternally?.Invoke(this);
+                };
+            }
+            _debounceTimer.Stop();
+            _debounceTimer.Start();
+        });
     }
 }
