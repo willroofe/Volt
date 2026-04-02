@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace TextEdit;
 
@@ -39,6 +40,11 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
     private Size _viewport;
     private Size _extent;
 
+    // Tooltip (managed manually — WPF's auto-tooltip doesn't work per-row on a single control)
+    private readonly ToolTip _rowToolTip = new() { Placement = PlacementMode.Mouse };
+    private readonly DispatcherTimer _tooltipTimer;
+    private string? _pendingTooltipText;
+
     public event Action<string>? FileOpenRequested;
     public event Action<FileTreeItem>? SelectionChanged;
     public event Action<FileTreeItem?>? ItemRightClicked;
@@ -52,6 +58,18 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
     {
         ClipToBounds = true;
         Focusable = true;
+
+        _tooltipTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _tooltipTimer.Tick += (_, _) =>
+        {
+            _tooltipTimer.Stop();
+            if (_pendingTooltipText != null)
+            {
+                _rowToolTip.Content = _pendingTooltipText;
+                _rowToolTip.PlacementTarget = this;
+                _rowToolTip.IsOpen = true;
+            }
+        };
 
         Loaded += (_, _) =>
         {
@@ -395,32 +413,37 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         {
             _hoverRowIndex = row;
             InvalidateVisual();
+            UpdateTooltip(row);
+        }
+    }
 
-            // Tooltip for truncated names — only measure when hover row changes
-            if (row >= 0 && row < _flatRows.Count)
-            {
-                var item = _flatRows[row].Item;
-                double indent = _flatRows[row].Depth * IndentWidth + ArrowZoneWidth;
-                if (item.Kind == FileTreeItemKind.Directory || item.Kind == FileTreeItemKind.File)
-                    indent += IconZoneWidth + IconGap;
-                double maxTextWidth = Math.Max(0, ActualWidth - indent - 8);
-                var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-                var typeface = item.Kind switch
-                {
-                    FileTreeItemKind.ProjectRoot => SemiBoldTypeface,
-                    FileTreeItemKind.VirtualFolder => ItalicTypeface,
-                    _ => NormalTypeface
-                };
-                var ft = new FormattedText(item.Name, CultureInfo.CurrentCulture,
-                    FlowDirection.LeftToRight, typeface, 13, Brushes.Black, dpi);
-                ToolTip = ft.Width > maxTextWidth
-                    ? (item.Kind == FileTreeItemKind.File ? item.FullPath : item.Name)
-                    : null;
-            }
-            else
-            {
-                ToolTip = null;
-            }
+    private void UpdateTooltip(int row)
+    {
+        _rowToolTip.IsOpen = false;
+        _tooltipTimer.Stop();
+        _pendingTooltipText = null;
+
+        if (row < 0 || row >= _flatRows.Count) return;
+
+        var item = _flatRows[row].Item;
+        double indent = _flatRows[row].Depth * IndentWidth + ArrowZoneWidth;
+        if (item.Kind == FileTreeItemKind.Directory || item.Kind == FileTreeItemKind.File)
+            indent += IconZoneWidth + IconGap;
+        double maxTextWidth = Math.Max(0, ActualWidth - indent - 8);
+        var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        var typeface = item.Kind switch
+        {
+            FileTreeItemKind.ProjectRoot => SemiBoldTypeface,
+            FileTreeItemKind.VirtualFolder => ItalicTypeface,
+            _ => NormalTypeface
+        };
+        var ft = new FormattedText(item.Name, CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight, typeface, 13, Brushes.Black, dpi);
+
+        if (ft.Width > maxTextWidth)
+        {
+            _pendingTooltipText = item.Kind == FileTreeItemKind.File ? item.FullPath : item.Name;
+            _tooltipTimer.Start();
         }
     }
 
@@ -429,7 +452,9 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         if (_hoverRowIndex != -1)
         {
             _hoverRowIndex = -1;
-            ToolTip = null;
+            _rowToolTip.IsOpen = false;
+            _tooltipTimer.Stop();
+            _pendingTooltipText = null;
             InvalidateVisual();
         }
     }
