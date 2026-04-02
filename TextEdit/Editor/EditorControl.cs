@@ -126,6 +126,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ── IScrollInfo state ────────────────────────────────────────────
     private Vector _offset;
     private Size _viewport;
+    private Size _lastArrangeSize;
     private Size _extent;
     public ScrollViewer? ScrollOwner { get; set; }
     public bool CanHorizontallyScroll { get; set; }
@@ -1477,11 +1478,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     //  IScrollInfo
     // ──────────────────────────────────────────────────────────────────
-    private const double MinThumbFraction = 0.05;
+    private const double MinThumbPixels = 30;
     private double ThumbPadding(double extent, double viewport)
     {
-        double minViewport = extent * MinThumbFraction;
-        return viewport >= minViewport ? 0 : minViewport - viewport;
+        if (extent <= viewport || viewport <= MinThumbPixels) return 0;
+        double targetRatio = MinThumbPixels / viewport;
+        if (viewport / extent >= targetRatio) return 0;
+        return (targetRatio * extent - viewport) / (1 - targetRatio);
     }
     public double ExtentWidth => _extent.Width + ThumbPadding(_extent.Width, _viewport.Width);
     public double ExtentHeight => _extent.Height + ThumbPadding(_extent.Height, _viewport.Height);
@@ -1530,33 +1533,29 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     protected override Size MeasureOverride(Size availableSize)
     {
-        bool viewportChanged = Math.Abs(availableSize.Width - _viewport.Width) > 0.5
-                            || Math.Abs(availableSize.Height - _viewport.Height) > 0.5;
-        if (viewportChanged)
+        if (Math.Abs(availableSize.Width - _viewport.Width) > 0.5
+            || Math.Abs(availableSize.Height - _viewport.Height) > 0.5)
         {
             _textVisualDirty = true;
             _gutterVisualDirty = true;
         }
         _viewport = availableSize;
         UpdateExtent();
-        if (viewportChanged)
-        {
-            SetHorizontalOffset(_offset.X);
-            SetVerticalOffset(_offset.Y);
-            ScrollOwner?.InvalidateScrollInfo();
-        }
         return availableSize;
     }
 
     protected override Size ArrangeOverride(Size finalSize)
     {
-        bool viewportChanged = Math.Abs(finalSize.Width - _viewport.Width) > 0.5
-                            || Math.Abs(finalSize.Height - _viewport.Height) > 0.5;
+        bool viewportChanged = Math.Abs(finalSize.Width - _lastArrangeSize.Width) > 0.01
+                            || Math.Abs(finalSize.Height - _lastArrangeSize.Height) > 0.01;
+        _lastArrangeSize = finalSize;
         _viewport = finalSize;
         if (viewportChanged)
         {
             _textVisualDirty = true;
             _gutterVisualDirty = true;
+            SetHorizontalOffset(_offset.X);
+            SetVerticalOffset(_offset.Y);
             ScrollOwner?.InvalidateScrollInfo();
         }
         return finalSize;
