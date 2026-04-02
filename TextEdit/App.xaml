@@ -27,6 +27,11 @@
         <SolidColorBrush x:Key="ThemeTabInactive" Color="#D8D8D8"/>
         <SolidColorBrush x:Key="ThemeTabHover" Color="#EBEBEB"/>
         <SolidColorBrush x:Key="ThemeTabBorder" Color="#D0D0D0"/>
+        <SolidColorBrush x:Key="ThemeExplorerBg" Color="#F0F0F0"/>
+        <SolidColorBrush x:Key="ThemeExplorerHeaderBg" Color="#E8E8E8"/>
+        <SolidColorBrush x:Key="ThemeExplorerHeaderFg" Color="#888888"/>
+        <SolidColorBrush x:Key="ThemeExplorerItemHover" Color="#E0E0E0"/>
+        <SolidColorBrush x:Key="ThemeExplorerItemSelected" Color="#D0D0D0"/>
 
         <!-- Title bar buttons (shared by MainWindow and SettingsWindow) -->
         <Style x:Key="TitleBarButton" TargetType="Button">

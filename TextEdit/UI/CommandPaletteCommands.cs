@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 
 namespace TextEdit;
 
@@ -14,7 +14,11 @@ internal static class CommandPaletteCommands
         ThemeManager themeManager,
         EditorControl activeEditor,
         FindBar findBar,
-        Action saveSettings)
+        Action saveSettings,
+        Action toggleExplorer,
+        Action openFolder,
+        Action closeFolder,
+        Action refreshExplorerLayout)
     {
         return
         [
@@ -103,6 +107,23 @@ internal static class CommandPaletteCommands
                     ApplyPreview: () => findBar.SetPosition(pos),
                     Commit: () => { settings.Editor.Find.BarPosition = pos; saveSettings(); },
                     Revert: () => findBar.SetPosition(original)
+                )).ToList();
+            }),
+
+            new("Toggle File Explorer", Toggle: toggleExplorer),
+
+            new("Explorer: Open Folder...", Toggle: openFolder),
+
+            new("Explorer: Close Folder", Toggle: closeFolder),
+
+            new("Explorer: Panel Side", CurrentValue: () => settings.Editor.Explorer.PanelSide, GetOptions: () =>
+            {
+                var original = settings.Editor.Explorer.PanelSide;
+                return AppSettings.PanelSideOptions.Select(side => new PaletteOption(
+                    side,
+                    ApplyPreview: () => { settings.Editor.Explorer.PanelSide = side; refreshExplorerLayout(); },
+                    Commit: () => { settings.Editor.Explorer.PanelSide = side; refreshExplorerLayout(); saveSettings(); },
+                    Revert: () => { settings.Editor.Explorer.PanelSide = original; refreshExplorerLayout(); }
                 )).ToList();
             }),
         ];

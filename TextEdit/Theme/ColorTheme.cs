@@ -44,6 +44,11 @@ public class ChromeColors
     [JsonPropertyName("tabInactive")] public string TabInactive { get; set; } = "#D8D8D8";
     [JsonPropertyName("tabHover")] public string TabHover { get; set; } = "#EBEBEB";
     [JsonPropertyName("tabBorder")] public string TabBorder { get; set; } = "#D0D0D0";
+    [JsonPropertyName("explorerBackground")] public string ExplorerBackground { get; set; } = "#F0F0F0";
+    [JsonPropertyName("explorerHeaderBackground")] public string ExplorerHeaderBackground { get; set; } = "#E8E8E8";
+    [JsonPropertyName("explorerHeaderForeground")] public string ExplorerHeaderForeground { get; set; } = "#888888";
+    [JsonPropertyName("explorerItemHover")] public string ExplorerItemHover { get; set; } = "#E0E0E0";
+    [JsonPropertyName("explorerItemSelected")] public string ExplorerItemSelected { get; set; } = "#D0D0D0";
 }
 
 public class ColorTheme

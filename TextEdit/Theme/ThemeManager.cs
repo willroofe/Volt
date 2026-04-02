@@ -146,6 +146,11 @@ public class ThemeManager
         res["ThemeTabInactive"] = ColorTheme.ParseBrush(c.TabInactive);
         res["ThemeTabHover"] = ColorTheme.ParseBrush(c.TabHover);
         res["ThemeTabBorder"] = ColorTheme.ParseBrush(c.TabBorder);
+        res["ThemeExplorerBg"] = ColorTheme.ParseBrush(c.ExplorerBackground);
+        res["ThemeExplorerHeaderBg"] = ColorTheme.ParseBrush(c.ExplorerHeaderBackground);
+        res["ThemeExplorerHeaderFg"] = ColorTheme.ParseBrush(c.ExplorerHeaderForeground);
+        res["ThemeExplorerItemHover"] = ColorTheme.ParseBrush(c.ExplorerItemHover);
+        res["ThemeExplorerItemSelected"] = ColorTheme.ParseBrush(c.ExplorerItemSelected);
     }
 
     private void EnsureDefaultThemes()

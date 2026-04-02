@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Linq;
 using System.Text;
 using System.Windows;
@@ -51,6 +51,14 @@ public partial class MainWindow : Window
         UpdateTabOverflowBrushes();
         RestoreWindowPosition();
 
+        // Restore explorer state
+        if (_settings.Editor.Explorer.PanelVisible)
+        {
+            if (_settings.Editor.Explorer.OpenFolderPath is string folderPath && Directory.Exists(folderPath))
+                ExplorerPanel.OpenFolder(folderPath);
+            SetExplorerVisible(true);
+        }
+
         CmdPalette.Closed += (_, _) => Keyboard.Focus(Editor);
         FindBarControl.Closed += (_, _) => Keyboard.Focus(Editor);
         TabScrollViewer.ScrollChanged += (_, _) => UpdateTabOverflowIndicators();
@@ -58,6 +66,12 @@ public partial class MainWindow : Window
         Closing += OnWindowClosing;
         Activated += (_, _) => CheckAllTabsForExternalChanges();
         ThemeManager.ThemeChanged += (_, _) => { ApplyDwmTheme(); UpdateTabOverflowBrushes(); };
+        ExplorerPanel.FileOpenRequested += OnExplorerFileOpen;
+        ExplorerSplitter.DragCompleted += (_, _) =>
+        {
+            _settings.Editor.Explorer.PanelWidth = ExplorerColumn.ActualWidth;
+            _settings.Save();
+        };
         SourceInitialized += (_, _) =>
         {
             ApplyDwmTheme();
@@ -532,6 +546,109 @@ public partial class MainWindow : Window
         editor.LineHeightMultiplier = _settings.Editor.Font.LineHeight;
     }
 
+    private void ToggleExplorer()
+    {
+        bool show = ExplorerColumn.Width.Value == 0;
+        SetExplorerVisible(show);
+        _settings.Editor.Explorer.PanelVisible = show;
+        _settings.Save();
+    }
+
+    private void SetExplorerVisible(bool visible)
+    {
+        if (visible)
+        {
+            double width = Math.Clamp(_settings.Editor.Explorer.PanelWidth, 150, 600);
+            bool rightSide = _settings.Editor.Explorer.PanelSide == "Right";
+
+            // Always: col0=explorer, col1=splitter, col2=editor
+            // Use FlowDirection to mirror for right-side layout
+            Grid.SetColumn(ExplorerPanel, 0);
+            Grid.SetColumn(ExplorerSplitter, 1);
+            Grid.SetColumn(EditorArea, 2);
+
+            MainContentGrid.FlowDirection = rightSide ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
+            ExplorerPanel.FlowDirection = FlowDirection.LeftToRight;
+            EditorArea.FlowDirection = FlowDirection.LeftToRight;
+
+            ExplorerColumn.Width = new GridLength(width);
+            ExplorerColumn.MinWidth = 150;
+            ExplorerColumn.MaxWidth = 600;
+            SplitterColumn.Width = new GridLength(3);
+            EditorColumn.Width = new GridLength(1, GridUnitType.Star);
+            EditorColumn.MinWidth = 0;
+            EditorColumn.MaxWidth = double.PositiveInfinity;
+            ExplorerSplitter.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            MainContentGrid.FlowDirection = FlowDirection.LeftToRight;
+            ExplorerColumn.MinWidth = 0;
+            ExplorerColumn.MaxWidth = double.PositiveInfinity;
+            ExplorerColumn.Width = new GridLength(0);
+            SplitterColumn.Width = new GridLength(0);
+            EditorColumn.Width = new GridLength(1, GridUnitType.Star);
+            EditorColumn.MinWidth = 0;
+            EditorColumn.MaxWidth = double.PositiveInfinity;
+            ExplorerSplitter.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void OpenFolderInExplorer()
+    {
+        var dlg = new System.Windows.Forms.FolderBrowserDialog();
+        if (_settings.Editor.Explorer.OpenFolderPath is string prev && Directory.Exists(prev))
+            dlg.SelectedPath = prev;
+
+        if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+
+        ExplorerPanel.OpenFolder(dlg.SelectedPath);
+        _settings.Editor.Explorer.OpenFolderPath = dlg.SelectedPath;
+        SetExplorerVisible(true);
+        _settings.Editor.Explorer.PanelVisible = true;
+        _settings.Save();
+    }
+
+    private void CloseFolderInExplorer()
+    {
+        ExplorerPanel.CloseFolder();
+        SetExplorerVisible(false);
+        _settings.Editor.Explorer.OpenFolderPath = null;
+        _settings.Editor.Explorer.PanelVisible = false;
+        _settings.Save();
+    }
+
+    private void OnExplorerFileOpen(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+
+        // Switch to existing tab if already open
+        var existing = _tabs.FirstOrDefault(t =>
+            t.FilePath != null && string.Equals(Path.GetFullPath(t.FilePath), fullPath, StringComparison.OrdinalIgnoreCase));
+        if (existing != null)
+        {
+            ActivateTab(existing);
+            return;
+        }
+
+        // Reuse current tab if untitled and clean
+        TabInfo tab;
+        if (_activeTab != null && _activeTab.FilePath == null && !_activeTab.Editor.IsDirty)
+            tab = _activeTab;
+        else
+            tab = CreateTab();
+
+        tab.FilePath = path;
+        tab.FileEncoding = FileHelper.DetectEncoding(path);
+        tab.Editor.SetContent(FileHelper.ReadAllText(path, tab.FileEncoding));
+        tab.LastKnownFileSize = new FileInfo(path).Length;
+        tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(path, tab.LastKnownFileSize);
+        tab.StartWatching();
+        UpdateTabHeader(tab);
+        ActivateTab(tab);
+        FindBarControl.RefreshSearch();
+    }
+
     private void RestoreSession()
     {
         var session = _settings.Session;
@@ -957,6 +1074,8 @@ public partial class MainWindow : Window
 
     private void OnNew(object sender, RoutedEventArgs e) => OnNewTab(sender, e);
 
+    private void OnOpenFolder(object sender, RoutedEventArgs e) => OpenFolderInExplorer();
+
     private void OnOpen(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog
@@ -1026,7 +1145,8 @@ public partial class MainWindow : Window
         var snapshot = new SettingsSnapshot(
             Editor.TabSize, _settings.Editor.Caret.BlockCaret, _settings.Editor.Caret.BlinkMs,
             Editor.FontFamilyName, Editor.EditorFontSize, Editor.EditorFontWeight,
-            Editor.LineHeightMultiplier, _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition);
+            Editor.LineHeightMultiplier, _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition,
+            _settings.Editor.Explorer.PanelSide);
         var dlg = new SettingsWindow(ThemeManager, snapshot) { Owner = this };
         dlg.Applied += (_, _) => ApplySettingsFromDialog(dlg);
         if (dlg.ShowDialog() == true)
@@ -1044,6 +1164,9 @@ public partial class MainWindow : Window
         _settings.Editor.Font.LineHeight = dlg.SelectedLineHeight;
         _settings.Application.ColorTheme = dlg.ColorThemeName;
         _settings.Editor.Find.BarPosition = dlg.FindBarPosition;
+        _settings.Editor.Explorer.PanelSide = dlg.PanelSide;
+        if (_settings.Editor.Explorer.PanelVisible)
+            SetExplorerVisible(true);
         _settings.Save();
         ApplySettings();
         ThemeManager.Apply(dlg.ColorThemeName);
@@ -1096,6 +1219,7 @@ public partial class MainWindow : Window
         else if (ctrl && !shift && e.Key == Key.W) { if (_activeTab != null) CloseTab(_activeTab); e.Handled = true; }
         else if (ctrl && (e.Key == Key.OemPlus || e.Key == Key.Add)) { StepFontSize(1); e.Handled = true; }
         else if (ctrl && (e.Key == Key.OemMinus || e.Key == Key.Subtract)) { StepFontSize(-1); e.Handled = true; }
+        else if (ctrl && !shift && e.Key == Key.B) { ToggleExplorer(); e.Handled = true; }
         else base.OnKeyDown(e);
     }
 
@@ -1116,7 +1240,9 @@ public partial class MainWindow : Window
     private void OpenCommandPalette()
     {
         var commands = CommandPaletteCommands.Build(
-            _tabs, _settings, ThemeManager, Editor, FindBarControl, () => _settings.Save());
+            _tabs, _settings, ThemeManager, Editor, FindBarControl, () => _settings.Save(),
+            ToggleExplorer, OpenFolderInExplorer, CloseFolderInExplorer,
+            () => { if (_settings.Editor.Explorer.PanelVisible) SetExplorerVisible(true); });
         CmdPalette.SetCommands(commands);
         CmdPalette.Open();
     }

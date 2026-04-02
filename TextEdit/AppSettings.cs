@@ -27,12 +27,21 @@ public class FindSettings
     public string BarPosition { get; set; } = "Bottom";
 }
 
+public class ExplorerSettings
+{
+    public string PanelSide { get; set; } = "Left";
+    public double PanelWidth { get; set; } = 250;
+    public bool PanelVisible { get; set; } = false;
+    public string? OpenFolderPath { get; set; }
+}
+
 public class EditorSettings
 {
     public int TabSize { get; set; } = 4;
     public FontSettings Font { get; set; } = new();
     public CaretSettings Caret { get; set; } = new();
     public FindSettings Find { get; set; } = new();
+    public ExplorerSettings Explorer { get; set; } = new();
 }
 
 public class SessionTab
@@ -111,6 +120,7 @@ public class AppSettings
     public static readonly int[] TabSizeOptions = [2, 4, 8];
     public static readonly string[] FontWeightOptions = ["Thin", "ExtraLight", "Light", "Normal", "Medium", "SemiBold", "Bold", "ExtraBold", "Black"];
     public static readonly double[] LineHeightOptions = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2.0];
+    public static readonly string[] PanelSideOptions = ["Left", "Right"];
 
     public void Save()
     {

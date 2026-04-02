@@ -5,7 +5,8 @@ namespace TextEdit;
 public record SettingsSnapshot(
     int TabSize, bool BlockCaret, int CaretBlinkMs,
     string FontFamily, double FontSize, string FontWeight,
-    double LineHeight, string ColorTheme, string FindBarPosition);
+    double LineHeight, string ColorTheme, string FindBarPosition,
+    string PanelSide);
 
 public partial class SettingsWindow : Window
 {
@@ -18,6 +19,7 @@ public partial class SettingsWindow : Window
     public string ColorThemeName { get; private set; }
     public double SelectedLineHeight { get; private set; }
     public string FindBarPosition { get; private set; }
+    public string PanelSide { get; private set; }
 
     public event EventHandler? Applied;
 
@@ -44,6 +46,8 @@ public partial class SettingsWindow : Window
         CaretStyleBox.SelectedIndex = snapshot.BlockCaret ? 1 : 0;
         CaretBlinkSlider.Value = snapshot.CaretBlinkMs;
         FindBarPosBox.SelectedIndex = snapshot.FindBarPosition == "Top" ? 0 : 1;
+        PanelSide = snapshot.PanelSide;
+        PanelSideBox.SelectedIndex = snapshot.PanelSide == "Right" ? 1 : 0;
 
         // Populate font family dropdown
         _fontNames = FontManager.GetMonospaceFonts();
@@ -84,17 +88,20 @@ public partial class SettingsWindow : Window
         NavFont.Style = (Style)FindResource(section == "Font" ? "NavButtonActive" : "NavButton");
         NavCaret.Style = (Style)FindResource(section == "Caret" ? "NavButtonActive" : "NavButton");
         NavFind.Style = (Style)FindResource(section == "Find" ? "NavButtonActive" : "NavButton");
+        NavExplorer.Style = (Style)FindResource(section == "Explorer" ? "NavButtonActive" : "NavButton");
 
         ThemeScroller.Visibility = section == "Theme" ? Visibility.Visible : Visibility.Collapsed;
         FontScroller.Visibility = section == "Font" ? Visibility.Visible : Visibility.Collapsed;
         CaretScroller.Visibility = section == "Caret" ? Visibility.Visible : Visibility.Collapsed;
         FindScroller.Visibility = section == "Find" ? Visibility.Visible : Visibility.Collapsed;
+        ExplorerScroller.Visibility = section == "Explorer" ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnNavTheme(object sender, RoutedEventArgs e) => SelectNav("Theme");
     private void OnNavFont(object sender, RoutedEventArgs e) => SelectNav("Font");
     private void OnNavCaret(object sender, RoutedEventArgs e) => SelectNav("Caret");
     private void OnNavFind(object sender, RoutedEventArgs e) => SelectNav("Find");
+    private void OnNavExplorer(object sender, RoutedEventArgs e) => SelectNav("Explorer");
 
     private void ReadCurrentValues()
     {
@@ -107,6 +114,7 @@ public partial class SettingsWindow : Window
         SelectedLineHeight = AppSettings.LineHeightOptions[LineHeightBox.SelectedIndex];
         ColorThemeName = _themeNames[ColorThemeBox.SelectedIndex];
         FindBarPosition = FindBarPosBox.SelectedIndex == 0 ? "Top" : "Bottom";
+        PanelSide = PanelSideBox.SelectedIndex == 1 ? "Right" : "Left";
     }
 
     private void OnApply(object sender, RoutedEventArgs e)

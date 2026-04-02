@@ -268,6 +268,9 @@
                     <Button x:Name="NavFind" Content="Find"
                             Style="{StaticResource NavButton}"
                             Click="OnNavFind"/>
+                    <Button x:Name="NavExplorer" Content="Explorer"
+                            Style="{StaticResource NavButton}"
+                            Click="OnNavExplorer"/>
                 </StackPanel>
             </Border>
 
@@ -381,6 +384,25 @@
                                   VerticalContentAlignment="Center" FontSize="13">
                             <ComboBoxItem Content="Top"/>
                             <ComboBoxItem Content="Bottom"/>
+                        </ComboBox>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Explorer section -->
+                <ScrollViewer x:Name="ExplorerScroller" Grid.Row="0"
+                              Template="{StaticResource ThemedScrollViewer}"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Visibility="Collapsed">
+                    <StackPanel Margin="24,20">
+                        <TextBlock Text="Explorer" Style="{StaticResource SectionHeader}"/>
+
+                        <TextBlock Text="Panel side" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="PanelSideBox" Width="100" Height="26"
+                                  HorizontalAlignment="Left" Margin="0,0,0,16"
+                                  VerticalContentAlignment="Center" FontSize="13">
+                            <ComboBoxItem Content="Left"/>
+                            <ComboBoxItem Content="Right"/>
                         </ComboBox>
                     </StackPanel>
                 </ScrollViewer>
