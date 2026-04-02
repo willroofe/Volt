@@ -1174,6 +1174,14 @@ public partial class MainWindow : Window
         SaveTabAs(_activeTab);
     }
 
+    private void OnToggleWordWrap(object sender, RoutedEventArgs e)
+    {
+        _settings.Editor.WordWrap = !_settings.Editor.WordWrap;
+        foreach (var tab in _tabs)
+            tab.Editor.WordWrap = _settings.Editor.WordWrap;
+        _settings.Save();
+    }
+
     private void OnSettings(object sender, RoutedEventArgs e)
     {
         var snapshot = new SettingsSnapshot(
