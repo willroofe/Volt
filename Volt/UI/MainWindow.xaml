@@ -1,0 +1,322 @@
+﻿<Window x:Class="Volt.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Volt"
+        Title="Untitled" Height="600" Width="900"
+        Icon="/Resources/Volt.ico"
+        Background="{DynamicResource ThemeChromeBrush}"
+        WindowStartupLocation="CenterScreen">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="32" ResizeBorderThickness="6"
+                      GlassFrameThickness="-1"
+                      UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+    <Window.Resources>
+        <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">
+            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Separator">
+                        <Border Height="1" Background="{DynamicResource ThemeMenuPopupBorder}"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="TopLevelMenuItem" TargetType="MenuItem">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Grid>
+                            <Border x:Name="Bd" Background="Transparent" Padding="10,0"
+                                    CornerRadius="4" Margin="2,4">
+                                <ContentPresenter ContentSource="Header"
+                                                  VerticalAlignment="Center"
+                                                  RecognizesAccessKey="True"/>
+                            </Border>
+                            <Popup x:Name="PART_Popup"
+                                   IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                                   Placement="Bottom"
+                                   HorizontalOffset="1"
+                                   VerticalOffset="-4"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   PopupAnimation="None">
+                                <Border Background="{DynamicResource ThemeMenuPopupBg}"
+                                        BorderBrush="{DynamicResource ThemeMenuPopupBorder}" BorderThickness="1"
+                                        CornerRadius="3" Margin="0,0,6,6">
+                                    <Border.Effect>
+                                        <DropShadowEffect ShadowDepth="1" Opacity="0.2" BlurRadius="4"/>
+                                    </Border.Effect>
+                                    <StackPanel IsItemsHost="True" Margin="0,3"
+                                                KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeButtonHover}"/>
+                            </Trigger>
+                            <Trigger Property="IsSubmenuOpen" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeButtonHover}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Grid>
+    <DockPanel>
+        <!-- Custom title bar -->
+        <Grid x:Name="TitleBar" DockPanel.Dock="Top" Background="{DynamicResource ThemeChromeBrush}" Height="32"
+              MouseLeftButtonDown="OnTitleBarMouseDown">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition x:Name="EditorColumn" Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- App icon -->
+            <Viewbox Grid.Column="0" Width="22" Height="22"
+                     Margin="10,0,2,0" VerticalAlignment="Center"
+                     IsHitTestVisible="False">
+                <Canvas Width="400" Height="360">
+                    <Path Stroke="{DynamicResource ThemeTextFg}" StrokeThickness="16"
+                          StrokeLineJoin="Miter" StrokeMiterLimit="10"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          Data="M200,50.192 L350,310 L50,310 Z"/>
+                    <Path Stroke="{DynamicResource ThemeTextFg}" StrokeThickness="16"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          StrokeLineJoin="Round"
+                          Data="M150,136.795 L300,223.397 M100,223.397 L150,310 M150,310 L225,180.096"/>
+                </Canvas>
+            </Viewbox>
+
+            <!-- Dead zone over the bottom of menu items so diagonal mouse moves
+                 toward the dropdown don't accidentally graze adjacent items -->
+            <Border Grid.Column="1" Height="6" VerticalAlignment="Bottom"
+                    Background="Transparent" Panel.ZIndex="1"
+                    WindowChrome.IsHitTestVisibleInChrome="True"/>
+
+            <!-- Menu (default WPF templates for correct hover-to-switch behavior) -->
+            <Menu Grid.Column="1" Background="Transparent" VerticalAlignment="Center"
+                  FontFamily="Segoe UI" FontSize="12"
+                  Foreground="{DynamicResource ThemeTextFg}"
+                  WindowChrome.IsHitTestVisibleInChrome="True">
+                <MenuItem Header="_File" Style="{StaticResource TopLevelMenuItem}">
+                    <MenuItem.ItemContainerStyle>
+                        <Style TargetType="MenuItem">
+                            <Setter Property="FontFamily" Value="Segoe UI"/>
+                            <Setter Property="FontSize" Value="12"/>
+                            <Setter Property="Foreground" Value="{DynamicResource ThemeTextFg}"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="MenuItem">
+                                        <Border x:Name="Bd" Background="Transparent"
+                                                CornerRadius="4" Margin="4,1">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="28" SharedSizeGroup="Icon"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto" SharedSizeGroup="Shortcut"/>
+                                                </Grid.ColumnDefinitions>
+                                                <ContentPresenter Grid.Column="0" ContentSource="Icon"
+                                                                  HorizontalAlignment="Center"
+                                                                  VerticalAlignment="Center"
+                                                                  Width="16" Height="16"/>
+                                                <ContentPresenter Grid.Column="1" ContentSource="Header"
+                                                                  Margin="6,4,12,4"
+                                                                  VerticalAlignment="Center"
+                                                                  RecognizesAccessKey="True"/>
+                                                <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}"
+                                                           Margin="0,4,8,4"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource ThemeTextFgMuted}"/>
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsHighlighted" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeMenuItemHover}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </MenuItem.ItemContainerStyle>
+                    <MenuItem Header="_New Tab" InputGestureText="Ctrl+N" Click="OnNew"/>
+                    <MenuItem Header="_Open..." InputGestureText="Ctrl+O" Click="OnOpen">
+                        <MenuItem.Icon>
+                            <TextBlock Text="&#xE838;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem Header="Open _Folder..." InputGestureText="Ctrl+Shift+O" Click="OnOpenFolder"/>
+                    <Separator/>
+                    <MenuItem Header="New Pro_ject" Click="OnNewProject"/>
+                    <MenuItem Header="Open Pr_oject..." Click="OnOpenProject"/>
+                    <MenuItem x:Name="MenuSaveProject" Header="Save Pro_ject" Click="OnSaveProject" IsEnabled="False"/>
+                    <MenuItem x:Name="MenuCloseProject" Header="Close Projec_t" Click="OnCloseProject" IsEnabled="False"/>
+                    <Separator/>
+                    <MenuItem Header="_Save" InputGestureText="Ctrl+S" Click="OnSave">
+                        <MenuItem.Icon>
+                            <TextBlock Text="&#xE74E;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem Header="Save _As..." InputGestureText="Ctrl+Shift+S" Click="OnSaveAs"/>
+                    <Separator/>
+                    <MenuItem Header="S_ettings..." InputGestureText="Ctrl+Alt+S" Click="OnSettings">
+                        <MenuItem.Icon>
+                            <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <Separator/>
+                    <MenuItem Header="E_xit" InputGestureText="Alt+F4" Click="OnExit"/>
+                </MenuItem>
+            </Menu>
+
+            <!-- Title text -->
+            <TextBlock x:Name="TitleText" Grid.Column="2"
+                       Text="Untitled"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       FontFamily="Segoe UI" FontSize="12"
+                       Foreground="{DynamicResource ThemeTextFg}"
+                       IsHitTestVisible="False"/>
+
+            <!-- Window controls -->
+            <StackPanel Grid.Column="3" Orientation="Horizontal">
+                <Button Style="{StaticResource TitleBarButton}" Content="&#xE921;" Click="OnMinimize"/>
+                <Button x:Name="MaxRestoreButton" Style="{StaticResource TitleBarButton}" Content="&#xE922;" Click="OnMaximizeRestore"/>
+                <Button Style="{StaticResource CloseButton}" Content="&#xE8BB;" Click="OnClose"/>
+            </StackPanel>
+        </Grid>
+
+        <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource ThemeBorderBrush}"/>
+
+        <!-- Status bar -->
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource ThemeChromeBrush}" Height="24">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                    <Rectangle Width="1" Fill="{DynamicResource ThemeBorderBrush}"/>
+                    <TextBlock x:Name="CaretPosText" Text="Ln 1, Col 1" Margin="8,0"
+                               FontFamily="Segoe UI" FontSize="12"
+                               Foreground="{DynamicResource ThemeTextFg}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                    <TextBlock x:Name="FileTypeText" Text="Plain Text" Margin="8,0"
+                               FontFamily="Segoe UI" FontSize="12"
+                               Foreground="{DynamicResource ThemeTextFg}"/>
+                    <Rectangle Width="1" Fill="{DynamicResource ThemeBorderBrush}"/>
+                    <TextBlock x:Name="EncodingText" Text="UTF-8" Margin="8,0"
+                               FontFamily="Segoe UI" FontSize="12"
+                               Foreground="{DynamicResource ThemeTextFg}"/>
+                    <Rectangle Width="1" Fill="{DynamicResource ThemeBorderBrush}"/>
+                    <TextBlock x:Name="LineEndingText" Text="LF" Margin="8,0"
+                               FontFamily="Segoe UI" FontSize="12"
+                               Foreground="{DynamicResource ThemeTextFg}"/>
+                    <Rectangle Width="1" Fill="{DynamicResource ThemeBorderBrush}"/>
+                    <TextBlock x:Name="CharCountText" Text="0 Characters" Margin="8,0"
+                               FontFamily="Segoe UI" FontSize="12"
+                               Foreground="{DynamicResource ThemeTextFg}"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+        <Border DockPanel.Dock="Bottom" Height="1" Background="{DynamicResource ThemeBorderBrush}"/>
+
+        <Grid x:Name="MainContentGrid" WindowChrome.IsHitTestVisibleInChrome="True">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="ExplorerColumn" Width="0"/>
+                <ColumnDefinition x:Name="SplitterColumn" Width="0"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <local:FileExplorerPanel x:Name="ExplorerPanel" Grid.Column="0"/>
+
+            <GridSplitter x:Name="ExplorerSplitter" Grid.Column="1"
+                          Width="1" HorizontalAlignment="Stretch"
+                          Background="{DynamicResource ThemeBorderBrush}"
+                          Visibility="Collapsed"/>
+
+            <!-- Continuous border line across splitter gap at header height -->
+            <Border x:Name="HeaderBorderBridge" Grid.ColumnSpan="3"
+                    VerticalAlignment="Top" Height="34"
+                    BorderBrush="{DynamicResource ThemeTabBorder}" BorderThickness="0,0,0,1"
+                    IsHitTestVisible="False" Visibility="Collapsed"/>
+
+            <DockPanel x:Name="EditorArea" Grid.Column="2">
+                <!-- Tab bar -->
+                <Border DockPanel.Dock="Top" Background="{DynamicResource ThemeTabBarBg}"
+                        BorderBrush="{DynamicResource ThemeTabBorder}" BorderThickness="0,0,0,1">
+                    <DockPanel Height="33">
+                        <Button x:Name="NewTabButton" DockPanel.Dock="Right"
+                                Width="28" Height="28" Margin="4,0"
+                                Content="&#xE710;"
+                                FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                Foreground="{DynamicResource ThemeButtonFg}"
+                                Background="Transparent" BorderThickness="0"
+                                Focusable="False" Cursor="Hand"
+                                Click="OnNewTab"
+                                ToolTip="New Tab (Ctrl+N)">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Bd" Background="Transparent" CornerRadius="3">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background"
+                                                    Value="{DynamicResource ThemeButtonHover}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                        <Grid>
+                            <ScrollViewer x:Name="TabScrollViewer"
+                                          HorizontalScrollBarVisibility="Hidden"
+                                          VerticalScrollBarVisibility="Disabled"
+                                          CanContentScroll="False"
+                                          PreviewMouseWheel="OnTabScrollViewerMouseWheel">
+                                <Grid>
+                                    <StackPanel x:Name="TabStrip" Orientation="Horizontal"/>
+                                    <Border x:Name="TabDropIndicator" Width="2"
+                                            HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                                            Background="{DynamicResource ThemeTextFg}"
+                                            Visibility="Collapsed" IsHitTestVisible="False"/>
+                                </Grid>
+                            </ScrollViewer>
+                            <!-- Overflow fade indicators with arrow glyphs -->
+                            <Border x:Name="TabOverflowLeft" Width="32"
+                                    HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                                    IsHitTestVisible="False" Visibility="Collapsed">
+                                <TextBlock Text="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                           Foreground="{DynamicResource ThemeTextFg}"
+                                           HorizontalAlignment="Left" VerticalAlignment="Center"
+                                           Margin="6,0,0,0"/>
+                            </Border>
+                            <Border x:Name="TabOverflowRight" Width="32"
+                                    HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                                    IsHitTestVisible="False" Visibility="Collapsed">
+                                <TextBlock Text="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                           Foreground="{DynamicResource ThemeTextFg}"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                                           Margin="0,0,6,0"/>
+                            </Border>
+                        </Grid>
+                    </DockPanel>
+                </Border>
+                <Border x:Name="EditorHost"/>
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+
+    <!-- Find bar overlay -->
+    <local:FindBar x:Name="FindBarControl" />
+
+    <!-- Command palette overlay -->
+    <local:CommandPalette x:Name="CmdPalette" />
+    </Grid>
+</Window>

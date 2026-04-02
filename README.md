@@ -1,12 +1,12 @@
-# TextEdit
+# Volt
 
-A lightweight text editor for Windows, built from scratch with WPF and .NET 10. TextEdit renders text directly via GlyphRun drawing rather than using built-in WPF text controls, giving full control over rendering, scrolling, and input handling.
+A lightweight text editor for Windows, built from scratch with WPF and .NET 10. Volt renders text directly via GlyphRun drawing rather than using built-in WPF text controls, giving full control over rendering, scrolling, and input handling.
 
 ## Features
 
 - **Custom rendering engine** -- three-layer DrawingVisual architecture (text, gutter, caret) with GlyphRun-based rendering for sharp ClearType text and smooth scrolling
-- **Syntax highlighting** -- regex-based tokenizer with multi-line string state tracking, interpolation/escape highlighting, and background precomputation for large files. Ships with Perl; add languages by dropping a grammar JSON file into `%AppData%/TextEdit/Grammars/`
-- **JSON theming** -- one file controls editor, chrome, and syntax colours. Ships with Default Dark, Default Light, and Gruvbox Dark. Add themes by dropping a JSON file into `%AppData%/TextEdit/Themes/`
+- **Syntax highlighting** -- regex-based tokenizer with multi-line string state tracking, interpolation/escape highlighting, and background precomputation for large files. Ships with Perl; add languages by dropping a grammar JSON file into `%AppData%/Volt/Grammars/`
+- **JSON theming** -- one file controls editor, chrome, and syntax colours. Ships with Default Dark, Default Light, and Gruvbox Dark. Add themes by dropping a JSON file into `%AppData%/Volt/Themes/`
 - **Command palette** (Ctrl+Shift+P) -- VS Code-style palette with live preview for theme, font, and editor settings
 - **Find and replace** (Ctrl+F) -- match highlighting, case sensitivity toggle, match count, keyboard navigation
 - **Smart editing** -- auto-close brackets/quotes, smart indent after `{`/`(`/`[`, tab-stop-aware backspace, double-click word selection
@@ -22,8 +22,8 @@ A lightweight text editor for Windows, built from scratch with WPF and .NET 10. 
 ## Build and Run
 
 ```bash
-dotnet build TextEdit.sln
-dotnet run --project TextEdit/TextEdit.csproj
+dotnet build Volt.sln
+dotnet run --project Volt/Volt.csproj
 ```
 
 ## Keyboard Shortcuts
@@ -52,7 +52,7 @@ dotnet run --project TextEdit/TextEdit.csproj
 ## Project Structure
 
 ```
-TextEdit/
+Volt/
   Editor/       Core editor: EditorControl, TextBuffer, UndoManager, SelectionManager, SyntaxManager
   Theme/        ThemeManager, ColorTheme model
   UI/           MainWindow, FindBar, CommandPalette, SettingsWindow

@@ -13,7 +13,7 @@
 ### Task 1: Add ExplorerSettings to AppSettings
 
 **Files:**
-- Modify: `TextEdit/AppSettings.cs:30-36` (EditorSettings class) and `TextEdit/AppSettings.cs:109-113` (static options)
+- Modify: `Volt/AppSettings.cs:30-36` (EditorSettings class) and `Volt/AppSettings.cs:109-113` (static options)
 
 - [ ] **Step 1: Add ExplorerSettings class**
 
@@ -47,13 +47,13 @@ public static readonly string[] PanelSideOptions = ["Left", "Right"];
 
 - [ ] **Step 4: Build and verify**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build succeeds with no errors.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add TextEdit/AppSettings.cs
+git add Volt/AppSettings.cs
 git commit -m "feat: add ExplorerSettings to AppSettings"
 ```
 
@@ -62,12 +62,12 @@ git commit -m "feat: add ExplorerSettings to AppSettings"
 ### Task 2: Add Explorer theme colors to ColorTheme and theme JSONs
 
 **Files:**
-- Modify: `TextEdit/Theme/ColorTheme.cs:23-47` (ChromeColors class)
-- Modify: `TextEdit/Theme/ThemeManager.cs:123-149` (UpdateAppResources)
-- Modify: `TextEdit/App.xaml:7-29` (default resources)
-- Modify: `TextEdit/Resources/Themes/default-dark.json`
-- Modify: `TextEdit/Resources/Themes/default-light.json`
-- Modify: `TextEdit/Resources/Themes/gruvbox-dark.json`
+- Modify: `Volt/Theme/ColorTheme.cs:23-47` (ChromeColors class)
+- Modify: `Volt/Theme/ThemeManager.cs:123-149` (UpdateAppResources)
+- Modify: `Volt/App.xaml:7-29` (default resources)
+- Modify: `Volt/Resources/Themes/default-dark.json`
+- Modify: `Volt/Resources/Themes/default-light.json`
+- Modify: `Volt/Resources/Themes/gruvbox-dark.json`
 
 - [ ] **Step 1: Add explorer properties to ChromeColors**
 
@@ -143,13 +143,13 @@ Add inside the `"chrome"` object after `"tabBorder"`:
 
 - [ ] **Step 7: Build and verify**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build succeeds with no errors.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add TextEdit/Theme/ColorTheme.cs TextEdit/Theme/ThemeManager.cs TextEdit/App.xaml TextEdit/Resources/Themes/default-dark.json TextEdit/Resources/Themes/default-light.json TextEdit/Resources/Themes/gruvbox-dark.json
+git add Volt/Theme/ColorTheme.cs Volt/Theme/ThemeManager.cs Volt/App.xaml Volt/Resources/Themes/default-dark.json Volt/Resources/Themes/default-light.json Volt/Resources/Themes/gruvbox-dark.json
 git commit -m "feat: add explorer theme colors to all themes"
 ```
 
@@ -158,18 +158,18 @@ git commit -m "feat: add explorer theme colors to all themes"
 ### Task 3: Create FileTreeItem view model
 
 **Files:**
-- Create: `TextEdit/UI/FileTreeItem.cs`
+- Create: `Volt/UI/FileTreeItem.cs`
 
 - [ ] **Step 1: Create the FileTreeItem class**
 
-Create `TextEdit/UI/FileTreeItem.cs`:
+Create `Volt/UI/FileTreeItem.cs`:
 
 ```csharp
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 
-namespace TextEdit;
+namespace Volt;
 
 public class FileTreeItem : INotifyPropertyChanged
 {
@@ -277,13 +277,13 @@ public class FileTreeItem : INotifyPropertyChanged
 
 - [ ] **Step 2: Build and verify**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build succeeds with no errors.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add TextEdit/UI/FileTreeItem.cs
+git add Volt/UI/FileTreeItem.cs
 git commit -m "feat: add FileTreeItem view model with lazy loading"
 ```
 
@@ -292,18 +292,18 @@ git commit -m "feat: add FileTreeItem view model with lazy loading"
 ### Task 4: Create FileExplorerPanel UserControl
 
 **Files:**
-- Create: `TextEdit/UI/FileExplorerPanel.xaml`
-- Create: `TextEdit/UI/FileExplorerPanel.xaml.cs`
+- Create: `Volt/UI/FileExplorerPanel.xaml`
+- Create: `Volt/UI/FileExplorerPanel.xaml.cs`
 
 - [ ] **Step 1: Create FileExplorerPanel.xaml**
 
-Create `TextEdit/UI/FileExplorerPanel.xaml`:
+Create `Volt/UI/FileExplorerPanel.xaml`:
 
 ```xml
-<UserControl x:Class="TextEdit.FileExplorerPanel"
+<UserControl x:Class="Volt.FileExplorerPanel"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:TextEdit">
+             xmlns:local="clr-namespace:Volt">
     <UserControl.Resources>
         <!-- TreeViewItem style for themed hover/selection -->
         <Style TargetType="TreeViewItem">
@@ -389,7 +389,7 @@ Create `TextEdit/UI/FileExplorerPanel.xaml`:
 
 - [ ] **Step 2: Create FileExplorerPanel.xaml.cs**
 
-Create `TextEdit/UI/FileExplorerPanel.xaml.cs`:
+Create `Volt/UI/FileExplorerPanel.xaml.cs`:
 
 ```csharp
 using System.IO;
@@ -398,7 +398,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 
-namespace TextEdit;
+namespace Volt;
 
 public partial class FileExplorerPanel : UserControl
 {
@@ -478,13 +478,13 @@ public class TreeIndentConverter : IValueConverter
 
 - [ ] **Step 3: Build and verify**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build succeeds. There may be a warning about the TreeIndentConverter binding — it's OK if the converter doesn't resolve via the simple `Converter` approach; we'll fix any binding issues after visual testing.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add TextEdit/UI/FileExplorerPanel.xaml TextEdit/UI/FileExplorerPanel.xaml.cs
+git add Volt/UI/FileExplorerPanel.xaml Volt/UI/FileExplorerPanel.xaml.cs
 git commit -m "feat: create FileExplorerPanel UserControl with themed TreeView"
 ```
 
@@ -493,8 +493,8 @@ git commit -m "feat: create FileExplorerPanel UserControl with themed TreeView"
 ### Task 5: Integrate panel into MainWindow layout
 
 **Files:**
-- Modify: `TextEdit/UI/MainWindow.xaml:286-287` (EditorHost area)
-- Modify: `TextEdit/UI/MainWindow.xaml.cs` (constructor, toggle, session, open folder)
+- Modify: `Volt/UI/MainWindow.xaml:286-287` (EditorHost area)
+- Modify: `Volt/UI/MainWindow.xaml.cs` (constructor, toggle, session, open folder)
 
 - [ ] **Step 1: Replace EditorHost with 3-column Grid in MainWindow.xaml**
 
@@ -672,13 +672,13 @@ if (_settings.Editor.Explorer.PanelVisible)
 
 - [ ] **Step 7: Build and verify**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build succeeds. Note: `System.Windows.Forms.FolderBrowserDialog` requires a reference to `System.Windows.Forms`. If the build fails, add `<UseWindowsForms>true</UseWindowsForms>` to the `.csproj` `<PropertyGroup>`.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add TextEdit/UI/MainWindow.xaml TextEdit/UI/MainWindow.xaml.cs TextEdit/TextEdit.csproj
+git add Volt/UI/MainWindow.xaml Volt/UI/MainWindow.xaml.cs Volt/Volt.csproj
 git commit -m "feat: integrate file explorer panel into MainWindow layout"
 ```
 
@@ -687,8 +687,8 @@ git commit -m "feat: integrate file explorer panel into MainWindow layout"
 ### Task 6: Add command palette entries
 
 **Files:**
-- Modify: `TextEdit/UI/CommandPaletteCommands.cs`
-- Modify: `TextEdit/UI/MainWindow.xaml.cs` (OpenCommandPalette method)
+- Modify: `Volt/UI/CommandPaletteCommands.cs`
+- Modify: `Volt/UI/MainWindow.xaml.cs` (OpenCommandPalette method)
 
 - [ ] **Step 1: Update CommandPaletteCommands.Build signature**
 
@@ -742,13 +742,13 @@ var commands = CommandPaletteCommands.Build(
 
 - [ ] **Step 4: Build and verify**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build succeeds with no errors.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add TextEdit/UI/CommandPaletteCommands.cs TextEdit/UI/MainWindow.xaml.cs
+git add Volt/UI/CommandPaletteCommands.cs Volt/UI/MainWindow.xaml.cs
 git commit -m "feat: add explorer commands to command palette"
 ```
 
@@ -757,8 +757,8 @@ git commit -m "feat: add explorer commands to command palette"
 ### Task 7: Add Explorer section to Settings window
 
 **Files:**
-- Modify: `TextEdit/UI/SettingsWindow.xaml`
-- Modify: `TextEdit/UI/SettingsWindow.xaml.cs`
+- Modify: `Volt/UI/SettingsWindow.xaml`
+- Modify: `Volt/UI/SettingsWindow.xaml.cs`
 
 - [ ] **Step 1: Add Explorer nav button to SettingsWindow.xaml**
 
@@ -878,13 +878,13 @@ if (_settings.Editor.Explorer.PanelVisible)
 
 - [ ] **Step 7: Build and verify**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build succeeds with no errors.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add TextEdit/UI/SettingsWindow.xaml TextEdit/UI/SettingsWindow.xaml.cs TextEdit/UI/MainWindow.xaml.cs
+git add Volt/UI/SettingsWindow.xaml Volt/UI/SettingsWindow.xaml.cs Volt/UI/MainWindow.xaml.cs
 git commit -m "feat: add Explorer section to Settings window"
 ```
 
@@ -894,7 +894,7 @@ git commit -m "feat: add Explorer section to Settings window"
 
 - [ ] **Step 1: Run the application**
 
-Run: `dotnet run --project TextEdit/TextEdit.csproj`
+Run: `dotnet run --project Volt/Volt.csproj`
 
 - [ ] **Step 2: Test explorer toggle**
 
