@@ -71,6 +71,11 @@ public partial class FileExplorerPanel : UserControl
 
     private void RebuildProjectTree(Project project)
     {
+        // Capture expanded state before rebuilding
+        var expandedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (FolderTree.ItemsSource is ObservableCollection<FileTreeItem> oldItems)
+            CollectExpandedPaths(oldItems, expandedPaths);
+
         var projectRoot = FileTreeItem.CreateProjectRoot(project.Name);
 
         // Add virtual folders with their assigned real folders
@@ -85,9 +90,13 @@ public partial class FileExplorerPanel : UserControl
                 if (Directory.Exists(folder.Path))
                 {
                     var dirItem = FileTreeItem.CreateRootItem(folder.Path);
+                    if (expandedPaths.Contains(folder.Path))
+                        dirItem.IsExpanded = true;
                     vfItem.Children.Add(dirItem);
                 }
             }
+            if (expandedPaths.Contains("vf:" + vf))
+                vfItem.IsExpanded = true;
             projectRoot.Children.Add(vfItem);
         }
 
@@ -100,12 +109,29 @@ public partial class FileExplorerPanel : UserControl
             if (Directory.Exists(folder.Path))
             {
                 var dirItem = FileTreeItem.CreateRootItem(folder.Path);
+                if (expandedPaths.Contains(folder.Path))
+                    dirItem.IsExpanded = true;
                 projectRoot.Children.Add(dirItem);
             }
         }
 
         projectRoot.IsExpanded = true;
         FolderTree.ItemsSource = new ObservableCollection<FileTreeItem> { projectRoot };
+    }
+
+    private static void CollectExpandedPaths(IEnumerable<FileTreeItem> items, HashSet<string> paths)
+    {
+        foreach (var item in items)
+        {
+            if (!item.IsExpanded) continue;
+
+            if (item.Kind == FileTreeItemKind.VirtualFolder)
+                paths.Add("vf:" + item.Name);
+            else if (!string.IsNullOrEmpty(item.FullPath))
+                paths.Add(item.FullPath);
+
+            CollectExpandedPaths(item.Children, paths);
+        }
     }
 
     private void OnTreeDoubleClick(object sender, MouseButtonEventArgs e)
