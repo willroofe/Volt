@@ -109,7 +109,8 @@ public partial class FileExplorerPanel : UserControl
 
     private void OnTreeDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (FolderTree.SelectedItem is FileTreeItem item && !item.IsDirectory)
+        if (FolderTree.SelectedItem is FileTreeItem item && item.Kind == FileTreeItemKind.File
+            && !string.IsNullOrEmpty(item.FullPath))
         {
             FileOpenRequested?.Invoke(item.FullPath);
             e.Handled = true;
