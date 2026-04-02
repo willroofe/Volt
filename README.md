@@ -32,14 +32,21 @@ dotnet run --project TextEdit/TextEdit.csproj
 |---|---|
 | Ctrl+N | New file |
 | Ctrl+O | Open file |
+| Ctrl+Shift+O | Open folder in explorer panel |
 | Ctrl+S | Save |
 | Ctrl+Shift+S | Save As |
-| Ctrl+F | Find / Replace |
+| Ctrl+Alt+S | Settings |
+| Ctrl+W | Close tab |
+| Ctrl+Tab / Ctrl+Shift+Tab | Next / Previous tab |
+| Ctrl+F | Find |
+| Ctrl+H | Toggle replace |
 | Ctrl+Shift+P | Command palette |
+| Ctrl+B | Toggle file explorer |
 | Ctrl+Z | Undo |
 | Ctrl+Y | Redo |
 | Ctrl+A | Select all |
 | Ctrl+C / Ctrl+X / Ctrl+V | Copy / Cut / Paste |
+| Tab / Shift+Tab | Indent / Unindent selection |
 | Ctrl+Plus / Ctrl+Minus | Increase / Decrease font size |
 
 ## Project Structure
