@@ -159,8 +159,8 @@ public partial class FileExplorerPanel : UserControl
                 break;
 
             case FileTreeItemKind.VirtualFolder:
-                var vfName = item.Name;
-                menu.Items.Add(CreateMenuItem("Add Folder...", () => AddFolderRequested?.Invoke(vfName)));
+                var targetVf = item.Name;
+                menu.Items.Add(CreateMenuItem("Add Folder...", () => AddFolderRequested?.Invoke(targetVf)));
                 menu.Items.Add(CreateMenuItem("Rename", () => RenameVirtualFolderRequested?.Invoke(item.Name)));
                 menu.Items.Add(CreateMenuItem("Remove Virtual Folder", () => RemoveVirtualFolderRequested?.Invoke(item.Name)));
                 break;
