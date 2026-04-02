@@ -156,6 +156,11 @@
                     </MenuItem>
                     <MenuItem Header="Open _Folder..." InputGestureText="Ctrl+Shift+O" Click="OnOpenFolder"/>
                     <Separator/>
+                    <MenuItem Header="New Pro_ject" Click="OnNewProject"/>
+                    <MenuItem Header="Open Pr_oject..." Click="OnOpenProject"/>
+                    <MenuItem x:Name="MenuSaveProject" Header="Save Pro_ject" Click="OnSaveProject" IsEnabled="False"/>
+                    <MenuItem x:Name="MenuCloseProject" Header="Close Projec_t" Click="OnCloseProject" IsEnabled="False"/>
+                    <Separator/>
                     <MenuItem Header="_Save" InputGestureText="Ctrl+S" Click="OnSave">
                         <MenuItem.Icon>
                             <TextBlock Text="&#xE74E;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
