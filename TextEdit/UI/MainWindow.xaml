@@ -154,7 +154,7 @@
                             <TextBlock Text="&#xE838;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
                         </MenuItem.Icon>
                     </MenuItem>
-                    <MenuItem Header="Open _Folder..." Click="OnOpenFolder"/>
+                    <MenuItem Header="Open _Folder..." InputGestureText="Ctrl+Shift+O" Click="OnOpenFolder"/>
                     <Separator/>
                     <MenuItem Header="_Save" InputGestureText="Ctrl+S" Click="OnSave">
                         <MenuItem.Icon>
