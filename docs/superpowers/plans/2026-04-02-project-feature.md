@@ -14,29 +14,29 @@
 
 | Action | File | Responsibility |
 |--------|------|----------------|
-| Create | `TextEdit/UI/Project.cs` | Data model: `Project`, `ProjectFolder`, `ProjectSession`, `ProjectSessionTab` |
-| Create | `TextEdit/UI/ProjectManager.cs` | Project lifecycle: new/open/save/close, folder management, virtual folder management |
-| Modify | `TextEdit/UI/FileTreeItem.cs` | Add `ItemKind` enum, constructors for VirtualFolder/ProjectRoot kinds |
-| Modify | `TextEdit/UI/FileExplorerPanel.xaml` | Context menus, `HierarchicalDataTemplate` changes for item kind icons |
-| Modify | `TextEdit/UI/FileExplorerPanel.xaml.cs` | Project mode: `OpenProject()`, `CloseProject()`, context menu handlers |
-| Modify | `TextEdit/UI/MainWindow.xaml` | File menu: New/Open/Save/Close Project items |
-| Modify | `TextEdit/UI/MainWindow.xaml.cs` | Project menu handlers, session integration, mode exclusivity |
-| Modify | `TextEdit/AppSettings.cs` | Add `LastOpenProjectPath` to settings |
-| Modify | `TextEdit/UI/CommandPaletteCommands.cs` | Add project commands |
+| Create | `Volt/UI/Project.cs` | Data model: `Project`, `ProjectFolder`, `ProjectSession`, `ProjectSessionTab` |
+| Create | `Volt/UI/ProjectManager.cs` | Project lifecycle: new/open/save/close, folder management, virtual folder management |
+| Modify | `Volt/UI/FileTreeItem.cs` | Add `ItemKind` enum, constructors for VirtualFolder/ProjectRoot kinds |
+| Modify | `Volt/UI/FileExplorerPanel.xaml` | Context menus, `HierarchicalDataTemplate` changes for item kind icons |
+| Modify | `Volt/UI/FileExplorerPanel.xaml.cs` | Project mode: `OpenProject()`, `CloseProject()`, context menu handlers |
+| Modify | `Volt/UI/MainWindow.xaml` | File menu: New/Open/Save/Close Project items |
+| Modify | `Volt/UI/MainWindow.xaml.cs` | Project menu handlers, session integration, mode exclusivity |
+| Modify | `Volt/AppSettings.cs` | Add `LastOpenProjectPath` to settings |
+| Modify | `Volt/UI/CommandPaletteCommands.cs` | Add project commands |
 
 ---
 
 ### Task 1: Project Data Model
 
 **Files:**
-- Create: `TextEdit/UI/Project.cs`
+- Create: `Volt/UI/Project.cs`
 
 - [ ] **Step 1: Create the Project data model file**
 
 ```csharp
 using System.Text.Json.Serialization;
 
-namespace TextEdit;
+namespace Volt;
 
 public class Project
 {
@@ -99,13 +99,13 @@ public class ProjectSessionTab
 
 - [ ] **Step 2: Build to verify**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build succeeded.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add TextEdit/UI/Project.cs
+git add Volt/UI/Project.cs
 git commit -m "feat: add Project data model for .vproj files"
 ```
 
@@ -114,7 +114,7 @@ git commit -m "feat: add Project data model for .vproj files"
 ### Task 2: ProjectManager
 
 **Files:**
-- Create: `TextEdit/UI/ProjectManager.cs`
+- Create: `Volt/UI/ProjectManager.cs`
 
 - [ ] **Step 1: Create the ProjectManager class**
 
@@ -123,7 +123,7 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 
-namespace TextEdit;
+namespace Volt;
 
 public class ProjectManager
 {
@@ -226,13 +226,13 @@ public class ProjectManager
 
 - [ ] **Step 2: Build to verify**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build succeeded.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add TextEdit/UI/ProjectManager.cs
+git add Volt/UI/ProjectManager.cs
 git commit -m "feat: add ProjectManager for project lifecycle"
 ```
 
@@ -241,7 +241,7 @@ git commit -m "feat: add ProjectManager for project lifecycle"
 ### Task 3: FileTreeItem — Add ItemKind Support
 
 **Files:**
-- Modify: `TextEdit/UI/FileTreeItem.cs`
+- Modify: `Volt/UI/FileTreeItem.cs`
 
 - [ ] **Step 1: Add the ItemKind enum and new properties**
 
@@ -370,13 +370,13 @@ _hasPlaceholder = true;
 
 - [ ] **Step 5: Build to verify**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build succeeded.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add TextEdit/UI/FileTreeItem.cs
+git add Volt/UI/FileTreeItem.cs
 git commit -m "feat: add ItemKind to FileTreeItem for project tree support"
 ```
 
@@ -385,8 +385,8 @@ git commit -m "feat: add ItemKind to FileTreeItem for project tree support"
 ### Task 4: FileExplorerPanel — Project Mode
 
 **Files:**
-- Modify: `TextEdit/UI/FileExplorerPanel.xaml.cs`
-- Modify: `TextEdit/UI/FileExplorerPanel.xaml`
+- Modify: `Volt/UI/FileExplorerPanel.xaml.cs`
+- Modify: `Volt/UI/FileExplorerPanel.xaml`
 
 - [ ] **Step 1: Add project mode methods to FileExplorerPanel.xaml.cs**
 
@@ -631,13 +631,13 @@ The VirtualFolder case already has "Add Folder...". For the directory case, no a
 
 - [ ] **Step 5: Build to verify**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build succeeded.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add TextEdit/UI/FileExplorerPanel.xaml TextEdit/UI/FileExplorerPanel.xaml.cs
+git add Volt/UI/FileExplorerPanel.xaml Volt/UI/FileExplorerPanel.xaml.cs
 git commit -m "feat: add project mode to FileExplorerPanel with context menus"
 ```
 
@@ -646,7 +646,7 @@ git commit -m "feat: add project mode to FileExplorerPanel with context menus"
 ### Task 5: AppSettings — Add LastOpenProjectPath
 
 **Files:**
-- Modify: `TextEdit/AppSettings.cs`
+- Modify: `Volt/AppSettings.cs`
 
 - [ ] **Step 1: Add LastOpenProjectPath to AppSettings**
 
@@ -658,13 +658,13 @@ public string? LastOpenProjectPath { get; set; }
 
 - [ ] **Step 2: Build to verify**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build succeeded.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add TextEdit/AppSettings.cs
+git add Volt/AppSettings.cs
 git commit -m "feat: add LastOpenProjectPath to AppSettings"
 ```
 
@@ -673,7 +673,7 @@ git commit -m "feat: add LastOpenProjectPath to AppSettings"
 ### Task 6: MainWindow — File Menu Items
 
 **Files:**
-- Modify: `TextEdit/UI/MainWindow.xaml`
+- Modify: `Volt/UI/MainWindow.xaml`
 
 - [ ] **Step 1: Add project menu items to the File menu**
 
@@ -694,13 +694,13 @@ Note: remove the existing `<Separator/>` that was between "Open Folder" and "Sav
 
 - [ ] **Step 2: Build to verify**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build may fail due to missing click handlers — that's expected, we'll add them in the next task.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add TextEdit/UI/MainWindow.xaml
+git add Volt/UI/MainWindow.xaml
 git commit -m "feat: add project menu items to File menu"
 ```
 
@@ -709,7 +709,7 @@ git commit -m "feat: add project menu items to File menu"
 ### Task 7: MainWindow — Project Integration
 
 **Files:**
-- Modify: `TextEdit/UI/MainWindow.xaml.cs`
+- Modify: `Volt/UI/MainWindow.xaml.cs`
 
 This is the largest task — it wires up the ProjectManager, menu handlers, session integration, and mode exclusivity.
 
@@ -1150,13 +1150,13 @@ private static string? PromptForInput(string title, string prompt, string defaul
 
 - [ ] **Step 10: Build to verify**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build succeeded.
 
 - [ ] **Step 11: Commit**
 
 ```bash
-git add TextEdit/UI/MainWindow.xaml.cs
+git add Volt/UI/MainWindow.xaml.cs
 git commit -m "feat: wire up project lifecycle in MainWindow"
 ```
 
@@ -1165,7 +1165,7 @@ git commit -m "feat: wire up project lifecycle in MainWindow"
 ### Task 8: Command Palette — Project Commands
 
 **Files:**
-- Modify: `TextEdit/UI/CommandPaletteCommands.cs`
+- Modify: `Volt/UI/CommandPaletteCommands.cs`
 
 - [ ] **Step 1: Update the Build method signature**
 
@@ -1209,13 +1209,13 @@ var commands = CommandPaletteCommands.Build(
 
 - [ ] **Step 4: Build to verify**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build succeeded.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add TextEdit/UI/CommandPaletteCommands.cs TextEdit/UI/MainWindow.xaml.cs
+git add Volt/UI/CommandPaletteCommands.cs Volt/UI/MainWindow.xaml.cs
 git commit -m "feat: add project commands to command palette"
 ```
 
@@ -1225,7 +1225,7 @@ git commit -m "feat: add project commands to command palette"
 
 - [ ] **Step 1: Run the application**
 
-Run: `dotnet run --project TextEdit/TextEdit.csproj`
+Run: `dotnet run --project Volt/Volt.csproj`
 
 - [ ] **Step 2: Test New Project**
 

@@ -36,10 +36,10 @@ FileExplorerPanel (UserControl — XAML shell, unchanged role)
 
 ### Files
 
-- **Create:** `TextEdit/UI/ExplorerTreeControl.cs` — the custom control (~400-500 lines)
-- **Modify:** `TextEdit/UI/FileExplorerPanel.xaml` — replace TreeView with ExplorerTreeControl, remove TreeViewItem styles and HierarchicalDataTemplate
-- **Modify:** `TextEdit/UI/FileExplorerPanel.xaml.cs` — simplify to use new control's API instead of TreeView workarounds
-- **Keep:** `TextEdit/UI/FileTreeItem.cs` — data model stays as-is
+- **Create:** `Volt/UI/ExplorerTreeControl.cs` — the custom control (~400-500 lines)
+- **Modify:** `Volt/UI/FileExplorerPanel.xaml` — replace TreeView with ExplorerTreeControl, remove TreeViewItem styles and HierarchicalDataTemplate
+- **Modify:** `Volt/UI/FileExplorerPanel.xaml.cs` — simplify to use new control's API instead of TreeView workarounds
+- **Keep:** `Volt/UI/FileTreeItem.cs` — data model stays as-is
 
 ### Class: ExplorerTreeControl
 

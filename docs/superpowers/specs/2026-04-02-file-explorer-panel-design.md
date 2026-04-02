@@ -2,7 +2,7 @@
 
 ## Overview
 
-Add a file explorer panel to TextEdit that lets users browse folder contents in a tree view. The panel is togglable, resizable, and configurable to appear on the left or right side of the editor.
+Add a file explorer panel to Volt that lets users browse folder contents in a tree view. The panel is togglable, resizable, and configurable to appear on the left or right side of the editor.
 
 ## Layout
 
@@ -132,22 +132,22 @@ New "Explorer" nav button under the EDITOR section in the left column. Content s
 ## Files Changed
 
 ### New Files
-- `TextEdit/UI/FileExplorerPanel.xaml`
-- `TextEdit/UI/FileExplorerPanel.cs`
+- `Volt/UI/FileExplorerPanel.xaml`
+- `Volt/UI/FileExplorerPanel.cs`
 
 ### Modified Files
-- `TextEdit/AppSettings.cs` — ExplorerSettings class, added to EditorSettings
-- `TextEdit/UI/MainWindow.xaml` — three-column Grid layout replacing EditorHost area
-- `TextEdit/UI/MainWindow.xaml.cs` — panel toggle, open/close folder, GridSplitter persistence, session restore of panel state
-- `TextEdit/UI/SettingsWindow.xaml` — Explorer section
-- `TextEdit/UI/SettingsWindow.xaml.cs` — Explorer settings binding (via SettingsSnapshot)
-- `TextEdit/UI/CommandPaletteCommands.cs` — new explorer commands
-- `TextEdit/Theme/ColorTheme.cs` — explorer color keys
-- `TextEdit/Theme/ThemeManager.cs` — explorer resource mapping
-- `TextEdit/App.xaml` — default explorer resource values
-- `TextEdit/Resources/Themes/default-dark.json` — explorer colors
-- `TextEdit/Resources/Themes/default-light.json` — explorer colors
-- `TextEdit/Resources/Themes/gruvbox-dark.json` — explorer colors
+- `Volt/AppSettings.cs` — ExplorerSettings class, added to EditorSettings
+- `Volt/UI/MainWindow.xaml` — three-column Grid layout replacing EditorHost area
+- `Volt/UI/MainWindow.xaml.cs` — panel toggle, open/close folder, GridSplitter persistence, session restore of panel state
+- `Volt/UI/SettingsWindow.xaml` — Explorer section
+- `Volt/UI/SettingsWindow.xaml.cs` — Explorer settings binding (via SettingsSnapshot)
+- `Volt/UI/CommandPaletteCommands.cs` — new explorer commands
+- `Volt/Theme/ColorTheme.cs` — explorer color keys
+- `Volt/Theme/ThemeManager.cs` — explorer resource mapping
+- `Volt/App.xaml` — default explorer resource values
+- `Volt/Resources/Themes/default-dark.json` — explorer colors
+- `Volt/Resources/Themes/default-light.json` — explorer colors
+- `Volt/Resources/Themes/gruvbox-dark.json` — explorer colors
 
 ## Future Work (Out of Scope)
 

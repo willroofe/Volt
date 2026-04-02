@@ -4,36 +4,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-TextEdit is a custom text editor built as a WPF desktop application targeting .NET 10 on Windows. It features a from-scratch editor control (`EditorControl`) that renders text directly via WPF's `DrawingContext` rather than using built-in WPF text controls.
+Volt is a custom text editor built as a WPF desktop application targeting .NET 10 on Windows. It features a from-scratch editor control (`EditorControl`) that renders text directly via WPF's `DrawingContext` rather than using built-in WPF text controls.
 
 ## Build & Run
 
 ```bash
-dotnet build TextEdit.sln
-dotnet run --project TextEdit/TextEdit.csproj
+dotnet build Volt.sln
+dotnet run --project Volt/Volt.csproj
 ```
 
 No test framework is configured. The running app must be closed before rebuilding (the exe gets locked).
 
-**Benchmarks** (`TextEdit.Benchmarks/` — BenchmarkDotNet, InProcess toolchain for .NET 10 + WPF):
+**Benchmarks** (`Volt.Benchmarks/` — BenchmarkDotNet, InProcess toolchain for .NET 10 + WPF):
 
 ```bash
-dotnet run -c Release --project TextEdit.Benchmarks              # all benchmarks
-dotnet run -c Release --project TextEdit.Benchmarks -- --filter *Tokenize*   # specific suite
-dotnet run -c Release --project TextEdit.Benchmarks -- --list flat            # list available
+dotnet run -c Release --project Volt.Benchmarks              # all benchmarks
+dotnet run -c Release --project Volt.Benchmarks -- --filter *Tokenize*   # specific suite
+dotnet run -c Release --project Volt.Benchmarks -- --list flat            # list available
 ```
 
 ## Architecture
 
-**Single-project solution** with one WPF application project (`TextEdit/`), organized into subdirectories:
+**Single-project solution** with one WPF application project (`Volt/`), organized into subdirectories:
 
 - **Editor/** — `EditorControl.cs`, `TextBuffer.cs`, `UndoManager.cs`, `SelectionManager.cs`, `FontManager.cs`, `FindManager.cs`, `BracketMatcher.cs`, `SyntaxManager.cs`, `SyntaxDefinition.cs`
 - **Theme/** — `ThemeManager.cs`, `ColorTheme.cs`
 - **UI/** — `MainWindow.xaml/.cs`, `CommandPalette.xaml/.cs`, `FindBar.xaml/.cs`, `SettingsWindow.xaml/.cs` (uses `SettingsSnapshot` record), `TabInfo.cs`, `DwmHelper.cs`, `FileHelper.cs`, `CommandPaletteCommands.cs`
-- **Resources/** — `Themes/` (default-dark.json, default-light.json, gruvbox-dark.json), `Grammars/` (perl.json) — embedded resources extracted to `%AppData%/TextEdit/` on first run
+- **Resources/** — `Themes/` (default-dark.json, default-light.json, gruvbox-dark.json), `Grammars/` (perl.json) — embedded resources extracted to `%AppData%/Volt/` on first run
 - **Root** — `App.xaml/.cs`, `AppSettings.cs`, `AssemblyInfo.cs`
 
-All classes remain in the `TextEdit` namespace.
+All classes remain in the `Volt` namespace.
 
 ### EditorControl (`Editor/EditorControl.cs`)
 
@@ -56,23 +56,23 @@ Unified JSON-based theming — one theme file controls everything (editor, chrom
 - Chrome colours — updates `Application.Current.Resources` keys (prefixed `Theme*`). XAML binds via `{DynamicResource ThemeXxx}`
 - `GetScopeBrush(string scope)` — syntax highlighting brush lookup, falling back to `EditorFg`
 - `ThemeChanged` event — EditorControl subscribes to trigger re-render
-- `Apply(string themeName)` — loads from `%AppData%/TextEdit/Themes/`, falls back to "Default Dark"
+- `Apply(string themeName)` — loads from `%AppData%/Volt/Themes/`, falls back to "Default Dark"
 
 **DwmHelper** (`UI/DwmHelper.cs`) — applies `DWMWA_USE_IMMERSIVE_DARK_MODE`, `DWMWA_CAPTION_COLOR`, and `DWMWA_BORDER_COLOR` to match the active theme. Called from MainWindow on `SourceInitialized` and `ThemeChanged`.
 
 **ColorTheme** (`Theme/ColorTheme.cs`) — JSON model with `editor`, `chrome` (17 `DynamicResource` keys), and `scopes` sections. Color format: `#RRGGBB` or `#AARRGGBB`.
 
-**Adding a new theme**: Drop a JSON file in `%AppData%/TextEdit/Themes/` with `name`, `editor`, `chrome`, and `scopes` sections.
+**Adding a new theme**: Drop a JSON file in `%AppData%/Volt/Themes/` with `name`, `editor`, `chrome`, and `scopes` sections.
 
 ### Syntax Highlighting
 
 **SyntaxManager** (`Editor/SyntaxManager.cs`) — instance class owned by `App`, accessed via `App.Current.SyntaxManager`:
-- Loads grammar JSON from `%AppData%/TextEdit/Grammars/`
+- Loads grammar JSON from `%AppData%/Volt/Grammars/`
 - `Tokenize(line, LineState, out LineState)` — orchestrator that delegates to phase-specific private methods (block comments, heredocs, regex continuation, string continuation, grammar rules, post-rule detection). First-match-wins regex rules with multi-line string state tracking.
 - Post-processes double-quoted strings for interpolated variables and escape sequences via `ExpandInterpolation`
 - EditorControl maintains `List<LineState>` with convergence optimization — revalidation stops early when output state matches cached value
 
-**Adding a new language**: Drop a JSON file in `%AppData%/TextEdit/Grammars/` with `name`, `extensions`, and `rules`.
+**Adding a new language**: Drop a JSON file in `%AppData%/Volt/Grammars/` with `name`, `extensions`, and `rules`.
 
 ### MainWindow (`UI/MainWindow.xaml` + `.cs`)
 
@@ -95,7 +95,7 @@ UI shell (~840 lines) with tab management, file I/O, settings, and keyboard shor
 - **EditorControl never caches brushes locally** — always reads from the `ThemeManager` instance property so theme changes take effect immediately.
 - **Grammar rule order matters** — rules are applied in definition order, first match wins. Strings should come before comments (so `#` inside strings isn't treated as a comment).
 - **Syntax tokenization uses `LineState` for multi-line constructs** — tracks unclosed quotes, block comments, heredocs, and open regex delimiters across lines via `EnsureLineStates()`. `ContinueOpenRegex` must mark `claimed[]` on continuation lines to prevent post-rule detection from corrupting the open regex state. String interpolation and escape sequences are post-processed on double-quoted string tokens.
-- **Built-in resource files are always overwritten on startup** — themes and grammars shipped as embedded resources are re-extracted to `%AppData%/TextEdit/` each launch so embedded fixes take effect. User-created files (not matching built-in names) are left untouched.
+- **Built-in resource files are always overwritten on startup** — themes and grammars shipped as embedded resources are re-extracted to `%AppData%/Volt/` each launch so embedded fixes take effect. User-created files (not matching built-in names) are left untouched.
 - **GlyphRun rendering**: All text drawing uses `FontManager.DrawGlyphRun` (not `FormattedText`/`DrawText`). This bypasses DWrite shaping — critical for scroll performance. Advance widths are cached in a shared `_uniformAdvanceWidths` array (all values identical for monospace) passed via `ArraySegment<double>` to avoid per-call allocation. When drawing syntax-highlighted lines, gaps between tokens must be filled with `EditorFg` (tokens don't cover the full line).
 - **Performance-sensitive code paths**: `OnRender`, `OnKeyDown`/`OnTextInput`, `OnMouseMove` during drag, and `UpdateExtent` are hot paths. Never use `FormattedText` in rendering loops. Avoid unconditional `InvalidateVisual()` or `ScrollOwner.InvalidateScrollInfo()` — always guard with change-detection.
 - **Text buffer mutations**: Always use `TextBuffer` methods (`InsertAt`, `DeleteAt`, `ReplaceAt`, `JoinWithNext`, `TruncateAt`) — they handle max-line-length cache invalidation internally. These use `string.Concat` with `AsSpan` to avoid intermediate string allocations.

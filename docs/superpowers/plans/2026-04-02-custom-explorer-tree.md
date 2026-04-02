@@ -13,13 +13,13 @@
 ### Task 1: Create ExplorerTreeControl with flat list, IScrollInfo, and basic rendering
 
 **Files:**
-- Create: `TextEdit/UI/ExplorerTreeControl.cs`
+- Create: `Volt/UI/ExplorerTreeControl.cs`
 
 This task creates the control with all rendering and scrolling — everything except mouse interaction. It should compile and display rows, but won't respond to clicks yet.
 
 - [ ] **Step 1: Create `ExplorerTreeControl.cs` with the full skeleton**
 
-Create `TextEdit/UI/ExplorerTreeControl.cs` with:
+Create `Volt/UI/ExplorerTreeControl.cs` with:
 - `FlatRow` record struct
 - `IScrollInfo` implementation
 - Flat list building from `FileTreeItem` tree
@@ -37,7 +37,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 
-namespace TextEdit;
+namespace Volt;
 
 public class ExplorerTreeControl : FrameworkElement, IScrollInfo
 {
@@ -336,13 +336,13 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
 
 - [ ] **Step 2: Build to verify it compiles**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build succeeds. The control isn't used in any XAML yet, so no runtime behavior to verify.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add TextEdit/UI/ExplorerTreeControl.cs
+git add Volt/UI/ExplorerTreeControl.cs
 git commit -m "feat: add ExplorerTreeControl with rendering and IScrollInfo"
 ```
 
@@ -351,7 +351,7 @@ git commit -m "feat: add ExplorerTreeControl with rendering and IScrollInfo"
 ### Task 2: Add mouse interaction to ExplorerTreeControl
 
 **Files:**
-- Modify: `TextEdit/UI/ExplorerTreeControl.cs`
+- Modify: `Volt/UI/ExplorerTreeControl.cs`
 
 Adds hover tracking, click-to-select, click-arrow-to-expand/collapse, double-click-to-open, right-click, and tooltip for truncated names.
 
@@ -535,13 +535,13 @@ Replace with:
 
 - [ ] **Step 3: Build to verify it compiles**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build succeeds.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add TextEdit/UI/ExplorerTreeControl.cs
+git add Volt/UI/ExplorerTreeControl.cs
 git commit -m "feat: add mouse interaction to ExplorerTreeControl"
 ```
 
@@ -550,19 +550,19 @@ git commit -m "feat: add mouse interaction to ExplorerTreeControl"
 ### Task 3: Replace TreeView with ExplorerTreeControl in FileExplorerPanel XAML
 
 **Files:**
-- Modify: `TextEdit/UI/FileExplorerPanel.xaml`
+- Modify: `Volt/UI/FileExplorerPanel.xaml`
 
 Replace the entire TreeView block (including the TreeViewItem style in UserControl.Resources and the TreeView element) with the new control inside a ScrollViewer.
 
 - [ ] **Step 1: Replace the XAML content**
 
-Replace the entire contents of `TextEdit/UI/FileExplorerPanel.xaml` with:
+Replace the entire contents of `Volt/UI/FileExplorerPanel.xaml` with:
 
 ```xml
-<UserControl x:Class="TextEdit.FileExplorerPanel"
+<UserControl x:Class="Volt.FileExplorerPanel"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:TextEdit">
+             xmlns:local="clr-namespace:Volt">
     <DockPanel Background="{DynamicResource ThemeExplorerBg}">
         <!-- Header -->
         <Border DockPanel.Dock="Top"
@@ -596,13 +596,13 @@ And replaces them with a `ScrollViewer` wrapping the new `ExplorerTreeControl`.
 
 - [ ] **Step 2: Build to verify XAML compiles**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build fails — the code-behind still references `FolderTree` (the old TreeView name). This is expected and will be fixed in Task 4.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add TextEdit/UI/FileExplorerPanel.xaml
+git add Volt/UI/FileExplorerPanel.xaml
 git commit -m "feat: replace TreeView with ExplorerTreeControl in XAML"
 ```
 
@@ -611,13 +611,13 @@ git commit -m "feat: replace TreeView with ExplorerTreeControl in XAML"
 ### Task 4: Update FileExplorerPanel code-behind to use ExplorerTreeControl
 
 **Files:**
-- Modify: `TextEdit/UI/FileExplorerPanel.xaml.cs`
+- Modify: `Volt/UI/FileExplorerPanel.xaml.cs`
 
 Rewrite the code-behind to use the new control's API. The context menu logic stays mostly the same, but TreeView-specific workarounds are removed.
 
 - [ ] **Step 1: Replace the entire code-behind**
 
-Replace the entire contents of `TextEdit/UI/FileExplorerPanel.xaml.cs` with:
+Replace the entire contents of `Volt/UI/FileExplorerPanel.xaml.cs` with:
 
 ```csharp
 using System.Collections.ObjectModel;
@@ -627,7 +627,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 
-namespace TextEdit;
+namespace Volt;
 
 public partial class FileExplorerPanel : UserControl
 {
@@ -879,7 +879,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 
-namespace TextEdit;
+namespace Volt;
 
 public partial class FileExplorerPanel : UserControl
 {
@@ -1127,13 +1127,13 @@ The implementer should use the first version (root node visible) for consistency
 
 - [ ] **Step 3: Build**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build succeeds. The MainWindow code-behind still references `ExplorerPanel.FolderTree` in `OnTreeDoubleClick` wiring — but checking the MainWindow code, it actually subscribes to `ExplorerPanel.FileOpenRequested`, not `FolderTree` directly. So this should compile.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add TextEdit/UI/FileExplorerPanel.xaml TextEdit/UI/FileExplorerPanel.xaml.cs
+git add Volt/UI/FileExplorerPanel.xaml Volt/UI/FileExplorerPanel.xaml.cs
 git commit -m "feat: wire ExplorerTreeControl into FileExplorerPanel"
 ```
 
@@ -1142,11 +1142,11 @@ git commit -m "feat: wire ExplorerTreeControl into FileExplorerPanel"
 ### Task 5: Update MainWindow references and verify end-to-end
 
 **Files:**
-- Modify: `TextEdit/UI/MainWindow.xaml.cs` (if any references to old TreeView API exist)
+- Modify: `Volt/UI/MainWindow.xaml.cs` (if any references to old TreeView API exist)
 
 - [ ] **Step 1: Search for any remaining `FolderTree` references in MainWindow**
 
-Run: `grep -n "FolderTree" TextEdit/UI/MainWindow.xaml.cs`
+Run: `grep -n "FolderTree" Volt/UI/MainWindow.xaml.cs`
 
 If there are any hits, they need to be updated. The MainWindow should only interact with `FileExplorerPanel`'s public API (events and methods), not the internal tree control. If all references go through `ExplorerPanel.FileOpenRequested`, `ExplorerPanel.OpenFolder()`, etc., no changes are needed.
 
@@ -1158,10 +1158,10 @@ Actually, `RefreshProjectTree` calls `RebuildProjectTree` which calls `ExplorerT
 
 - [ ] **Step 3: Build and run the application**
 
-Run: `dotnet build TextEdit.sln`
+Run: `dotnet build Volt.sln`
 Expected: Build succeeds with no errors.
 
-Run: `dotnet run --project TextEdit/TextEdit.csproj`
+Run: `dotnet run --project Volt/Volt.csproj`
 
 Manual test checklist:
 1. Open a folder via File > Open Folder — tree displays with folder contents, expand/collapse works

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net10.0-windows</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <UseWPF>true</UseWPF>
+        <UseWindowsForms>true</UseWindowsForms>
+        <ApplicationIcon>Resources\Volt.ico</ApplicationIcon>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Using Remove="System.Drawing" />
+        <Using Remove="System.Windows.Forms" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="Resources\Themes\*.json" />
+        <EmbeddedResource Include="Resources\Grammars\*.json" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Resource Include="Resources\Volt.ico" />
+    </ItemGroup>
+
+</Project>
