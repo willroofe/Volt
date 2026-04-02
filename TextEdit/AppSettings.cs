@@ -113,6 +113,7 @@ public class AppSettings
     public double? WindowWidth { get; set; }
     public double? WindowHeight { get; set; }
     public bool WindowMaximized { get; set; }
+    public string? LastOpenProjectPath { get; set; }
     public SessionSettings Session { get; set; } = new();
 
     public static readonly string[] FindBarPositionOptions = ["Top", "Bottom"];
