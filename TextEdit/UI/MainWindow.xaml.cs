@@ -1509,12 +1509,14 @@ public partial class MainWindow : Window
 
     // ── Project context menu handlers ────────────────────────────────────────
 
-    private void OnProjectAddFolder()
+    private void OnProjectAddFolder(string? virtualFolderName)
     {
         var dlg = new System.Windows.Forms.FolderBrowserDialog();
         if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
 
         _projectManager.AddFolder(dlg.SelectedPath);
+        if (virtualFolderName != null)
+            _projectManager.AssignToVirtualFolder(dlg.SelectedPath, virtualFolderName);
         ExplorerPanel.RefreshProjectTree();
         _projectManager.SaveProject();
     }

@@ -10,7 +10,7 @@ namespace TextEdit;
 public partial class FileExplorerPanel : UserControl
 {
     public event Action<string>? FileOpenRequested;
-    public event Action? AddFolderRequested;
+    public event Action<string?>? AddFolderRequested;
     public event Action<string>? RemoveFolderRequested;
     public event Action? NewVirtualFolderRequested;
     public event Action<string>? RemoveVirtualFolderRequested;
@@ -139,7 +139,7 @@ public partial class FileExplorerPanel : UserControl
         if (item == null)
         {
             // Right-clicked empty area — show project root actions
-            menu.Items.Add(CreateMenuItem("Add Folder...", () => AddFolderRequested?.Invoke()));
+            menu.Items.Add(CreateMenuItem("Add Folder...", () => AddFolderRequested?.Invoke(null)));
             menu.Items.Add(CreateMenuItem("New Virtual Folder", () => NewVirtualFolderRequested?.Invoke()));
             menu.Items.Add(new Separator());
             menu.Items.Add(CreateMenuItem("Close Project", () => CloseProjectRequested?.Invoke()));
@@ -152,14 +152,15 @@ public partial class FileExplorerPanel : UserControl
         switch (item.Kind)
         {
             case FileTreeItemKind.ProjectRoot:
-                menu.Items.Add(CreateMenuItem("Add Folder...", () => AddFolderRequested?.Invoke()));
+                menu.Items.Add(CreateMenuItem("Add Folder...", () => AddFolderRequested?.Invoke(null)));
                 menu.Items.Add(CreateMenuItem("New Virtual Folder", () => NewVirtualFolderRequested?.Invoke()));
                 menu.Items.Add(new Separator());
                 menu.Items.Add(CreateMenuItem("Close Project", () => CloseProjectRequested?.Invoke()));
                 break;
 
             case FileTreeItemKind.VirtualFolder:
-                menu.Items.Add(CreateMenuItem("Add Folder...", () => AddFolderRequested?.Invoke()));
+                var vfName = item.Name;
+                menu.Items.Add(CreateMenuItem("Add Folder...", () => AddFolderRequested?.Invoke(vfName)));
                 menu.Items.Add(CreateMenuItem("Rename", () => RenameVirtualFolderRequested?.Invoke(item.Name)));
                 menu.Items.Add(CreateMenuItem("Remove Virtual Folder", () => RemoveVirtualFolderRequested?.Invoke(item.Name)));
                 break;
