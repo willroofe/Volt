@@ -74,7 +74,8 @@
                   VirtualizingStackPanel.IsVirtualizing="True"
                   VirtualizingStackPanel.VirtualizationMode="Recycling"
                   ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                  ScrollViewer.VerticalScrollBarVisibility="Auto">
+                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                  MouseRightButtonUp="OnTreeRightClick">
             <TreeView.Resources>
                 <Style TargetType="ScrollViewer">
                     <Setter Property="Template" Value="{StaticResource ThemedScrollViewer}"/>
@@ -83,7 +84,22 @@
             <TreeView.ItemTemplate>
                 <HierarchicalDataTemplate DataType="{x:Type local:FileTreeItem}"
                                           ItemsSource="{Binding Children}">
-                    <TextBlock Text="{Binding Name}" Margin="2,0"/>
+                    <TextBlock Text="{Binding Name}" Margin="2,0">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Kind}" Value="VirtualFolder">
+                                        <Setter Property="FontStyle" Value="Italic"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource ThemeExplorerHeaderFg}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Kind}" Value="ProjectRoot">
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource ThemeExplorerHeaderFg}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                 </HierarchicalDataTemplate>
             </TreeView.ItemTemplate>
         </TreeView>
