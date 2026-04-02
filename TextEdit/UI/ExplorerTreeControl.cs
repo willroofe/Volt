@@ -232,12 +232,9 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             }
 
             double x = indent;
-            bool hasChildren = row.Item.IsDirectory ||
-                               row.Item.Kind == FileTreeItemKind.VirtualFolder ||
-                               row.Item.Kind == FileTreeItemKind.ProjectRoot;
 
             // Arrow chevron
-            if (hasChildren)
+            if (HasChildren(row.Item))
             {
                 string chevron = row.Item.IsExpanded ? ChevronDown : ChevronRight;
                 var arrowText = new FormattedText(chevron, CultureInfo.CurrentCulture,
@@ -296,8 +293,148 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
     private static Brush GetBrush(string key) =>
         (Brush)Application.Current.Resources[key];
 
-    // --- Mouse interaction (Task 2) ---
-    // Will be added in Task 2
+    // --- Mouse interaction ---
+
+    private int HitTestRow(MouseEventArgs e)
+    {
+        double y = e.GetPosition(this).Y;
+        int row = (int)((y + _verticalOffset) / RowHeight);
+        return row >= 0 && row < _flatRows.Count ? row : -1;
+    }
+
+    private bool IsInArrowZone(MouseEventArgs e, int rowIndex)
+    {
+        if (rowIndex < 0 || rowIndex >= _flatRows.Count) return false;
+        var row = _flatRows[rowIndex];
+        double x = e.GetPosition(this).X;
+        double indent = row.Depth * IndentWidth;
+        return x >= indent && x < indent + ArrowZoneWidth;
+    }
+
+    private bool HasChildren(FileTreeItem item) =>
+        item.IsDirectory ||
+        item.Kind == FileTreeItemKind.VirtualFolder ||
+        item.Kind == FileTreeItemKind.ProjectRoot;
+
+    protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
+    {
+        Focus();
+        int row = HitTestRow(e);
+        if (row < 0) return;
+
+        var item = _flatRows[row].Item;
+
+        // Double-click: directory toggles, file opens
+        if (e.ClickCount == 2)
+        {
+            if (HasChildren(item))
+            {
+                item.IsExpanded = !item.IsExpanded;
+                RefreshFlatList();
+            }
+            else if (item.Kind == FileTreeItemKind.File && !string.IsNullOrEmpty(item.FullPath))
+            {
+                FileOpenRequested?.Invoke(item.FullPath);
+            }
+            e.Handled = true;
+            return;
+        }
+
+        // Click in arrow zone toggles expand/collapse
+        if (HasChildren(item) && IsInArrowZone(e, row))
+        {
+            item.IsExpanded = !item.IsExpanded;
+            RefreshFlatList();
+            e.Handled = true;
+            return;
+        }
+
+        // Select the row
+        if (_selectedRowIndex != row)
+        {
+            _selectedRowIndex = row;
+            InvalidateVisual();
+            SelectionChanged?.Invoke(item);
+        }
+        e.Handled = true;
+    }
+
+    protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+    }
+
+    protected override void OnMouseRightButtonDown(MouseButtonEventArgs e)
+    {
+        Focus();
+        int row = HitTestRow(e);
+
+        if (row >= 0)
+        {
+            var item = _flatRows[row].Item;
+            if (_selectedRowIndex != row)
+            {
+                _selectedRowIndex = row;
+                InvalidateVisual();
+                SelectionChanged?.Invoke(item);
+            }
+            ItemRightClicked?.Invoke(item);
+        }
+        else
+        {
+            // Right-clicked empty area — fire with null so panel can show project root menu
+            _selectedRowIndex = -1;
+            InvalidateVisual();
+            ItemRightClicked?.Invoke(null);
+        }
+        e.Handled = true;
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        int row = HitTestRow(e);
+        if (row != _hoverRowIndex)
+        {
+            _hoverRowIndex = row;
+            InvalidateVisual();
+        }
+
+        // Tooltip for truncated names
+        if (row >= 0 && row < _flatRows.Count)
+        {
+            var item = _flatRows[row].Item;
+            double indent = _flatRows[row].Depth * IndentWidth + ArrowZoneWidth;
+            if (item.Kind == FileTreeItemKind.Directory || item.Kind == FileTreeItemKind.File)
+                indent += IconZoneWidth + IconGap;
+            double maxTextWidth = Math.Max(0, ActualWidth - indent - 8);
+            var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+            var typeface = item.Kind switch
+            {
+                FileTreeItemKind.ProjectRoot => SemiBoldTypeface,
+                FileTreeItemKind.VirtualFolder => ItalicTypeface,
+                _ => NormalTypeface
+            };
+            var ft = new FormattedText(item.Name, CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight, typeface, 13, Brushes.Black, dpi);
+            ToolTip = ft.Width > maxTextWidth
+                ? (item.Kind == FileTreeItemKind.File ? item.FullPath : item.Name)
+                : null;
+        }
+        else
+        {
+            ToolTip = null;
+        }
+    }
+
+    protected override void OnMouseLeave(MouseEventArgs e)
+    {
+        if (_hoverRowIndex != -1)
+        {
+            _hoverRowIndex = -1;
+            ToolTip = null;
+            InvalidateVisual();
+        }
+    }
 
     readonly record struct FlatRow(FileTreeItem Item, int Depth);
 }
