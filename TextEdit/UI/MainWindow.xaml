@@ -255,16 +255,27 @@
 
         <!-- Status bar -->
         <Border DockPanel.Dock="Bottom" Background="{DynamicResource ThemeChromeBrush}" Height="24">
-            <Grid Margin="8,0">
-                <TextBlock x:Name="FileTypeText" Text="Plain Text"
-                           VerticalAlignment="Center" HorizontalAlignment="Left"
-                           FontFamily="Segoe UI" FontSize="12"
-                           Foreground="{DynamicResource ThemeTextFg}"/>
-                <TextBlock x:Name="CaretPosText" Text="Ln 1, Col 1"
-                           VerticalAlignment="Center" HorizontalAlignment="Right"
-                           FontFamily="Segoe UI" FontSize="12"
-                           Foreground="{DynamicResource ThemeTextFg}"/>
-            </Grid>
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                    <Rectangle Width="1" Fill="{DynamicResource ThemeBorderBrush}"/>
+                    <TextBlock x:Name="CaretPosText" Text="Ln 1, Col 1" Margin="8,0"
+                               FontFamily="Segoe UI" FontSize="12"
+                               Foreground="{DynamicResource ThemeTextFg}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                    <TextBlock x:Name="FileTypeText" Text="Plain Text" Margin="8,0"
+                               FontFamily="Segoe UI" FontSize="12"
+                               Foreground="{DynamicResource ThemeTextFg}"/>
+                    <Rectangle Width="1" Fill="{DynamicResource ThemeBorderBrush}"/>
+                    <TextBlock x:Name="EncodingText" Text="UTF-8" Margin="8,0"
+                               FontFamily="Segoe UI" FontSize="12"
+                               Foreground="{DynamicResource ThemeTextFg}"/>
+                    <Rectangle Width="1" Fill="{DynamicResource ThemeBorderBrush}"/>
+                    <TextBlock x:Name="LineEndingText" Text="LF" Margin="8,0"
+                               FontFamily="Segoe UI" FontSize="12"
+                               Foreground="{DynamicResource ThemeTextFg}"/>
+                </StackPanel>
+            </DockPanel>
         </Border>
         <Border DockPanel.Dock="Bottom" Height="1" Background="{DynamicResource ThemeBorderBrush}"/>
 

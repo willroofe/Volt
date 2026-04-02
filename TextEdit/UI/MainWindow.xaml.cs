@@ -621,8 +621,9 @@ public partial class MainWindow : Window
         var ext = _activeTab.FilePath != null ? Path.GetExtension(_activeTab.FilePath).ToLowerInvariant() : "";
         SyntaxManager.SetLanguageByExtension(ext);
         Editor.InvalidateSyntax();
-        var fileType = FileHelper.GetFileTypeName(ext);
-        FileTypeText.Text = $"{fileType} ({GetEncodingLabel()}, {Editor.LineEnding})";
+        FileTypeText.Text = FileHelper.GetFileTypeName(ext);
+        EncodingText.Text = GetEncodingLabel();
+        LineEndingText.Text = Editor.LineEnding;
     }
 
     private void UpdateTitle()
