@@ -7,7 +7,7 @@ namespace TextEdit;
 
 public record PaletteOption(string Label, Action ApplyPreview, Action Commit, Action Revert);
 
-public record PaletteCommand(string Name, Action? Toggle = null, Func<List<PaletteOption>>? GetOptions = null);
+public record PaletteCommand(string Name, Action? Toggle = null, Func<List<PaletteOption>>? GetOptions = null, Func<string>? CurrentValue = null);
 
 public partial class CommandPalette : UserControl
 {
@@ -182,6 +182,9 @@ public partial class CommandPalette : UserControl
 
             if (cmd.GetOptions != null)
             {
+                // Capture current value before any preview changes the editor state
+                var currentValue = cmd.CurrentValue?.Invoke();
+
                 _activeCommand = cmd;
                 _currentOptions = cmd.GetOptions();
                 _prefixText = cmd.Name + ": ";
@@ -189,12 +192,20 @@ public partial class CommandPalette : UserControl
                 _filterInput.Text = "";
                 _selectedIndex = -1;
                 RefreshList();
-                // Auto-select first
+                // Select the current value if available, otherwise first item
                 if (_commandList.Items.Count > 0)
                 {
                     _selectedIndex = 0;
+                    if (currentValue != null)
+                    {
+                        var idx = _currentOptions.FindIndex(o =>
+                            o.Label.Equals(currentValue, StringComparison.OrdinalIgnoreCase));
+                        if (idx >= 0) _selectedIndex = idx;
+                    }
                     UpdateListSelection();
-                    ApplyPreviewForIndex(0);
+                    // ScrollIntoView handles deferred layout internally
+                    _commandList.ScrollIntoView(_commandList.Items[_selectedIndex]);
+                    ApplyPreviewForIndex(_selectedIndex);
                 }
             }
         }

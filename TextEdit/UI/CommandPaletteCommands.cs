@@ -18,7 +18,7 @@ internal static class CommandPaletteCommands
     {
         return
         [
-            new("Change Theme", GetOptions: () =>
+            new("Change Theme", CurrentValue: () => settings.Application.ColorTheme, GetOptions: () =>
             {
                 var original = settings.Application.ColorTheme;
                 return themeManager.GetAvailableThemes().Select(name => new PaletteOption(
@@ -29,7 +29,7 @@ internal static class CommandPaletteCommands
                 )).ToList();
             }),
 
-            new("Change Font Size", GetOptions: () =>
+            new("Change Font Size", CurrentValue: () => activeEditor.EditorFontSize.ToString(), GetOptions: () =>
             {
                 var original = activeEditor.EditorFontSize;
                 return AppSettings.FontSizeOptions.Select(size => new PaletteOption(
@@ -40,7 +40,7 @@ internal static class CommandPaletteCommands
                 )).ToList();
             }),
 
-            new("Change Font Family", GetOptions: () =>
+            new("Change Font Family", CurrentValue: () => activeEditor.FontFamilyName, GetOptions: () =>
             {
                 var original = activeEditor.FontFamilyName;
                 return FontManager.GetMonospaceFonts().Select(name => new PaletteOption(
@@ -51,7 +51,7 @@ internal static class CommandPaletteCommands
                 )).ToList();
             }),
 
-            new("Change Font Weight", GetOptions: () =>
+            new("Change Font Weight", CurrentValue: () => activeEditor.EditorFontWeight, GetOptions: () =>
             {
                 var original = activeEditor.EditorFontWeight;
                 return AppSettings.FontWeightOptions.Select(w => new PaletteOption(
@@ -62,7 +62,7 @@ internal static class CommandPaletteCommands
                 )).ToList();
             }),
 
-            new("Change Line Height", GetOptions: () =>
+            new("Change Line Height", CurrentValue: () => activeEditor.LineHeightMultiplier.ToString("0.0") + "x", GetOptions: () =>
             {
                 var original = activeEditor.LineHeightMultiplier;
                 return AppSettings.LineHeightOptions.Select(lh => new PaletteOption(
@@ -73,7 +73,7 @@ internal static class CommandPaletteCommands
                 )).ToList();
             }),
 
-            new("Change Tab Size", GetOptions: () =>
+            new("Change Tab Size", CurrentValue: () => activeEditor.TabSize.ToString(), GetOptions: () =>
             {
                 var original = activeEditor.TabSize;
                 return AppSettings.TabSizeOptions.Select(size => new PaletteOption(
@@ -95,7 +95,7 @@ internal static class CommandPaletteCommands
                 saveSettings();
             }),
 
-            new("Find Bar Position", GetOptions: () =>
+            new("Find Bar Position", CurrentValue: () => settings.Editor.Find.BarPosition, GetOptions: () =>
             {
                 var original = settings.Editor.Find.BarPosition;
                 return AppSettings.FindBarPositionOptions.Select(pos => new PaletteOption(
