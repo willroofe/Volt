@@ -75,6 +75,11 @@
                   VirtualizingStackPanel.VirtualizationMode="Recycling"
                   ScrollViewer.HorizontalScrollBarVisibility="Auto"
                   ScrollViewer.VerticalScrollBarVisibility="Auto">
+            <TreeView.Resources>
+                <Style TargetType="ScrollViewer">
+                    <Setter Property="Template" Value="{StaticResource ThemedScrollViewer}"/>
+                </Style>
+            </TreeView.Resources>
             <TreeView.ItemTemplate>
                 <HierarchicalDataTemplate DataType="{x:Type local:FileTreeItem}"
                                           ItemsSource="{Binding Children}">
