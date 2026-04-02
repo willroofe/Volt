@@ -35,7 +35,12 @@
     "tabActive": "#FFFFFF",
     "tabInactive": "#E8E8E8",
     "tabHover": "#F5F5F5",
-    "tabBorder": "#E0E0E0"
+    "tabBorder": "#E0E0E0",
+    "explorerBackground": "#FFFFFF",
+    "explorerHeaderBackground": "#F5F5F5",
+    "explorerHeaderForeground": "#888888",
+    "explorerItemHover": "#F0F0F0",
+    "explorerItemSelected": "#E0E0E0"
   },
   "scopes": {
     "comment": "#008000",

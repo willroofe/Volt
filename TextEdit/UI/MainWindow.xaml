@@ -1,4 +1,4 @@
-<Window x:Class="TextEdit.MainWindow"
+﻿<Window x:Class="TextEdit.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:TextEdit"
@@ -76,7 +76,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
+                <ColumnDefinition x:Name="EditorColumn" Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
@@ -154,6 +154,7 @@
                             <TextBlock Text="&#xE838;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
                         </MenuItem.Icon>
                     </MenuItem>
+                    <MenuItem Header="Open _Folder..." Click="OnOpenFolder"/>
                     <Separator/>
                     <MenuItem Header="_Save" InputGestureText="Ctrl+S" Click="OnSave">
                         <MenuItem.Icon>
@@ -190,69 +191,6 @@
 
         <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource ThemeBorderBrush}"/>
 
-        <!-- Tab bar -->
-        <Border DockPanel.Dock="Top" Background="{DynamicResource ThemeTabBarBg}"
-                BorderBrush="{DynamicResource ThemeTabBorder}" BorderThickness="0,0,0,1"
-                WindowChrome.IsHitTestVisibleInChrome="True">
-            <DockPanel Height="33">
-                <Button x:Name="NewTabButton" DockPanel.Dock="Right"
-                        Width="28" Height="28" Margin="4,0"
-                        Content="&#xE710;"
-                        FontFamily="Segoe MDL2 Assets" FontSize="10"
-                        Foreground="{DynamicResource ThemeButtonFg}"
-                        Background="Transparent" BorderThickness="0"
-                        Focusable="False" Cursor="Hand"
-                        Click="OnNewTab"
-                        ToolTip="New Tab (Ctrl+N)">
-                    <Button.Template>
-                        <ControlTemplate TargetType="Button">
-                            <Border x:Name="Bd" Background="Transparent" CornerRadius="3">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="Bd" Property="Background"
-                                            Value="{DynamicResource ThemeButtonHover}"/>
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Button.Template>
-                </Button>
-                <Grid>
-                    <ScrollViewer x:Name="TabScrollViewer"
-                                  HorizontalScrollBarVisibility="Hidden"
-                                  VerticalScrollBarVisibility="Disabled"
-                                  CanContentScroll="False"
-                                  PreviewMouseWheel="OnTabScrollViewerMouseWheel">
-                        <Grid>
-                            <StackPanel x:Name="TabStrip" Orientation="Horizontal"/>
-                            <Border x:Name="TabDropIndicator" Width="2"
-                                    HorizontalAlignment="Left" VerticalAlignment="Stretch"
-                                    Background="{DynamicResource ThemeTextFg}"
-                                    Visibility="Collapsed" IsHitTestVisible="False"/>
-                        </Grid>
-                    </ScrollViewer>
-                    <!-- Overflow fade indicators with arrow glyphs -->
-                    <Border x:Name="TabOverflowLeft" Width="32"
-                            HorizontalAlignment="Left" VerticalAlignment="Stretch"
-                            IsHitTestVisible="False" Visibility="Collapsed">
-                        <TextBlock Text="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="12"
-                                   Foreground="{DynamicResource ThemeTextFg}"
-                                   HorizontalAlignment="Left" VerticalAlignment="Center"
-                                   Margin="6,0,0,0"/>
-                    </Border>
-                    <Border x:Name="TabOverflowRight" Width="32"
-                            HorizontalAlignment="Right" VerticalAlignment="Stretch"
-                            IsHitTestVisible="False" Visibility="Collapsed">
-                        <TextBlock Text="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="12"
-                                   Foreground="{DynamicResource ThemeTextFg}"
-                                   HorizontalAlignment="Right" VerticalAlignment="Center"
-                                   Margin="0,0,6,0"/>
-                    </Border>
-                </Grid>
-            </DockPanel>
-        </Border>
-
         <!-- Status bar -->
         <Border DockPanel.Dock="Bottom" Background="{DynamicResource ThemeChromeBrush}" Height="24">
             <DockPanel>
@@ -283,8 +221,85 @@
         </Border>
         <Border DockPanel.Dock="Bottom" Height="1" Background="{DynamicResource ThemeBorderBrush}"/>
 
-        <Border x:Name="EditorHost"
-                WindowChrome.IsHitTestVisibleInChrome="True"/>
+        <Grid x:Name="MainContentGrid" WindowChrome.IsHitTestVisibleInChrome="True">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="ExplorerColumn" Width="0"/>
+                <ColumnDefinition x:Name="SplitterColumn" Width="0"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <local:FileExplorerPanel x:Name="ExplorerPanel" Grid.Column="0"/>
+
+            <GridSplitter x:Name="ExplorerSplitter" Grid.Column="1"
+                          Width="3" HorizontalAlignment="Stretch"
+                          Background="{DynamicResource ThemeBorderBrush}"
+                          Visibility="Collapsed"/>
+
+            <DockPanel x:Name="EditorArea" Grid.Column="2">
+                <!-- Tab bar -->
+                <Border DockPanel.Dock="Top" Background="{DynamicResource ThemeTabBarBg}"
+                        BorderBrush="{DynamicResource ThemeTabBorder}" BorderThickness="0,0,0,1">
+                    <DockPanel Height="33">
+                        <Button x:Name="NewTabButton" DockPanel.Dock="Right"
+                                Width="28" Height="28" Margin="4,0"
+                                Content="&#xE710;"
+                                FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                Foreground="{DynamicResource ThemeButtonFg}"
+                                Background="Transparent" BorderThickness="0"
+                                Focusable="False" Cursor="Hand"
+                                Click="OnNewTab"
+                                ToolTip="New Tab (Ctrl+N)">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Bd" Background="Transparent" CornerRadius="3">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background"
+                                                    Value="{DynamicResource ThemeButtonHover}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                        <Grid>
+                            <ScrollViewer x:Name="TabScrollViewer"
+                                          HorizontalScrollBarVisibility="Hidden"
+                                          VerticalScrollBarVisibility="Disabled"
+                                          CanContentScroll="False"
+                                          PreviewMouseWheel="OnTabScrollViewerMouseWheel">
+                                <Grid>
+                                    <StackPanel x:Name="TabStrip" Orientation="Horizontal"/>
+                                    <Border x:Name="TabDropIndicator" Width="2"
+                                            HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                                            Background="{DynamicResource ThemeTextFg}"
+                                            Visibility="Collapsed" IsHitTestVisible="False"/>
+                                </Grid>
+                            </ScrollViewer>
+                            <!-- Overflow fade indicators with arrow glyphs -->
+                            <Border x:Name="TabOverflowLeft" Width="32"
+                                    HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                                    IsHitTestVisible="False" Visibility="Collapsed">
+                                <TextBlock Text="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                           Foreground="{DynamicResource ThemeTextFg}"
+                                           HorizontalAlignment="Left" VerticalAlignment="Center"
+                                           Margin="6,0,0,0"/>
+                            </Border>
+                            <Border x:Name="TabOverflowRight" Width="32"
+                                    HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                                    IsHitTestVisible="False" Visibility="Collapsed">
+                                <TextBlock Text="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                           Foreground="{DynamicResource ThemeTextFg}"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                                           Margin="0,0,6,0"/>
+                            </Border>
+                        </Grid>
+                    </DockPanel>
+                </Border>
+                <Border x:Name="EditorHost"/>
+            </DockPanel>
+        </Grid>
     </DockPanel>
 
     <!-- Find bar overlay -->
