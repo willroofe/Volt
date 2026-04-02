@@ -231,9 +231,15 @@
             <local:FileExplorerPanel x:Name="ExplorerPanel" Grid.Column="0"/>
 
             <GridSplitter x:Name="ExplorerSplitter" Grid.Column="1"
-                          Width="3" HorizontalAlignment="Stretch"
+                          Width="1" HorizontalAlignment="Stretch"
                           Background="{DynamicResource ThemeBorderBrush}"
                           Visibility="Collapsed"/>
+
+            <!-- Continuous border line across splitter gap at header height -->
+            <Border x:Name="HeaderBorderBridge" Grid.ColumnSpan="3"
+                    VerticalAlignment="Top" Height="34"
+                    BorderBrush="{DynamicResource ThemeTabBorder}" BorderThickness="0,0,0,1"
+                    IsHitTestVisible="False" Visibility="Collapsed"/>
 
             <DockPanel x:Name="EditorArea" Grid.Column="2">
                 <!-- Tab bar -->

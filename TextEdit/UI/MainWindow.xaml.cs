@@ -574,11 +574,12 @@ public partial class MainWindow : Window
             ExplorerColumn.Width = new GridLength(width);
             ExplorerColumn.MinWidth = 150;
             ExplorerColumn.MaxWidth = 600;
-            SplitterColumn.Width = new GridLength(3);
+            SplitterColumn.Width = new GridLength(1);
             EditorColumn.Width = new GridLength(1, GridUnitType.Star);
             EditorColumn.MinWidth = 0;
             EditorColumn.MaxWidth = double.PositiveInfinity;
             ExplorerSplitter.Visibility = Visibility.Visible;
+            HeaderBorderBridge.Visibility = Visibility.Visible;
         }
         else
         {
@@ -591,6 +592,7 @@ public partial class MainWindow : Window
             EditorColumn.MinWidth = 0;
             EditorColumn.MaxWidth = double.PositiveInfinity;
             ExplorerSplitter.Visibility = Visibility.Collapsed;
+            HeaderBorderBridge.Visibility = Visibility.Collapsed;
         }
     }
 
