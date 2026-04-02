@@ -70,7 +70,7 @@ public partial class FileExplorerPanel : UserControl
 
     private void RebuildProjectTree(Project project)
     {
-        var rootChildren = new ObservableCollection<FileTreeItem>();
+        var projectRoot = FileTreeItem.CreateProjectRoot(project.Name);
 
         // Add virtual folders with their assigned real folders
         foreach (var vf in project.VirtualFolders)
@@ -87,10 +87,10 @@ public partial class FileExplorerPanel : UserControl
                     vfItem.Children.Add(dirItem);
                 }
             }
-            rootChildren.Add(vfItem);
+            projectRoot.Children.Add(vfItem);
         }
 
-        // Add unassigned real folders at root level
+        // Add unassigned real folders under the project root
         var unassigned = project.Folders
             .Where(f => f.VirtualParent == null)
             .ToList();
@@ -99,11 +99,12 @@ public partial class FileExplorerPanel : UserControl
             if (Directory.Exists(folder.Path))
             {
                 var dirItem = FileTreeItem.CreateRootItem(folder.Path);
-                rootChildren.Add(dirItem);
+                projectRoot.Children.Add(dirItem);
             }
         }
 
-        FolderTree.ItemsSource = rootChildren;
+        projectRoot.IsExpanded = true;
+        FolderTree.ItemsSource = new ObservableCollection<FileTreeItem> { projectRoot };
     }
 
     private void OnTreeDoubleClick(object sender, MouseButtonEventArgs e)
@@ -138,10 +139,17 @@ public partial class FileExplorerPanel : UserControl
 
         switch (item.Kind)
         {
+            case FileTreeItemKind.ProjectRoot:
+                menu.Items.Add(CreateMenuItem("Add Folder...", () => AddFolderRequested?.Invoke()));
+                menu.Items.Add(CreateMenuItem("New Virtual Folder", () => NewVirtualFolderRequested?.Invoke()));
+                menu.Items.Add(new Separator());
+                menu.Items.Add(CreateMenuItem("Close Project", () => CloseProjectRequested?.Invoke()));
+                break;
+
             case FileTreeItemKind.VirtualFolder:
+                menu.Items.Add(CreateMenuItem("Add Folder...", () => AddFolderRequested?.Invoke()));
                 menu.Items.Add(CreateMenuItem("Rename", () => RenameVirtualFolderRequested?.Invoke(item.Name)));
                 menu.Items.Add(CreateMenuItem("Remove Virtual Folder", () => RemoveVirtualFolderRequested?.Invoke(item.Name)));
-                menu.Items.Add(new Separator());
                 break;
 
             case FileTreeItemKind.Directory when IsTopLevelProjectFolder(item):
@@ -160,18 +168,11 @@ public partial class FileExplorerPanel : UserControl
                     menu.Items.Add(moveMenu);
                 }
                 menu.Items.Add(CreateMenuItem("Remove from Project", () => RemoveFolderRequested?.Invoke(item.FullPath)));
-                menu.Items.Add(new Separator());
                 break;
 
             default:
                 return; // No context menu for regular files/subdirectories
         }
-
-        // Common project actions at the bottom of every context menu
-        menu.Items.Add(CreateMenuItem("Add Folder...", () => AddFolderRequested?.Invoke()));
-        menu.Items.Add(CreateMenuItem("New Virtual Folder", () => NewVirtualFolderRequested?.Invoke()));
-        menu.Items.Add(new Separator());
-        menu.Items.Add(CreateMenuItem("Close Project", () => CloseProjectRequested?.Invoke()));
 
         FolderTree.ContextMenu = menu;
         menu.IsOpen = true;
