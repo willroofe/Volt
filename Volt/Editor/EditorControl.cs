@@ -34,6 +34,24 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public int TabSize { get; set; } = 4;
     public bool BlockCaret { get; set; }
 
+    private bool _wordWrap;
+    public bool WordWrap
+    {
+        get => _wordWrap;
+        set
+        {
+            if (_wordWrap == value) return;
+            _wordWrap = value;
+            RecalcWrapData();
+            if (_wordWrap) SetHorizontalOffset(0);
+            _textVisualDirty = true;
+            _gutterVisualDirty = true;
+            UpdateExtent();
+            EnsureCaretVisible();
+            InvalidateVisual();
+        }
+    }
+
     private int _caretBlinkMs = 500;
     public int CaretBlinkMs
     {
@@ -131,6 +149,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public ScrollViewer? ScrollOwner { get; set; }
     public bool CanHorizontallyScroll { get; set; }
     public bool CanVerticallyScroll { get; set; }
+
+    // ── Word wrap state ──────────────────────────────────────────────
+    private int _charsPerVisualLine;
+    private int[]? _wrapLineCount;      // visual lines per logical line
+    private int[]? _wrapCumulOffset;    // cumulative visual line offset
+    private int _totalVisualLines;
 
     // ── Public API (delegates to buffer) ─────────────────────────────
     public bool IsDirty => _buffer.IsDirty;
@@ -521,6 +545,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     private void UpdateExtent()
     {
+        RecalcWrapData();
+
         int digits = _buffer.Count > 0
             ? (int)Math.Floor(Math.Log10(_buffer.Count)) + 1
             : 1;
@@ -533,8 +559,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
         int maxLen = _buffer.UpdateMaxForLine(_caretLine);
 
         var newExtent = new Size(
-            _gutterWidth + GutterPadding + maxLen * _font.CharWidth + HorizontalScrollPadding,
-            _buffer.Count * _font.LineHeight + _viewport.Height / 2);
+            _wordWrap
+                ? _viewport.Width
+                : _gutterWidth + GutterPadding + maxLen * _font.CharWidth + HorizontalScrollPadding,
+            (_wordWrap ? _totalVisualLines : _buffer.Count) * _font.LineHeight + _viewport.Height / 2);
 
         if (Math.Abs(newExtent.Width - _extent.Width) > 0.5
             || Math.Abs(newExtent.Height - _extent.Height) > 0.5)
@@ -542,6 +570,90 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _extent = newExtent;
             ScrollOwner?.InvalidateScrollInfo();
         }
+    }
+
+    private void RecalcWrapData()
+    {
+        if (!_wordWrap)
+        {
+            _wrapLineCount = null;
+            _wrapCumulOffset = null;
+            _totalVisualLines = _buffer.Count;
+            return;
+        }
+
+        double textAreaWidth = _viewport.Width - _gutterWidth - GutterPadding;
+        _charsPerVisualLine = Math.Max(1, (int)(textAreaWidth / _font.CharWidth));
+
+        int count = _buffer.Count;
+        if (_wrapLineCount == null || _wrapLineCount.Length < count)
+        {
+            _wrapLineCount = new int[count];
+            _wrapCumulOffset = new int[count];
+        }
+        int cumul = 0;
+        for (int i = 0; i < count; i++)
+        {
+            _wrapCumulOffset[i] = cumul;
+            int len = _buffer[i].Length;
+            _wrapLineCount[i] = len <= _charsPerVisualLine ? 1 : (len + _charsPerVisualLine - 1) / _charsPerVisualLine;
+            cumul += _wrapLineCount[i];
+        }
+        _totalVisualLines = cumul;
+    }
+
+    /// <summary>Visual line index for a logical line + column.</summary>
+    private int LogicalToVisualLine(int logLine, int col = 0)
+    {
+        if (!_wordWrap) return logLine;
+        int wrapIndex = _charsPerVisualLine > 0 ? Math.Min(col / _charsPerVisualLine, _wrapLineCount![logLine] - 1) : 0;
+        return _wrapCumulOffset![logLine] + wrapIndex;
+    }
+
+    /// <summary>Pixel Y for a logical position.</summary>
+    private double GetVisualY(int logLine, int col = 0)
+    {
+        return LogicalToVisualLine(logLine, col) * _font.LineHeight;
+    }
+
+    /// <summary>Logical line and wrap sub-index from a visual line index.</summary>
+    private (int logLine, int wrapIndex) VisualToLogical(int visualLine)
+    {
+        if (!_wordWrap) return (Math.Clamp(visualLine, 0, _buffer.Count - 1), 0);
+        int lo = 0, hi = _buffer.Count - 1;
+        while (lo < hi)
+        {
+            int mid = (lo + hi + 1) / 2;
+            if (_wrapCumulOffset![mid] <= visualLine) lo = mid; else hi = mid - 1;
+        }
+        return (lo, visualLine - _wrapCumulOffset![lo]);
+    }
+
+    /// <summary>Number of visual lines for a logical line.</summary>
+    private int VisualLineCount(int logLine)
+    {
+        return _wordWrap ? _wrapLineCount![logLine] : 1;
+    }
+
+    /// <summary>Column offset at the start of a wrap sub-line.</summary>
+    private int WrapColStart(int logLine, int wrapIndex)
+    {
+        return _wordWrap ? wrapIndex * _charsPerVisualLine : 0;
+    }
+
+    /// <summary>Pixel X and Y for a caret/selection position, accounting for wrap.</summary>
+    private (double x, double y) GetPixelForPosition(int line, int col)
+    {
+        if (!_wordWrap)
+        {
+            return (_gutterWidth + GutterPadding + col * _font.CharWidth - _offset.X,
+                    line * _font.LineHeight - _offset.Y);
+        }
+        int wrapIndex = Math.Min(col / _charsPerVisualLine, _wrapLineCount![line] - 1);
+        int colInWrap = col - wrapIndex * _charsPerVisualLine;
+        double x = _gutterWidth + GutterPadding + colInWrap * _font.CharWidth;
+        double y = (_wrapCumulOffset![line] + wrapIndex) * _font.LineHeight - _offset.Y;
+        return (x, y);
     }
 
     private void EnsureCaretVisible()

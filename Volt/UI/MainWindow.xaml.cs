@@ -547,6 +547,7 @@ public partial class MainWindow : Window
     private void ApplySettingsToEditor(EditorControl editor)
     {
         editor.TabSize = _settings.Editor.TabSize;
+        editor.WordWrap = _settings.Editor.WordWrap;
         editor.BlockCaret = _settings.Editor.Caret.BlockCaret;
         editor.CaretBlinkMs = _settings.Editor.Caret.BlinkMs;
         if (_settings.Editor.Font.Family != null) editor.FontFamilyName = _settings.Editor.Font.Family;
