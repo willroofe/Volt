@@ -213,6 +213,49 @@
                     </MenuItem>
                     <MenuItem Header="Open _Folder" InputGestureText="Ctrl+Shift+O" Click="OnOpenFolder"/>
                 </MenuItem>
+                <MenuItem Header="_Edit" Style="{StaticResource TopLevelMenuItem}">
+                    <MenuItem.ItemContainerStyle>
+                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                            <Setter Property="FontFamily" Value="Segoe UI"/>
+                            <Setter Property="FontSize" Value="12"/>
+                            <Setter Property="Foreground" Value="{DynamicResource ThemeTextFg}"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="MenuItem">
+                                        <Border x:Name="Bd" Background="Transparent"
+                                                CornerRadius="4" Margin="4,1">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="28" SharedSizeGroup="Icon"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto" SharedSizeGroup="Shortcut"/>
+                                                </Grid.ColumnDefinitions>
+                                                <ContentPresenter Grid.Column="0" ContentSource="Icon"
+                                                                  HorizontalAlignment="Center"
+                                                                  VerticalAlignment="Center"
+                                                                  Width="16" Height="16"/>
+                                                <ContentPresenter Grid.Column="1" ContentSource="Header"
+                                                                  Margin="6,4,12,4"
+                                                                  VerticalAlignment="Center"
+                                                                  RecognizesAccessKey="True"/>
+                                                <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}"
+                                                           Margin="0,4,8,4"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource ThemeTextFgMuted}"/>
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsHighlighted" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeMenuItemHover}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </MenuItem.ItemContainerStyle>
+                    <MenuItem x:Name="MenuWordWrap" Header="_Word Wrap" Click="OnToggleWordWrap"/>
+                </MenuItem>
                 <MenuItem Header="_Project" Style="{StaticResource TopLevelMenuItem}">
                     <MenuItem.ItemContainerStyle>
                         <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
