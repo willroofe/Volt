@@ -758,7 +758,7 @@ public partial class MainWindow : Window
         try
         {
             tab.FileEncoding = FileHelper.DetectEncoding(tab.FilePath);
-            tab.Editor.SetContent(File.ReadAllText(tab.FilePath, tab.FileEncoding));
+            tab.Editor.SetContent(FileHelper.ReadAllText(tab.FilePath, tab.FileEncoding));
             tab.LastKnownWriteTimeUtc = File.GetLastWriteTimeUtc(tab.FilePath);
             tab.Editor.MarkClean();
             UpdateTabHeader(tab);
@@ -814,7 +814,7 @@ public partial class MainWindow : Window
 
             tab.FilePath = fileName;
             tab.FileEncoding = FileHelper.DetectEncoding(fileName);
-            tab.Editor.SetContent(File.ReadAllText(fileName, tab.FileEncoding));
+            tab.Editor.SetContent(FileHelper.ReadAllText(fileName, tab.FileEncoding));
             tab.StartWatching();
             UpdateTabHeader(tab);
             lastTab = tab;
