@@ -23,6 +23,19 @@ public class TextBuffer
     public string LineEnding => _lineEnding;
     public string LineEndingDisplay => _lineEnding == "\n" ? "LF" : "CRLF";
 
+    /// <summary>Total character count including line endings.</summary>
+    public long CharCount
+    {
+        get
+        {
+            long total = 0;
+            for (int i = 0; i < _lines.Count; i++)
+                total += _lines[i].Length;
+            total += (long)(_lines.Count - 1) * _lineEnding.Length;
+            return total;
+        }
+    }
+
     public bool IsDirty
     {
         get => _isDirty;

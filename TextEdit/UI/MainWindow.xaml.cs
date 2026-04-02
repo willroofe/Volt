@@ -602,6 +602,7 @@ public partial class MainWindow : Window
     {
         if (_activeTab == null) return;
         CaretPosText.Text = $"Ln {Editor.CaretLine + 1}, Col {Editor.CaretCol + 1}";
+        CharCountText.Text = $"{Editor.CharCount:N0} {(Editor.CharCount == 1 ? "Character" : "Characters")}";
     }
 
     private string GetEncodingLabel()
