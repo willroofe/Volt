@@ -15,6 +15,7 @@ public partial class MainWindow : Window
     private readonly List<TabInfo> _tabs = [];
     private TabInfo? _activeTab;
     private AppSettings _settings;
+    private readonly ProjectManager _projectManager = new();
 
     // Tab drag-to-reorder state
     private TabInfo? _dragTab;
@@ -67,6 +68,14 @@ public partial class MainWindow : Window
         Activated += (_, _) => CheckAllTabsForExternalChanges();
         ThemeManager.ThemeChanged += (_, _) => { ApplyDwmTheme(); UpdateTabOverflowBrushes(); };
         ExplorerPanel.FileOpenRequested += OnExplorerFileOpen;
+        ExplorerPanel.SetProjectManager(_projectManager);
+        ExplorerPanel.AddFolderRequested += OnProjectAddFolder;
+        ExplorerPanel.RemoveFolderRequested += OnProjectRemoveFolder;
+        ExplorerPanel.NewVirtualFolderRequested += OnProjectNewVirtualFolder;
+        ExplorerPanel.RemoveVirtualFolderRequested += OnProjectRemoveVirtualFolder;
+        ExplorerPanel.RenameVirtualFolderRequested += OnProjectRenameVirtualFolder;
+        ExplorerPanel.MoveToVirtualFolderRequested += OnProjectMoveToVirtualFolder;
+        ExplorerPanel.CloseProjectRequested += CloseCurrentProject;
         ExplorerSplitter.DragCompleted += (_, _) =>
         {
             _settings.Editor.Explorer.PanelWidth = ExplorerColumn.ActualWidth;
@@ -598,6 +607,10 @@ public partial class MainWindow : Window
 
     private void OpenFolderInExplorer()
     {
+        // Close project if one is open (mode exclusivity)
+        if (_projectManager.CurrentProject != null)
+            CloseCurrentProject();
+
         var dlg = new System.Windows.Forms.FolderBrowserDialog();
         if (_settings.Editor.Explorer.OpenFolderPath is string prev && Directory.Exists(prev))
             dlg.SelectedPath = prev;
@@ -653,6 +666,13 @@ public partial class MainWindow : Window
 
     private void RestoreSession()
     {
+        // Restore project if one was open
+        if (_settings.LastOpenProjectPath is string projPath && System.IO.File.Exists(projPath))
+        {
+            OpenProjectFromPath(projPath);
+            return;
+        }
+
         var session = _settings.Session;
         if (session.Tabs.Count > 0)
         {
@@ -825,6 +845,20 @@ public partial class MainWindow : Window
 
     private void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        // Save project session if a project is open
+        if (_projectManager.CurrentProject != null)
+        {
+            try
+            {
+                CaptureProjectSession();
+                _projectManager.SaveProject();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Project save failed: {ex.Message}");
+            }
+        }
+
         // Try to persist session; if it fails, fall back to prompting for dirty tabs
         bool sessionSaved = false;
         try
@@ -1248,5 +1282,316 @@ public partial class MainWindow : Window
             () => { if (_settings.Editor.Explorer.PanelVisible) SetExplorerVisible(true); });
         CmdPalette.SetCommands(commands);
         CmdPalette.Open();
+    }
+
+    // ── Project menu handlers ────────────────────────────────────────────────
+
+    private void OnNewProject(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = "Project Files (*.vproj)|*.vproj",
+            DefaultExt = ".vproj",
+            FileName = "MyProject.vproj"
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        if (_projectManager.CurrentProject != null)
+            CloseCurrentProject();
+        else if (ExplorerPanel.OpenFolderPath != null)
+            CloseFolderInExplorer();
+
+        CloseAllTabs();
+
+        _projectManager.NewProject(System.IO.Path.GetFileNameWithoutExtension(dlg.FileName));
+        _projectManager.CurrentProject!.FilePath = dlg.FileName;
+        _projectManager.SaveProject();
+
+        ExplorerPanel.OpenProject(_projectManager.CurrentProject);
+        SetExplorerVisible(true);
+        UpdateProjectMenuState(true);
+
+        _settings.LastOpenProjectPath = dlg.FileName;
+        _settings.Save();
+    }
+
+    private void OnOpenProject(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = "Project Files (*.vproj)|*.vproj",
+            DefaultExt = ".vproj"
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        OpenProjectFromPath(dlg.FileName);
+    }
+
+    private void OnSaveProject(object sender, RoutedEventArgs e)
+    {
+        if (_projectManager.CurrentProject == null) return;
+        CaptureProjectSession();
+        _projectManager.SaveProject();
+    }
+
+    private void OnCloseProject(object sender, RoutedEventArgs e)
+    {
+        CloseCurrentProject();
+    }
+
+    // ── Project helpers ──────────────────────────────────────────────────────
+
+    private void OpenProjectFromPath(string vprojPath)
+    {
+        if (!System.IO.File.Exists(vprojPath)) return;
+
+        if (_projectManager.CurrentProject != null)
+            CloseCurrentProject();
+        else if (ExplorerPanel.OpenFolderPath != null)
+            CloseFolderInExplorer();
+
+        PromptSaveDirtyTabs();
+        CloseAllTabs();
+
+        var project = _projectManager.OpenProject(vprojPath);
+
+        ExplorerPanel.OpenProject(project);
+        SetExplorerVisible(true);
+        UpdateProjectMenuState(true);
+
+        _settings.LastOpenProjectPath = vprojPath;
+        _settings.Editor.Explorer.PanelVisible = true;
+        _settings.Save();
+
+        RestoreProjectSession(project);
+    }
+
+    private void CloseCurrentProject()
+    {
+        if (_projectManager.CurrentProject == null) return;
+
+        CaptureProjectSession();
+        _projectManager.SaveProject();
+        _projectManager.CloseProject();
+
+        ExplorerPanel.CloseProject();
+        UpdateProjectMenuState(false);
+
+        _settings.LastOpenProjectPath = null;
+        _settings.Save();
+
+        CloseAllTabs();
+        CreateTab();
+        ActivateTab(_tabs[0]);
+    }
+
+    private void UpdateProjectMenuState(bool projectOpen)
+    {
+        MenuSaveProject.IsEnabled = projectOpen;
+        MenuCloseProject.IsEnabled = projectOpen;
+    }
+
+    private void CloseAllTabs()
+    {
+        foreach (var tab in _tabs.ToList())
+        {
+            tab.StopWatching();
+            tab.Editor.ReleaseResources();
+        }
+        _tabs.Clear();
+        TabStrip.Children.Clear();
+        _activeTab = null;
+    }
+
+    private void PromptSaveDirtyTabs()
+    {
+        foreach (var tab in _tabs.ToList())
+        {
+            if (tab.Editor.IsDirty)
+            {
+                ActivateTab(tab);
+                PromptSaveTab(tab);
+            }
+        }
+    }
+
+    // ── Session capture / restore ────────────────────────────────────────────
+
+    private void CaptureProjectSession()
+    {
+        if (_projectManager.CurrentProject == null) return;
+
+        var sessionTabs = new List<ProjectSessionTab>();
+        int activeIdx = 0;
+
+        foreach (var t in _tabs)
+        {
+            if (t == _activeTab)
+                activeIdx = sessionTabs.Count;
+
+            sessionTabs.Add(new ProjectSessionTab
+            {
+                FilePath = t.FilePath,
+                IsDirty = t.Editor.IsDirty,
+                CaretLine = t.Editor.CaretLine,
+                CaretCol = t.Editor.CaretCol,
+                ScrollX = t.Editor.HorizontalOffset,
+                ScrollY = t.Editor.VerticalOffset,
+            });
+        }
+
+        _projectManager.CurrentProject.Session = new ProjectSession
+        {
+            Tabs = sessionTabs,
+            ActiveTabIndex = activeIdx
+        };
+    }
+
+    private void RestoreProjectSession(Project project)
+    {
+        if (project.Session.Tabs.Count == 0)
+        {
+            var tab = CreateTab();
+            ActivateTab(tab);
+            return;
+        }
+
+        TabInfo? activeTab = null;
+        for (int i = 0; i < project.Session.Tabs.Count; i++)
+        {
+            var st = project.Session.Tabs[i];
+            if (st.FilePath != null && !System.IO.File.Exists(st.FilePath))
+                continue;
+
+            var tab = CreateTab();
+
+            if (st.FilePath != null)
+            {
+                tab.FilePath = st.FilePath;
+                tab.FileEncoding = FileHelper.DetectEncoding(st.FilePath);
+                tab.Editor.SetContent(FileHelper.ReadAllText(st.FilePath, tab.FileEncoding));
+                tab.LastKnownFileSize = new System.IO.FileInfo(st.FilePath).Length;
+                tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(st.FilePath, tab.LastKnownFileSize);
+                tab.StartWatching();
+            }
+
+            if (i == project.Session.ActiveTabIndex)
+                activeTab = tab;
+
+            UpdateTabHeader(tab);
+        }
+
+        if (_tabs.Count == 0)
+        {
+            var tab = CreateTab();
+            ActivateTab(tab);
+            return;
+        }
+
+        ActivateTab(activeTab ?? _tabs[0]);
+
+        Dispatcher.InvokeAsync(() =>
+        {
+            for (int i = 0; i < _tabs.Count && i < project.Session.Tabs.Count; i++)
+            {
+                var st = project.Session.Tabs[i];
+                var tab = _tabs[i];
+                tab.Editor.SetCaretPosition(st.CaretLine, st.CaretCol);
+                tab.ScrollHost?.ScrollToVerticalOffset(st.ScrollY);
+                tab.ScrollHost?.ScrollToHorizontalOffset(st.ScrollX);
+            }
+        }, System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    // ── Project context menu handlers ────────────────────────────────────────
+
+    private void OnProjectAddFolder()
+    {
+        var dlg = new System.Windows.Forms.FolderBrowserDialog();
+        if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+
+        _projectManager.AddFolder(dlg.SelectedPath);
+        ExplorerPanel.RefreshProjectTree();
+        _projectManager.SaveProject();
+    }
+
+    private void OnProjectRemoveFolder(string path)
+    {
+        _projectManager.RemoveFolder(path);
+        ExplorerPanel.RefreshProjectTree();
+        _projectManager.SaveProject();
+    }
+
+    private void OnProjectNewVirtualFolder()
+    {
+        var name = PromptForInput("New Virtual Folder", "Enter a name:");
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        _projectManager.CreateVirtualFolder(name);
+        ExplorerPanel.RefreshProjectTree();
+        _projectManager.SaveProject();
+    }
+
+    private void OnProjectRemoveVirtualFolder(string name)
+    {
+        _projectManager.RemoveVirtualFolder(name);
+        ExplorerPanel.RefreshProjectTree();
+        _projectManager.SaveProject();
+    }
+
+    private void OnProjectRenameVirtualFolder(string oldName)
+    {
+        var newName = PromptForInput("Rename Virtual Folder", "Enter a new name:", oldName);
+        if (string.IsNullOrWhiteSpace(newName) || newName == oldName) return;
+
+        _projectManager.RenameVirtualFolder(oldName, newName);
+        ExplorerPanel.RefreshProjectTree();
+        _projectManager.SaveProject();
+    }
+
+    private void OnProjectMoveToVirtualFolder(string folderPath, string? virtualFolderName)
+    {
+        _projectManager.AssignToVirtualFolder(folderPath, virtualFolderName);
+        ExplorerPanel.RefreshProjectTree();
+        _projectManager.SaveProject();
+    }
+
+    private static string? PromptForInput(string title, string prompt, string defaultValue = "")
+    {
+        var window = new Window
+        {
+            Title = title,
+            Width = 350,
+            Height = 150,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ResizeMode = ResizeMode.NoResize,
+            WindowStyle = WindowStyle.ToolWindow
+        };
+
+        var panel = new StackPanel { Margin = new Thickness(12) };
+        panel.Children.Add(new TextBlock { Text = prompt, Margin = new Thickness(0, 0, 0, 8) });
+        var textBox = new TextBox { Text = defaultValue };
+        textBox.SelectAll();
+        panel.Children.Add(textBox);
+
+        var btnPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 12, 0, 0)
+        };
+        var okBtn = new Button { Content = "OK", Width = 75, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
+        var cancelBtn = new Button { Content = "Cancel", Width = 75, IsCancel = true };
+        okBtn.Click += (_, _) => { window.DialogResult = true; };
+        btnPanel.Children.Add(okBtn);
+        btnPanel.Children.Add(cancelBtn);
+        panel.Children.Add(btnPanel);
+
+        window.Content = panel;
+        window.Owner = Application.Current.MainWindow;
+
+        textBox.Focus();
+
+        return window.ShowDialog() == true ? textBox.Text : null;
     }
 }
