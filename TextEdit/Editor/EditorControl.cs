@@ -1540,7 +1540,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _viewport = availableSize;
         UpdateExtent();
         if (viewportChanged)
+        {
+            SetHorizontalOffset(_offset.X);
+            SetVerticalOffset(_offset.Y);
             ScrollOwner?.InvalidateScrollInfo();
+        }
         return availableSize;
     }
 
