@@ -2,60 +2,6 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:TextEdit">
-    <UserControl.Resources>
-        <!-- TreeViewItem style for themed hover/selection -->
-        <Style TargetType="TreeViewItem">
-            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
-            <Setter Property="FontFamily" Value="Segoe UI"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Foreground" Value="{DynamicResource ThemeTextFg}"/>
-            <Setter Property="Padding" Value="2,1"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="TreeViewItem">
-                        <StackPanel>
-                            <Border x:Name="Bd" Background="Transparent"
-                                    Padding="{TemplateBinding Padding}"
-                                    SnapsToDevicePixels="True">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock x:Name="Arrow" Width="16"
-                                               Text="&#xE76C;" FontFamily="Segoe MDL2 Assets"
-                                               FontSize="8"
-                                               Foreground="{DynamicResource ThemeTextFgMuted}"
-                                               VerticalAlignment="Center"
-                                               TextAlignment="Center"
-                                               Visibility="Collapsed"/>
-                                    <Border x:Name="Spacer" Width="16" Visibility="Collapsed"/>
-                                    <ContentPresenter ContentSource="Header"
-                                                      VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Border>
-                            <ItemsPresenter x:Name="ItemsHost" Visibility="Collapsed"
-                                            Margin="16,0,0,0"/>
-                        </StackPanel>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="HasItems" Value="True">
-                                <Setter TargetName="Arrow" Property="Visibility" Value="Visible"/>
-                            </Trigger>
-                            <Trigger Property="HasItems" Value="False">
-                                <Setter TargetName="Spacer" Property="Visibility" Value="Visible"/>
-                            </Trigger>
-                            <Trigger Property="IsExpanded" Value="True">
-                                <Setter TargetName="ItemsHost" Property="Visibility" Value="Visible"/>
-                                <Setter TargetName="Arrow" Property="Text" Value="&#xE70D;"/>
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeExplorerItemHover}"/>
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeExplorerItemSelected}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </UserControl.Resources>
     <DockPanel Background="{DynamicResource ThemeExplorerBg}">
         <!-- Header -->
         <Border DockPanel.Dock="Top"
@@ -68,40 +14,14 @@
                            Foreground="{DynamicResource ThemeExplorerHeaderFg}"/>
             </DockPanel>
         </Border>
-        <!-- Tree view -->
-        <TreeView x:Name="FolderTree"
-                  Background="Transparent" BorderThickness="0"
-                  VirtualizingStackPanel.IsVirtualizing="True"
-                  VirtualizingStackPanel.VirtualizationMode="Recycling"
-                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                  ScrollViewer.VerticalScrollBarVisibility="Auto"
-                  MouseRightButtonUp="OnTreeRightClick">
-            <TreeView.Resources>
-                <Style TargetType="ScrollViewer">
-                    <Setter Property="Template" Value="{StaticResource ThemedScrollViewer}"/>
-                </Style>
-            </TreeView.Resources>
-            <TreeView.ItemTemplate>
-                <HierarchicalDataTemplate DataType="{x:Type local:FileTreeItem}"
-                                          ItemsSource="{Binding Children}">
-                    <TextBlock Text="{Binding Name}" Margin="2,0">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Kind}" Value="VirtualFolder">
-                                        <Setter Property="FontStyle" Value="Italic"/>
-                                        <Setter Property="Foreground" Value="{DynamicResource ThemeExplorerHeaderFg}"/>
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding Kind}" Value="ProjectRoot">
-                                        <Setter Property="FontWeight" Value="SemiBold"/>
-                                        <Setter Property="Foreground" Value="{DynamicResource ThemeExplorerHeaderFg}"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
-                </HierarchicalDataTemplate>
-            </TreeView.ItemTemplate>
-        </TreeView>
+        <!-- Custom tree control -->
+        <ScrollViewer x:Name="TreeScrollViewer"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto"
+                      CanContentScroll="True"
+                      Focusable="False"
+                      Template="{StaticResource ThemedScrollViewer}">
+            <local:ExplorerTreeControl x:Name="ExplorerTree"/>
+        </ScrollViewer>
     </DockPanel>
 </UserControl>

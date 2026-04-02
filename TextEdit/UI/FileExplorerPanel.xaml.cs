@@ -2,8 +2,6 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
-using System.Windows.Media;
 
 namespace TextEdit;
 
@@ -20,12 +18,13 @@ public partial class FileExplorerPanel : UserControl
 
     private string? _openFolderPath;
     private ProjectManager? _projectManager;
+    private ObservableCollection<FileTreeItem>? _currentRootItems;
 
     public FileExplorerPanel()
     {
         InitializeComponent();
-        FolderTree.MouseDoubleClick += OnTreeDoubleClick;
-        FolderTree.ContextMenuOpening += (_, e) => e.Handled = true;
+        ExplorerTree.FileOpenRequested += path => FileOpenRequested?.Invoke(path);
+        ExplorerTree.ItemRightClicked += OnItemRightClicked;
     }
 
     public void SetProjectManager(ProjectManager manager)
@@ -38,14 +37,19 @@ public partial class FileExplorerPanel : UserControl
         if (!Directory.Exists(path)) return;
         _openFolderPath = path;
         HeaderText.Text = Path.GetFileName(path);
-        FolderTree.ItemsSource = FileTreeItem.LoadRoot(path);
+        var root = new FileTreeItem(path, true);
+        root.IsExpanded = true;
+        var items = new ObservableCollection<FileTreeItem> { root };
+        _currentRootItems = items;
+        ExplorerTree.SetRootItems(items);
     }
 
     public void CloseFolder()
     {
         _openFolderPath = null;
         HeaderText.Text = "Explorer";
-        FolderTree.ItemsSource = null;
+        _currentRootItems = null;
+        ExplorerTree.SetRootItems(null);
     }
 
     public void OpenProject(Project project)
@@ -58,7 +62,8 @@ public partial class FileExplorerPanel : UserControl
     public void CloseProject()
     {
         HeaderText.Text = "Explorer";
-        FolderTree.ItemsSource = null;
+        _currentRootItems = null;
+        ExplorerTree.SetRootItems(null);
     }
 
     public void RefreshProjectTree()
@@ -73,8 +78,8 @@ public partial class FileExplorerPanel : UserControl
     {
         // Capture expanded state before rebuilding
         var expandedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (FolderTree.ItemsSource is ObservableCollection<FileTreeItem> oldItems)
-            CollectExpandedPaths(oldItems, expandedPaths);
+        if (_currentRootItems != null)
+            CollectExpandedPaths(_currentRootItems, expandedPaths);
 
         var projectRoot = FileTreeItem.CreateProjectRoot(project.Name);
 
@@ -116,7 +121,9 @@ public partial class FileExplorerPanel : UserControl
         }
 
         projectRoot.IsExpanded = true;
-        FolderTree.ItemsSource = new ObservableCollection<FileTreeItem> { projectRoot };
+        var items = new ObservableCollection<FileTreeItem> { projectRoot };
+        _currentRootItems = items;
+        ExplorerTree.SetRootItems(items);
     }
 
     private static void CollectExpandedPaths(IEnumerable<FileTreeItem> items, HashSet<string> paths)
@@ -134,44 +141,21 @@ public partial class FileExplorerPanel : UserControl
         }
     }
 
-    private void OnTreeDoubleClick(object sender, MouseButtonEventArgs e)
-    {
-        if (FolderTree.SelectedItem is FileTreeItem item && item.Kind == FileTreeItemKind.File
-            && !string.IsNullOrEmpty(item.FullPath))
-        {
-            FileOpenRequested?.Invoke(item.FullPath);
-            e.Handled = true;
-        }
-    }
-
-    private void OnTreeRightClick(object sender, MouseButtonEventArgs e)
+    private void OnItemRightClicked(FileTreeItem? item)
     {
         if (_projectManager?.CurrentProject == null) return;
 
-        // Select the item under the cursor so right-click targets the right node
-        FileTreeItem? item = null;
-        if (e.OriginalSource is DependencyObject source)
-        {
-            var treeViewItem = FindVisualParent<TreeViewItem>(source);
-            if (treeViewItem != null)
-            {
-                treeViewItem.IsSelected = true;
-                item = treeViewItem.DataContext as FileTreeItem;
-            }
-        }
         var menu = new ContextMenu();
         var project = _projectManager.CurrentProject;
 
         if (item == null)
         {
-            // Right-clicked empty area — show project root actions
             menu.Items.Add(CreateMenuItem("Add Folder...", () => AddFolderRequested?.Invoke(null)));
             menu.Items.Add(CreateMenuItem("New Virtual Folder", () => NewVirtualFolderRequested?.Invoke()));
             menu.Items.Add(new Separator());
             menu.Items.Add(CreateMenuItem("Close Project", () => CloseProjectRequested?.Invoke()));
-            FolderTree.ContextMenu = menu;
+            ExplorerTree.ContextMenu = menu;
             menu.IsOpen = true;
-            e.Handled = true;
             return;
         }
 
@@ -210,12 +194,11 @@ public partial class FileExplorerPanel : UserControl
                 break;
 
             default:
-                return; // No context menu for regular files/subdirectories
+                return;
         }
 
-        FolderTree.ContextMenu = menu;
+        ExplorerTree.ContextMenu = menu;
         menu.IsOpen = true;
-        e.Handled = true;
     }
 
     private bool IsTopLevelProjectFolder(FileTreeItem item)
@@ -230,15 +213,5 @@ public partial class FileExplorerPanel : UserControl
         var mi = new MenuItem { Header = header };
         mi.Click += (_, _) => onClick();
         return mi;
-    }
-
-    private static T? FindVisualParent<T>(DependencyObject child) where T : DependencyObject
-    {
-        while (child != null)
-        {
-            if (child is T parent) return parent;
-            child = VisualTreeHelper.GetParent(child);
-        }
-        return null;
     }
 }
