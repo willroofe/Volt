@@ -74,7 +74,7 @@ public class ColorTheme
             brush.Freeze();
             return brush;
         }
-        catch (Exception ex)
+        catch (FormatException ex)
         {
             System.Diagnostics.Debug.WriteLine($"Invalid color value '{hex}': {ex.Message}");
             var fallback = new SolidColorBrush(Colors.Magenta);
