@@ -33,6 +33,9 @@
         <SolidColorBrush x:Key="ThemeExplorerItemHover" Color="#E0E0E0"/>
         <SolidColorBrush x:Key="ThemeExplorerItemSelected" Color="#D0D0D0"/>
 
+        <!-- Theme-invariant overlay for modal dimming (like close-button red #E81123) -->
+        <SolidColorBrush x:Key="ThemeOverlayBg" Color="#80000000"/>
+
         <!-- Title bar buttons (shared by MainWindow and SettingsWindow) -->
         <Style x:Key="TitleBarButton" TargetType="Button">
             <Setter Property="WindowChrome.IsHitTestVisibleInChrome" Value="True"/>

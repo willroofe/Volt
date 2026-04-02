@@ -13,7 +13,7 @@ public class ThemeManager
     private ColorTheme _colorTheme = new();
     private List<ColorTheme>? _themeCache;
 
-    private readonly string ThemesDir = Path.Combine(
+    private readonly string _themesDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Volt", "Themes");
 
@@ -78,8 +78,8 @@ public class ThemeManager
     {
         if (_themeCache != null) return _themeCache;
         _themeCache = [];
-        if (!Directory.Exists(ThemesDir)) return _themeCache;
-        foreach (var file in Directory.GetFiles(ThemesDir, "*.json"))
+        if (!Directory.Exists(_themesDir)) return _themeCache;
+        foreach (var file in Directory.GetFiles(_themesDir, "*.json"))
         {
             try
             {
@@ -157,10 +157,10 @@ public class ThemeManager
     {
         try
         {
-            Directory.CreateDirectory(ThemesDir);
-            WriteEmbeddedResource("Volt.Resources.Themes.default-dark.json", Path.Combine(ThemesDir, "default-dark.json"));
-            WriteEmbeddedResource("Volt.Resources.Themes.default-light.json", Path.Combine(ThemesDir, "default-light.json"));
-            WriteEmbeddedResource("Volt.Resources.Themes.gruvbox-dark.json", Path.Combine(ThemesDir, "gruvbox-dark.json"));
+            Directory.CreateDirectory(_themesDir);
+            WriteEmbeddedResource("Volt.Resources.Themes.default-dark.json", Path.Combine(_themesDir, "default-dark.json"));
+            WriteEmbeddedResource("Volt.Resources.Themes.default-light.json", Path.Combine(_themesDir, "default-light.json"));
+            WriteEmbeddedResource("Volt.Resources.Themes.gruvbox-dark.json", Path.Combine(_themesDir, "gruvbox-dark.json"));
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
