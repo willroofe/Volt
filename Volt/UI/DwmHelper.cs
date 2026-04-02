@@ -34,9 +34,16 @@ internal static class DwmHelper
         if (chromeBrush != null)
         {
             var cc = chromeBrush.Color;
-            int colorRef = cc.R | (cc.G << 8) | (cc.B << 16);
-            DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, ref colorRef, sizeof(int));
-            DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, ref colorRef, sizeof(int));
+            int captionRef = cc.R | (cc.G << 8) | (cc.B << 16);
+            DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, ref captionRef, sizeof(int));
+        }
+
+        var borderBrush = Application.Current.Resources["ThemeBorderBrush"] as SolidColorBrush;
+        if (borderBrush != null)
+        {
+            var bc = borderBrush.Color;
+            int borderRef = bc.R | (bc.G << 8) | (bc.B << 16);
+            DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, ref borderRef, sizeof(int));
         }
     }
 }
