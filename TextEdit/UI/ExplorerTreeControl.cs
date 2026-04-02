@@ -251,23 +251,24 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
 
             double x = indent;
 
-            // Arrow chevron
+            // Arrow chevron (muted when collapsed, normal text color when expanded)
             if (HasChildren(row.Item))
             {
                 string chevron = row.Item.IsExpanded ? ChevronDown : ChevronRight;
+                var arrowBrush = row.Item.IsExpanded ? textBrush : mutedBrush;
                 var arrowText = new FormattedText(chevron, CultureInfo.CurrentCulture,
-                    FlowDirection.LeftToRight, IconTypeface, 8, mutedBrush, dpi);
+                    FlowDirection.LeftToRight, IconTypeface, 8, arrowBrush, dpi);
                 double arrowX = x + (ArrowZoneWidth - arrowText.Width) / 2;
                 double arrowY = y + (RowHeight - arrowText.Height) / 2;
                 dc.DrawText(arrowText, new Point(arrowX, arrowY));
             }
             x += ArrowZoneWidth;
 
-            // Icon (only for directories and files, not project root or virtual folders)
-            if (row.Item.Kind == FileTreeItemKind.Directory || row.Item.Kind == FileTreeItemKind.File)
+            // Icon (directories, virtual folders, and files — not project root)
+            if (row.Item.Kind != FileTreeItemKind.ProjectRoot)
             {
-                string icon = row.Item.Kind == FileTreeItemKind.Directory ? FolderIcon : FileIcon;
-                var iconBrush = row.Item.Kind == FileTreeItemKind.Directory ? textBrush : mutedBrush;
+                string icon = row.Item.Kind == FileTreeItemKind.File ? FileIcon : FolderIcon;
+                var iconBrush = row.Item.Kind == FileTreeItemKind.File ? mutedBrush : textBrush;
                 var iconText = new FormattedText(icon, CultureInfo.CurrentCulture,
                     FlowDirection.LeftToRight, IconTypeface, 12, iconBrush, dpi);
                 double iconX = x + (IconZoneWidth - iconText.Width) / 2;
@@ -286,7 +287,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
                     nameTypeface = SemiBoldTypeface;
                     break;
                 case FileTreeItemKind.VirtualFolder:
-                    nameBrush = headerFgBrush;
+                    nameBrush = textBrush;
                     nameTypeface = ItalicTypeface;
                     break;
                 default:
