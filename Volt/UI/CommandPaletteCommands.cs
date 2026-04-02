@@ -2,29 +2,47 @@
 
 namespace Volt;
 
+/// <summary>Groups the dependencies needed to build the command palette list.</summary>
+internal record CommandPaletteContext(
+    List<TabInfo> Tabs,
+    AppSettings Settings,
+    ThemeManager ThemeManager,
+    EditorControl ActiveEditor,
+    FindBar FindBar,
+    Action SaveSettings,
+    Action ToggleExplorer,
+    Action OpenFolder,
+    Action CloseFolder,
+    Action RefreshExplorerLayout,
+    Action NewProject,
+    Action OpenProject,
+    Action SaveProject,
+    Action CloseProject,
+    Action ToggleWordWrap);
+
 /// <summary>
 /// Builds the command list for the command palette, keeping the 90 lines of
 /// preview/commit/revert lambdas out of MainWindow.
 /// </summary>
 internal static class CommandPaletteCommands
 {
-    public static List<PaletteCommand> Build(
-        List<TabInfo> tabs,
-        AppSettings settings,
-        ThemeManager themeManager,
-        EditorControl activeEditor,
-        FindBar findBar,
-        Action saveSettings,
-        Action toggleExplorer,
-        Action openFolder,
-        Action closeFolder,
-        Action refreshExplorerLayout,
-        Action newProject,
-        Action openProject,
-        Action saveProject,
-        Action closeProject,
-        Action toggleWordWrap)
+    public static List<PaletteCommand> Build(CommandPaletteContext ctx)
     {
+        var tabs = ctx.Tabs;
+        var settings = ctx.Settings;
+        var themeManager = ctx.ThemeManager;
+        var activeEditor = ctx.ActiveEditor;
+        var findBar = ctx.FindBar;
+        var saveSettings = ctx.SaveSettings;
+        var toggleExplorer = ctx.ToggleExplorer;
+        var openFolder = ctx.OpenFolder;
+        var closeFolder = ctx.CloseFolder;
+        var refreshExplorerLayout = ctx.RefreshExplorerLayout;
+        var newProject = ctx.NewProject;
+        var openProject = ctx.OpenProject;
+        var saveProject = ctx.SaveProject;
+        var closeProject = ctx.CloseProject;
+        var toggleWordWrap = ctx.ToggleWordWrap;
         return
         [
             new("Change Theme", CurrentValue: () => settings.Application.ColorTheme, GetOptions: () =>
@@ -93,7 +111,7 @@ internal static class CommandPaletteCommands
                 )).ToList();
             }),
 
-            new("Toggle Block Caret", Toggle: () =>
+            new("Toggle Block Caret", Action: () =>
             {
                 settings.Editor.Caret.BlockCaret = !settings.Editor.Caret.BlockCaret;
                 foreach (var t in tabs)
@@ -104,7 +122,7 @@ internal static class CommandPaletteCommands
                 saveSettings();
             }),
 
-            new("Toggle Word Wrap", Toggle: toggleWordWrap),
+            new("Toggle Word Wrap", Action: toggleWordWrap),
 
             new("Find Bar Position", CurrentValue: () => settings.Editor.Find.BarPosition, GetOptions: () =>
             {
@@ -117,11 +135,11 @@ internal static class CommandPaletteCommands
                 )).ToList();
             }),
 
-            new("Toggle File Explorer", Toggle: toggleExplorer),
+            new("Toggle File Explorer", Action: toggleExplorer),
 
-            new("Explorer: Open Folder...", Toggle: openFolder),
+            new("Explorer: Open Folder...", Action: openFolder),
 
-            new("Explorer: Close Folder", Toggle: closeFolder),
+            new("Explorer: Close Folder", Action: closeFolder),
 
             new("Explorer: Panel Side", CurrentValue: () => settings.Editor.Explorer.PanelSide, GetOptions: () =>
             {
@@ -134,13 +152,13 @@ internal static class CommandPaletteCommands
                 )).ToList();
             }),
 
-            new("Project: New Project", Toggle: newProject),
+            new("Project: New Project", Action: newProject),
 
-            new("Project: Open Project...", Toggle: openProject),
+            new("Project: Open Project...", Action: openProject),
 
-            new("Project: Save Project", Toggle: saveProject),
+            new("Project: Save Project", Action: saveProject),
 
-            new("Project: Close Project", Toggle: closeProject),
+            new("Project: Close Project", Action: closeProject),
         ];
     }
 }

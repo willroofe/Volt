@@ -60,8 +60,8 @@ public partial class MainWindow : Window
             SetExplorerVisible(true);
         }
 
-        CmdPalette.Closed += (_, _) => Keyboard.Focus(Editor);
-        FindBarControl.Closed += (_, _) => Keyboard.Focus(Editor);
+        CmdPalette.Closed += (_, _) => { if (_activeTab != null) Keyboard.Focus(Editor); };
+        FindBarControl.Closed += (_, _) => { if (_activeTab != null) Keyboard.Focus(Editor); };
         TabScrollViewer.ScrollChanged += (_, _) => UpdateTabOverflowIndicators();
         StateChanged += OnStateChanged;
         Closing += OnWindowClosing;
@@ -637,25 +637,37 @@ public partial class MainWindow : Window
 
     private void OnExplorerFileOpen(string path)
     {
+        var tab = OpenFileInTab(path, reuseUntitled: true);
+        if (tab != null)
+        {
+            ActivateTab(tab);
+            FindBarControl.RefreshSearch();
+        }
+    }
+
+    /// <summary>
+    /// Opens a file in a tab, reusing an existing tab if already open.
+    /// Returns the tab, or null if the file was too large or already active.
+    /// When <paramref name="reuseUntitled"/> is true and the active tab is untitled and clean, it is reused.
+    /// </summary>
+    private TabInfo? OpenFileInTab(string path, bool reuseUntitled)
+    {
         var fullPath = Path.GetFullPath(path);
 
         // Switch to existing tab if already open
         var existing = _tabs.FirstOrDefault(t =>
             t.FilePath != null && string.Equals(Path.GetFullPath(t.FilePath), fullPath, StringComparison.OrdinalIgnoreCase));
         if (existing != null)
-        {
-            ActivateTab(existing);
-            return;
-        }
+            return existing;
+
+        if (!CheckFileSize(path)) return null;
 
         // Reuse current tab if untitled and clean
         TabInfo tab;
-        if (_activeTab != null && _activeTab.FilePath == null && !_activeTab.Editor.IsDirty)
+        if (reuseUntitled && _activeTab != null && _activeTab.FilePath == null && !_activeTab.Editor.IsDirty)
             tab = _activeTab;
         else
             tab = CreateTab();
-
-        if (!CheckFileSize(path)) return;
 
         tab.FilePath = path;
         tab.FileEncoding = FileHelper.DetectEncoding(path);
@@ -664,8 +676,7 @@ public partial class MainWindow : Window
         tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(path, tab.LastKnownFileSize);
         tab.StartWatching();
         UpdateTabHeader(tab);
-        ActivateTab(tab);
-        FindBarControl.RefreshSearch();
+        return tab;
     }
 
     private void RestoreSession()
@@ -973,23 +984,7 @@ public partial class MainWindow : Window
             SaveTabAs(tab);
             return;
         }
-        tab.StopWatching();
-        try
-        {
-            FileHelper.AtomicWriteText(tab.FilePath, tab.Editor.GetContent(), tab.FileEncoding);
-        }
-        catch (Exception ex)
-        {
-            tab.StartWatching();
-            ThemedMessageBox.Show(this, $"Could not save '{tab.DisplayName}':\n\n{ex.Message}",
-                "Save Failed");
-            return;
-        }
-        tab.StartWatching();
-        tab.LastKnownFileSize = new FileInfo(tab.FilePath).Length;
-        tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(tab.FilePath, tab.LastKnownFileSize);
-        tab.Editor.MarkClean();
-        UpdateTabHeader(tab);
+        if (!WriteAndFinishSave(tab)) return;
         if (tab == _activeTab) UpdateTitle();
     }
 
@@ -1014,28 +1009,38 @@ public partial class MainWindow : Window
         };
         if (dlg.ShowDialog() != true) return;
         tab.FilePath = dlg.FileName;
+        if (!WriteAndFinishSave(tab)) return;
+        if (tab == _activeTab)
+        {
+            UpdateTitle();
+            UpdateFileType();
+        }
+    }
+
+    /// <summary>
+    /// Writes the tab content to disk and updates post-save state (watcher, file size, dirty flag, header).
+    /// Returns false if the write failed (error already shown to user).
+    /// </summary>
+    private bool WriteAndFinishSave(TabInfo tab)
+    {
         tab.StopWatching();
         try
         {
-            FileHelper.AtomicWriteText(tab.FilePath, tab.Editor.GetContent(), tab.FileEncoding);
+            FileHelper.AtomicWriteText(tab.FilePath!, tab.Editor.GetContent(), tab.FileEncoding);
         }
         catch (Exception ex)
         {
             tab.StartWatching();
             ThemedMessageBox.Show(this, $"Could not save '{tab.DisplayName}':\n\n{ex.Message}",
                 "Save Failed");
-            return;
+            return false;
         }
         tab.StartWatching();
-        tab.LastKnownFileSize = new FileInfo(tab.FilePath).Length;
-        tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(tab.FilePath, tab.LastKnownFileSize);
+        tab.LastKnownFileSize = new FileInfo(tab.FilePath!).Length;
+        tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(tab.FilePath!, tab.LastKnownFileSize);
         tab.Editor.MarkClean();
         UpdateTabHeader(tab);
-        if (tab == _activeTab)
-        {
-            UpdateTitle();
-            UpdateFileType();
-        }
+        return true;
     }
 
     private void OnFileChangedExternally(TabInfo tab)
@@ -1138,38 +1143,10 @@ public partial class MainWindow : Window
         TabInfo? lastTab = null;
         foreach (var fileName in dlg.FileNames)
         {
-            var fullPath = Path.GetFullPath(fileName);
-
-            // If the file is already open, just switch to that tab
-            var existing = _tabs.FirstOrDefault(t =>
-                t.FilePath != null && string.Equals(Path.GetFullPath(t.FilePath), fullPath, StringComparison.OrdinalIgnoreCase));
-            if (existing != null)
-            {
-                lastTab = existing;
-                continue;
-            }
-
-            // Reuse current tab if it is untitled and clean (first file only)
-            TabInfo tab;
-            if (lastTab == null && _activeTab != null && _activeTab.FilePath == null && !_activeTab.Editor.IsDirty)
-            {
-                tab = _activeTab;
-            }
-            else
-            {
-                tab = CreateTab();
-            }
-
-            if (!CheckFileSize(fileName)) continue;
-
-            tab.FilePath = fileName;
-            tab.FileEncoding = FileHelper.DetectEncoding(fileName);
-            tab.Editor.SetContent(FileHelper.ReadAllText(fileName, tab.FileEncoding));
-            tab.LastKnownFileSize = new FileInfo(fileName).Length;
-            tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(fileName, tab.LastKnownFileSize);
-            tab.StartWatching();
-            UpdateTabHeader(tab);
-            lastTab = tab;
+            // Only reuse untitled tab for the first file opened
+            var tab = OpenFileInTab(fileName, reuseUntitled: lastTab == null);
+            if (tab != null)
+                lastTab = tab;
         }
 
         if (lastTab != null)
@@ -1290,6 +1267,7 @@ public partial class MainWindow : Window
 
     private void StepFontSize(int direction)
     {
+        if (_activeTab == null) return;
         var sizes = AppSettings.FontSizeOptions;
         int idx = Array.IndexOf(sizes, Editor.EditorFontSize);
         if (idx < 0) idx = Array.IndexOf(sizes, 14);
@@ -1304,7 +1282,8 @@ public partial class MainWindow : Window
 
     private void OpenCommandPalette()
     {
-        var commands = CommandPaletteCommands.Build(
+        if (_activeTab == null) return;
+        var commands = CommandPaletteCommands.Build(new CommandPaletteContext(
             _tabs, _settings, ThemeManager, Editor, FindBarControl, () => _settings.Save(),
             ToggleExplorer, OpenFolderInExplorer, CloseFolderInExplorer,
             () => { if (_settings.Editor.Explorer.PanelVisible) SetExplorerVisible(true); },
@@ -1312,7 +1291,7 @@ public partial class MainWindow : Window
             () => OnOpenProject(this, new RoutedEventArgs()),
             () => OnSaveProject(this, new RoutedEventArgs()),
             CloseCurrentProject,
-            () => OnToggleWordWrap(this, new RoutedEventArgs()));
+            () => OnToggleWordWrap(this, new RoutedEventArgs())));
         CmdPalette.SetCommands(commands);
         CmdPalette.Open();
     }
@@ -1596,35 +1575,160 @@ public partial class MainWindow : Window
         var window = new Window
         {
             Title = title,
-            Width = 350,
-            Height = 150,
+            Width = 380,
+            Height = 190,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             ResizeMode = ResizeMode.NoResize,
-            WindowStyle = WindowStyle.ToolWindow
+            WindowStyle = WindowStyle.None,
+            AllowsTransparency = true,
+            Background = Brushes.Transparent,
+            ShowInTaskbar = false,
+            Owner = Application.Current.MainWindow
         };
 
-        var panel = new StackPanel { Margin = new Thickness(12) };
-        panel.Children.Add(new TextBlock { Text = prompt, Margin = new Thickness(0, 0, 0, 8) });
-        var textBox = new TextBox { Text = defaultValue };
+        // Use WindowChrome for draggable title bar
+        var chrome = new System.Windows.Shell.WindowChrome
+        {
+            CaptionHeight = 32,
+            ResizeBorderThickness = new Thickness(0),
+            GlassFrameThickness = new Thickness(-1),
+            UseAeroCaptionButtons = false
+        };
+        System.Windows.Shell.WindowChrome.SetWindowChrome(window, chrome);
+
+        // Outer layout matching ThemedMessageBox structure
+        var root = new DockPanel();
+        root.SetResourceReference(DockPanel.BackgroundProperty, "ThemeContentBg");
+
+        // Title bar
+        var titleBar = new Grid { Height = 32 };
+        titleBar.SetResourceReference(Grid.BackgroundProperty, "ThemeChromeBrush");
+        DockPanel.SetDock(titleBar, Dock.Top);
+        titleBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        titleBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var titleText = new TextBlock
+        {
+            Text = title,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(12, 0, 0, 0),
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 12,
+            IsHitTestVisible = false
+        };
+        titleText.SetResourceReference(TextBlock.ForegroundProperty, "ThemeTextFg");
+        Grid.SetColumn(titleText, 0);
+        titleBar.Children.Add(titleText);
+
+        var closeBtn = new Button
+        {
+            Content = "\uE8BB",
+            Style = (Style)Application.Current.FindResource("CloseButton")
+        };
+        closeBtn.Click += (_, _) => { window.DialogResult = false; };
+        Grid.SetColumn(closeBtn, 1);
+        titleBar.Children.Add(closeBtn);
+        root.Children.Add(titleBar);
+
+        // Separator
+        var sep = new Border { Height = 1 };
+        sep.SetResourceReference(Border.BackgroundProperty, "ThemeBorderBrush");
+        DockPanel.SetDock(sep, Dock.Top);
+        root.Children.Add(sep);
+
+        // Content area
+        var content = new Grid { Margin = new Thickness(24, 20, 24, 20) };
+        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var promptText = new TextBlock
+        {
+            Text = prompt,
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 13,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 8)
+        };
+        promptText.SetResourceReference(TextBlock.ForegroundProperty, "ThemeTextFg");
+        Grid.SetRow(promptText, 0);
+        content.Children.Add(promptText);
+
+        var textBox = new TextBox
+        {
+            Text = defaultValue,
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 13,
+            Padding = new Thickness(4, 3, 4, 3)
+        };
+        textBox.SetResourceReference(TextBox.BackgroundProperty, "ThemeContentBg");
+        textBox.SetResourceReference(TextBox.ForegroundProperty, "ThemeTextFg");
+        textBox.SetResourceReference(TextBox.BorderBrushProperty, "ThemeMenuPopupBorder");
+        textBox.SetResourceReference(TextBox.CaretBrushProperty, "ThemeTextFg");
         textBox.SelectAll();
-        panel.Children.Add(textBox);
+        Grid.SetRow(textBox, 1);
+        content.Children.Add(textBox);
 
         var btnPanel = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 12, 0, 0)
+            Margin = new Thickness(0, 16, 0, 0)
         };
-        var okBtn = new Button { Content = "OK", Width = 75, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
-        var cancelBtn = new Button { Content = "Cancel", Width = 75, IsCancel = true };
+        Grid.SetRow(btnPanel, 2);
+
+        // Helper to create themed buttons matching ThemedMessageBox's DialogButton style
+        Button MakeButton(string text, bool isDefault, bool isCancel)
+        {
+            var btn = new Button
+            {
+                Content = text,
+                MinWidth = 80,
+                Margin = new Thickness(4, 0, 0, 0),
+                Padding = new Thickness(12, 6, 12, 6),
+                FontFamily = new FontFamily("Segoe UI"),
+                FontSize = 13,
+                Cursor = System.Windows.Input.Cursors.Hand,
+                IsDefault = isDefault,
+                IsCancel = isCancel
+            };
+            btn.SetResourceReference(Button.ForegroundProperty, "ThemeButtonFg");
+
+            // Build a simple template matching DialogButton style
+            var template = new ControlTemplate(typeof(Button));
+            var borderFactory = new FrameworkElementFactory(typeof(Border), "Bd");
+            borderFactory.SetResourceReference(Border.BackgroundProperty, "ThemeContentBg");
+            borderFactory.SetResourceReference(Border.BorderBrushProperty, "ThemeMenuPopupBorder");
+            borderFactory.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+            borderFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
+            borderFactory.SetValue(Border.PaddingProperty, new Thickness(12, 6, 12, 6));
+            borderFactory.SetValue(Border.SnapsToDevicePixelsProperty, true);
+            var cpFactory = new FrameworkElementFactory(typeof(ContentPresenter));
+            cpFactory.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            cpFactory.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+            borderFactory.AppendChild(cpFactory);
+            template.VisualTree = borderFactory;
+
+            var hoverTrigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hoverTrigger.Setters.Add(new Setter(Border.BackgroundProperty,
+                new DynamicResourceExtension("ThemeButtonHover"), "Bd"));
+            template.Triggers.Add(hoverTrigger);
+
+            btn.Template = template;
+            return btn;
+        }
+
+        var okBtn = MakeButton("OK", isDefault: true, isCancel: false);
         okBtn.Click += (_, _) => { window.DialogResult = true; };
         btnPanel.Children.Add(okBtn);
+
+        var cancelBtn = MakeButton("Cancel", isDefault: false, isCancel: true);
         btnPanel.Children.Add(cancelBtn);
-        panel.Children.Add(btnPanel);
 
-        window.Content = panel;
-        window.Owner = Application.Current.MainWindow;
+        content.Children.Add(btnPanel);
+        root.Children.Add(content);
 
+        window.Content = root;
         textBox.Focus();
 
         return window.ShowDialog() == true ? textBox.Text : null;

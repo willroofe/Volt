@@ -105,14 +105,14 @@ public partial class SettingsWindow : Window
 
     private void ReadCurrentValues()
     {
-        TabSize = AppSettings.TabSizeOptions[TabSizeBox.SelectedIndex];
+        TabSize = AppSettings.TabSizeOptions[Math.Max(0, TabSizeBox.SelectedIndex)];
         BlockCaret = CaretStyleBox.SelectedIndex == 1;
         CaretBlinkMs = (int)CaretBlinkSlider.Value;
-        SelectedFontFamily = _fontNames[FontFamilyBox.SelectedIndex];
-        SelectedFontSize = AppSettings.FontSizeOptions[FontSizeBox.SelectedIndex];
-        SelectedFontWeight = AppSettings.FontWeightOptions[FontWeightBox.SelectedIndex];
-        SelectedLineHeight = AppSettings.LineHeightOptions[LineHeightBox.SelectedIndex];
-        ColorThemeName = _themeNames[ColorThemeBox.SelectedIndex];
+        SelectedFontFamily = _fontNames[Math.Max(0, FontFamilyBox.SelectedIndex)];
+        SelectedFontSize = AppSettings.FontSizeOptions[Math.Max(0, FontSizeBox.SelectedIndex)];
+        SelectedFontWeight = AppSettings.FontWeightOptions[Math.Max(0, FontWeightBox.SelectedIndex)];
+        SelectedLineHeight = AppSettings.LineHeightOptions[Math.Max(0, LineHeightBox.SelectedIndex)];
+        ColorThemeName = _themeNames[Math.Max(0, ColorThemeBox.SelectedIndex)];
         FindBarPosition = FindBarPosBox.SelectedIndex == 0 ? "Top" : "Bottom";
         PanelSide = PanelSideBox.SelectedIndex == 1 ? "Right" : "Left";
     }

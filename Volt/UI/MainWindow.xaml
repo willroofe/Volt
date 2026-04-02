@@ -67,6 +67,89 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="MenuItemDropdownStyle" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTextFg}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="Bd" Background="Transparent"
+                                CornerRadius="4" Margin="4,1">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="28" SharedSizeGroup="Icon"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="Shortcut"/>
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter Grid.Column="0" ContentSource="Icon"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  Width="16" Height="16"/>
+                                <ContentPresenter Grid.Column="1" ContentSource="Header"
+                                                  Margin="6,4,12,4"
+                                                  VerticalAlignment="Center"
+                                                  RecognizesAccessKey="True"/>
+                                <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}"
+                                           Margin="0,4,8,4"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource ThemeTextFgMuted}"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeMenuItemHover}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="MenuItemCheckableStyle" TargetType="MenuItem" BasedOn="{StaticResource MenuItemDropdownStyle}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="Bd" Background="Transparent"
+                                CornerRadius="4" Margin="4,1">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="28" SharedSizeGroup="Icon"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="Shortcut"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid Grid.Column="0">
+                                    <ContentPresenter ContentSource="Icon"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"
+                                                      Width="16" Height="16"/>
+                                    <TextBlock x:Name="CheckMark" Text="&#xE73E;"
+                                               FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource ThemeTextFg}"
+                                               Visibility="Collapsed"/>
+                                </Grid>
+                                <ContentPresenter Grid.Column="1" ContentSource="Header"
+                                                  Margin="6,4,12,4"
+                                                  VerticalAlignment="Center"
+                                                  RecognizesAccessKey="True"/>
+                                <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}"
+                                           Margin="0,4,8,4"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource ThemeTextFgMuted}"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeMenuItemHover}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
     <Grid>
     <DockPanel>
@@ -91,7 +174,8 @@
                   FontFamily="Segoe UI" FontSize="12"
                   Foreground="{DynamicResource ThemeTextFg}"
                   WindowChrome.IsHitTestVisibleInChrome="True">
-                <MenuItem Style="{StaticResource TopLevelMenuItem}">
+                <MenuItem Style="{StaticResource TopLevelMenuItem}"
+                         ItemContainerStyle="{StaticResource MenuItemDropdownStyle}">
                     <MenuItem.Header>
                         <StackPanel Orientation="Horizontal">
                             <Viewbox Width="21" Height="21" Margin="-4,0,5,0">
@@ -110,46 +194,6 @@
                                        FontWeight="SemiBold"/>
                         </StackPanel>
                     </MenuItem.Header>
-                    <MenuItem.ItemContainerStyle>
-                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
-                            <Setter Property="FontFamily" Value="Segoe UI"/>
-                            <Setter Property="FontSize" Value="12"/>
-                            <Setter Property="Foreground" Value="{DynamicResource ThemeTextFg}"/>
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="MenuItem">
-                                        <Border x:Name="Bd" Background="Transparent"
-                                                CornerRadius="4" Margin="4,1">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="28" SharedSizeGroup="Icon"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto" SharedSizeGroup="Shortcut"/>
-                                                </Grid.ColumnDefinitions>
-                                                <ContentPresenter Grid.Column="0" ContentSource="Icon"
-                                                                  HorizontalAlignment="Center"
-                                                                  VerticalAlignment="Center"
-                                                                  Width="16" Height="16"/>
-                                                <ContentPresenter Grid.Column="1" ContentSource="Header"
-                                                                  Margin="6,4,12,4"
-                                                                  VerticalAlignment="Center"
-                                                                  RecognizesAccessKey="True"/>
-                                                <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}"
-                                                           Margin="0,4,8,4"
-                                                           VerticalAlignment="Center"
-                                                           Foreground="{DynamicResource ThemeTextFgMuted}"/>
-                                            </Grid>
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsHighlighted" Value="True">
-                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeMenuItemHover}"/>
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </MenuItem.ItemContainerStyle>
                     <MenuItem Header="S_ettings" InputGestureText="Ctrl+Alt+S" Click="OnSettings">
                         <MenuItem.Icon>
                             <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
@@ -158,47 +202,8 @@
                     <Separator/>
                     <MenuItem Header="E_xit" InputGestureText="Alt+F4" Click="OnExit"/>
                 </MenuItem>
-                <MenuItem Header="_File" Style="{StaticResource TopLevelMenuItem}">
-                    <MenuItem.ItemContainerStyle>
-                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
-                            <Setter Property="FontFamily" Value="Segoe UI"/>
-                            <Setter Property="FontSize" Value="12"/>
-                            <Setter Property="Foreground" Value="{DynamicResource ThemeTextFg}"/>
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="MenuItem">
-                                        <Border x:Name="Bd" Background="Transparent"
-                                                CornerRadius="4" Margin="4,1">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="28" SharedSizeGroup="Icon"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto" SharedSizeGroup="Shortcut"/>
-                                                </Grid.ColumnDefinitions>
-                                                <ContentPresenter Grid.Column="0" ContentSource="Icon"
-                                                                  HorizontalAlignment="Center"
-                                                                  VerticalAlignment="Center"
-                                                                  Width="16" Height="16"/>
-                                                <ContentPresenter Grid.Column="1" ContentSource="Header"
-                                                                  Margin="6,4,12,4"
-                                                                  VerticalAlignment="Center"
-                                                                  RecognizesAccessKey="True"/>
-                                                <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}"
-                                                           Margin="0,4,8,4"
-                                                           VerticalAlignment="Center"
-                                                           Foreground="{DynamicResource ThemeTextFgMuted}"/>
-                                            </Grid>
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsHighlighted" Value="True">
-                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeMenuItemHover}"/>
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </MenuItem.ItemContainerStyle>
+                <MenuItem Header="_File" Style="{StaticResource TopLevelMenuItem}"
+                         ItemContainerStyle="{StaticResource MenuItemDropdownStyle}">
                     <MenuItem Header="_Save" InputGestureText="Ctrl+S" Click="OnSave">
                         <MenuItem.Icon>
                             <TextBlock Text="&#xE74E;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
@@ -213,100 +218,12 @@
                     </MenuItem>
                     <MenuItem Header="Open _Folder" InputGestureText="Ctrl+Shift+O" Click="OnOpenFolder"/>
                 </MenuItem>
-                <MenuItem Header="_Edit" Style="{StaticResource TopLevelMenuItem}">
-                    <MenuItem.ItemContainerStyle>
-                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
-                            <Setter Property="FontFamily" Value="Segoe UI"/>
-                            <Setter Property="FontSize" Value="12"/>
-                            <Setter Property="Foreground" Value="{DynamicResource ThemeTextFg}"/>
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="MenuItem">
-                                        <Border x:Name="Bd" Background="Transparent"
-                                                CornerRadius="4" Margin="4,1">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="28" SharedSizeGroup="Icon"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto" SharedSizeGroup="Shortcut"/>
-                                                </Grid.ColumnDefinitions>
-                                                <Grid Grid.Column="0">
-                                                    <ContentPresenter ContentSource="Icon"
-                                                                      HorizontalAlignment="Center"
-                                                                      VerticalAlignment="Center"
-                                                                      Width="16" Height="16"/>
-                                                    <TextBlock x:Name="CheckMark" Text="&#xE73E;"
-                                                               FontFamily="Segoe MDL2 Assets" FontSize="14"
-                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                               Foreground="{DynamicResource ThemeTextFg}"
-                                                               Visibility="Collapsed"/>
-                                                </Grid>
-                                                <ContentPresenter Grid.Column="1" ContentSource="Header"
-                                                                  Margin="6,4,12,4"
-                                                                  VerticalAlignment="Center"
-                                                                  RecognizesAccessKey="True"/>
-                                                <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}"
-                                                           Margin="0,4,8,4"
-                                                           VerticalAlignment="Center"
-                                                           Foreground="{DynamicResource ThemeTextFgMuted}"/>
-                                            </Grid>
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsHighlighted" Value="True">
-                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeMenuItemHover}"/>
-                                            </Trigger>
-                                            <Trigger Property="IsChecked" Value="True">
-                                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/>
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </MenuItem.ItemContainerStyle>
+                <MenuItem Header="_Edit" Style="{StaticResource TopLevelMenuItem}"
+                         ItemContainerStyle="{StaticResource MenuItemCheckableStyle}">
                     <MenuItem x:Name="MenuWordWrap" Header="_Word Wrap" IsCheckable="True" Click="OnToggleWordWrap"/>
                 </MenuItem>
-                <MenuItem Header="_Project" Style="{StaticResource TopLevelMenuItem}">
-                    <MenuItem.ItemContainerStyle>
-                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
-                            <Setter Property="FontFamily" Value="Segoe UI"/>
-                            <Setter Property="FontSize" Value="12"/>
-                            <Setter Property="Foreground" Value="{DynamicResource ThemeTextFg}"/>
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="MenuItem">
-                                        <Border x:Name="Bd" Background="Transparent"
-                                                CornerRadius="4" Margin="4,1">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="28" SharedSizeGroup="Icon"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto" SharedSizeGroup="Shortcut"/>
-                                                </Grid.ColumnDefinitions>
-                                                <ContentPresenter Grid.Column="0" ContentSource="Icon"
-                                                                  HorizontalAlignment="Center"
-                                                                  VerticalAlignment="Center"
-                                                                  Width="16" Height="16"/>
-                                                <ContentPresenter Grid.Column="1" ContentSource="Header"
-                                                                  Margin="6,4,12,4"
-                                                                  VerticalAlignment="Center"
-                                                                  RecognizesAccessKey="True"/>
-                                                <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}"
-                                                           Margin="0,4,8,4"
-                                                           VerticalAlignment="Center"
-                                                           Foreground="{DynamicResource ThemeTextFgMuted}"/>
-                                            </Grid>
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsHighlighted" Value="True">
-                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeMenuItemHover}"/>
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </MenuItem.ItemContainerStyle>
+                <MenuItem Header="_Project" Style="{StaticResource TopLevelMenuItem}"
+                         ItemContainerStyle="{StaticResource MenuItemDropdownStyle}">
                     <MenuItem Header="_New Project" Click="OnNewProject"/>
                     <MenuItem Header="_Open Project" Click="OnOpenProject"/>
                     <MenuItem x:Name="MenuSaveProject" Header="_Save Project" Click="OnSaveProject" IsEnabled="False"/>

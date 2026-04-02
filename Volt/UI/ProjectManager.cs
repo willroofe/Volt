@@ -26,6 +26,8 @@ public class ProjectManager
         var project = JsonSerializer.Deserialize<Project>(json, JsonOptions)
                       ?? new Project();
         project.FilePath = vprojPath;
+        project.Folders ??= [];
+        project.VirtualFolders ??= [];
         if (string.IsNullOrWhiteSpace(project.Name))
             project.Name = Path.GetFileNameWithoutExtension(vprojPath);
         CurrentProject = project;
