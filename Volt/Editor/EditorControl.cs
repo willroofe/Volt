@@ -41,13 +41,23 @@ public class EditorControl : FrameworkElement, IScrollInfo
         set
         {
             if (_wordWrap == value) return;
+            // Remember caret's screen-relative Y before layout changes
+            double caretScreenY = GetVisualY(_caretLine, _caretCol) - _offset.Y;
             _wordWrap = value;
+            _skipWrapAnchor = true;
             RecalcWrapData();
             if (_wordWrap) SetHorizontalOffset(0);
             _textVisualDirty = true;
             _gutterVisualDirty = true;
             UpdateExtent();
-            EnsureCaretVisible();
+            _skipWrapAnchor = false;
+            // Restore caret to same screen position instead of EnsureCaretVisible
+            double newCaretY = GetVisualY(_caretLine, _caretCol);
+            double maxOffset = Math.Max(0, _extent.Height - _viewport.Height);
+            _offset.Y = Math.Clamp(newCaretY - caretScreenY, 0, maxOffset);
+            _textTransform.Y = -_offset.Y;
+            _gutterTransform.Y = -_offset.Y;
+            ScrollOwner?.InvalidateScrollInfo();
             InvalidateVisual();
         }
     }
@@ -155,6 +165,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private int[]? _wrapLineCount;      // visual lines per logical line
     private int[]? _wrapCumulOffset;    // cumulative visual line offset
     private int _totalVisualLines;
+    private bool _skipWrapAnchor;
 
     // ── Public API (delegates to buffer) ─────────────────────────────
     public bool IsDirty => _buffer.IsDirty;
@@ -557,7 +568,30 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     private void UpdateExtent()
     {
+        // Anchor scroll to the top visible logical line across wrap recalculations
+        int anchorLine = -1;
+        int anchorWrap = 0;
+        double anchorDelta = 0;
+        if (_wordWrap && !_skipWrapAnchor && _wrapCumulOffset != null && _totalVisualLines > 0
+            && _wrapCumulOffset.Length >= _buffer.Count)
+        {
+            int topVisual = Math.Clamp((int)(_offset.Y / _font.LineHeight), 0, _totalVisualLines - 1);
+            (anchorLine, anchorWrap) = VisualToLogical(topVisual);
+            anchorDelta = _offset.Y - (_wrapCumulOffset[anchorLine] + anchorWrap) * _font.LineHeight;
+        }
+
         RecalcWrapData();
+
+        // Restore scroll position so the same logical line stays at top
+        if (_wordWrap && anchorLine >= 0 && _wrapCumulOffset != null)
+        {
+            int newWrap = Math.Min(anchorWrap, _wrapLineCount![anchorLine] - 1);
+            double newY = (_wrapCumulOffset[anchorLine] + newWrap) * _font.LineHeight + anchorDelta;
+            double maxY = Math.Max(0, _totalVisualLines * _font.LineHeight + _viewport.Height / 2 - _viewport.Height);
+            _offset.Y = Math.Clamp(newY, 0, maxY);
+            _textTransform.Y = -_offset.Y;
+            _gutterTransform.Y = -_offset.Y;
+        }
 
         int digits = _buffer.Count > 0
             ? (int)Math.Floor(Math.Log10(_buffer.Count)) + 1
@@ -598,7 +632,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _charsPerVisualLine = Math.Max(1, (int)(textAreaWidth / _font.CharWidth));
 
         int count = _buffer.Count;
-        if (_wrapLineCount == null || _wrapLineCount.Length < count)
+        if (_wrapLineCount == null || _wrapLineCount.Length < count
+            || _wrapCumulOffset == null || _wrapCumulOffset.Length < count)
         {
             _wrapLineCount = new int[count];
             _wrapCumulOffset = new int[count];
