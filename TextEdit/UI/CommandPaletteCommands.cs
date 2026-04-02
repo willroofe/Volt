@@ -18,7 +18,11 @@ internal static class CommandPaletteCommands
         Action toggleExplorer,
         Action openFolder,
         Action closeFolder,
-        Action refreshExplorerLayout)
+        Action refreshExplorerLayout,
+        Action newProject,
+        Action openProject,
+        Action saveProject,
+        Action closeProject)
     {
         return
         [
@@ -126,6 +130,14 @@ internal static class CommandPaletteCommands
                     Revert: () => { settings.Editor.Explorer.PanelSide = original; refreshExplorerLayout(); }
                 )).ToList();
             }),
+
+            new("Project: New Project", Toggle: newProject),
+
+            new("Project: Open Project...", Toggle: openProject),
+
+            new("Project: Save Project", Toggle: saveProject),
+
+            new("Project: Close Project", Toggle: closeProject),
         ];
     }
 }

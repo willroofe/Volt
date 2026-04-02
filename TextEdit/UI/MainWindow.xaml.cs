@@ -1279,7 +1279,11 @@ public partial class MainWindow : Window
         var commands = CommandPaletteCommands.Build(
             _tabs, _settings, ThemeManager, Editor, FindBarControl, () => _settings.Save(),
             ToggleExplorer, OpenFolderInExplorer, CloseFolderInExplorer,
-            () => { if (_settings.Editor.Explorer.PanelVisible) SetExplorerVisible(true); });
+            () => { if (_settings.Editor.Explorer.PanelVisible) SetExplorerVisible(true); },
+            () => OnNewProject(this, new RoutedEventArgs()),
+            () => OnOpenProject(this, new RoutedEventArgs()),
+            () => OnSaveProject(this, new RoutedEventArgs()),
+            CloseCurrentProject);
         CmdPalette.SetCommands(commands);
         CmdPalette.Open();
     }
