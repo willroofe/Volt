@@ -532,7 +532,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         var newExtent = new Size(
             _gutterWidth + GutterPadding + maxLen * _font.CharWidth + HorizontalScrollPadding,
-            _buffer.Count * _font.LineHeight);
+            _buffer.Count * _font.LineHeight + _viewport.Height / 2);
 
         if (Math.Abs(newExtent.Width - _extent.Width) > 0.5
             || Math.Abs(newExtent.Height - _extent.Height) > 0.5)
