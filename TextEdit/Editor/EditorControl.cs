@@ -1607,6 +1607,24 @@ public class EditorControl : FrameworkElement, IScrollInfo
         PrecomputeLineStates();
     }
 
+    /// <summary>
+    /// Appends new text to the end of the buffer without resetting scroll, caret, or undo.
+    /// Used for incremental reload of append-only files (e.g. log files).
+    /// </summary>
+    public void AppendContent(string text)
+    {
+        int dirtyFrom = _buffer.AppendContent(text, TabSize);
+
+        // Invalidate syntax and token cache only from the appended region
+        InvalidateLineStatesFrom(dirtyFrom);
+        for (int i = dirtyFrom; i < _buffer.Count; i++)
+            _tokenCache.Remove(i);
+
+        UpdateExtent();
+        InvalidateText();
+        PrecomputeLineStates();
+    }
+
     public string GetContent() => _buffer.GetContent();
 
     /// <summary>

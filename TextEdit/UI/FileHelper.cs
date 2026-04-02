@@ -88,6 +88,70 @@ internal static class FileHelper
         return reader.ReadToEnd();
     }
 
+    /// <summary>
+    /// Reads text from a file starting at the given byte offset.
+    /// Returns the new text and the new file length.
+    /// </summary>
+    public static (string text, long newSize) ReadTail(string path, Encoding encoding, long offset)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+        var newSize = stream.Length;
+        if (offset >= newSize) return ("", newSize);
+        stream.Seek(offset, SeekOrigin.Begin);
+        using var reader = new StreamReader(stream, encoding);
+        return (reader.ReadToEnd(), newSize);
+    }
+
+    private const int VerifySnippetSize = 256;
+
+    /// <summary>
+    /// Reads the last <see cref="VerifySnippetSize"/> bytes of a file, used to later
+    /// verify that the beginning of the file hasn't changed (append-only detection).
+    /// </summary>
+    public static byte[] ReadTailVerifyBytes(string path, long fileSize)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+        int len = (int)Math.Min(VerifySnippetSize, fileSize);
+        long seekPos = fileSize - len;
+        stream.Seek(seekPos, SeekOrigin.Begin);
+        var buf = new byte[len];
+        int totalRead = 0;
+        while (totalRead < len)
+        {
+            int n = stream.Read(buf, totalRead, len - totalRead);
+            if (n == 0) break;
+            totalRead += n;
+        }
+        return buf.AsSpan(0, totalRead).ToArray();
+    }
+
+    /// <summary>
+    /// Checks whether the bytes at the same position in the (possibly grown) file
+    /// still match the previously captured tail snippet — i.e. the old content hasn't
+    /// been modified, only appended to.
+    /// </summary>
+    public static bool VerifyAppendOnly(string path, long previousSize, byte[] previousTailBytes)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+        if (stream.Length < previousSize) return false;
+
+        int len = previousTailBytes.Length;
+        long seekPos = previousSize - len;
+        stream.Seek(seekPos, SeekOrigin.Begin);
+        var buf = new byte[len];
+        int totalRead = 0;
+        while (totalRead < len)
+        {
+            int n = stream.Read(buf, totalRead, len - totalRead);
+            if (n == 0) break;
+            totalRead += n;
+        }
+        return buf.AsSpan(0, totalRead).SequenceEqual(previousTailBytes);
+    }
+
     public static Encoding DetectEncoding(string path)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
