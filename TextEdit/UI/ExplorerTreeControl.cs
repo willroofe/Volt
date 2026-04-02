@@ -340,21 +340,19 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             return;
         }
 
-        // Click in arrow zone toggles expand/collapse
-        if (HasChildren(item) && IsInArrowZone(e, row))
-        {
-            item.IsExpanded = !item.IsExpanded;
-            RefreshFlatList();
-            e.Handled = true;
-            return;
-        }
-
         // Select the row
         if (_selectedRowIndex != row)
         {
             _selectedRowIndex = row;
             InvalidateVisual();
             SelectionChanged?.Invoke(item);
+        }
+
+        // Click in arrow zone toggles expand/collapse
+        if (HasChildren(item) && IsInArrowZone(e, row))
+        {
+            item.IsExpanded = !item.IsExpanded;
+            RefreshFlatList();
         }
         e.Handled = true;
     }
@@ -397,32 +395,32 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         {
             _hoverRowIndex = row;
             InvalidateVisual();
-        }
 
-        // Tooltip for truncated names
-        if (row >= 0 && row < _flatRows.Count)
-        {
-            var item = _flatRows[row].Item;
-            double indent = _flatRows[row].Depth * IndentWidth + ArrowZoneWidth;
-            if (item.Kind == FileTreeItemKind.Directory || item.Kind == FileTreeItemKind.File)
-                indent += IconZoneWidth + IconGap;
-            double maxTextWidth = Math.Max(0, ActualWidth - indent - 8);
-            var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-            var typeface = item.Kind switch
+            // Tooltip for truncated names — only measure when hover row changes
+            if (row >= 0 && row < _flatRows.Count)
             {
-                FileTreeItemKind.ProjectRoot => SemiBoldTypeface,
-                FileTreeItemKind.VirtualFolder => ItalicTypeface,
-                _ => NormalTypeface
-            };
-            var ft = new FormattedText(item.Name, CultureInfo.CurrentCulture,
-                FlowDirection.LeftToRight, typeface, 13, Brushes.Black, dpi);
-            ToolTip = ft.Width > maxTextWidth
-                ? (item.Kind == FileTreeItemKind.File ? item.FullPath : item.Name)
-                : null;
-        }
-        else
-        {
-            ToolTip = null;
+                var item = _flatRows[row].Item;
+                double indent = _flatRows[row].Depth * IndentWidth + ArrowZoneWidth;
+                if (item.Kind == FileTreeItemKind.Directory || item.Kind == FileTreeItemKind.File)
+                    indent += IconZoneWidth + IconGap;
+                double maxTextWidth = Math.Max(0, ActualWidth - indent - 8);
+                var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+                var typeface = item.Kind switch
+                {
+                    FileTreeItemKind.ProjectRoot => SemiBoldTypeface,
+                    FileTreeItemKind.VirtualFolder => ItalicTypeface,
+                    _ => NormalTypeface
+                };
+                var ft = new FormattedText(item.Name, CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight, typeface, 13, Brushes.Black, dpi);
+                ToolTip = ft.Width > maxTextWidth
+                    ? (item.Kind == FileTreeItemKind.File ? item.FullPath : item.Name)
+                    : null;
+            }
+            else
+            {
+                ToolTip = null;
+            }
         }
     }
 

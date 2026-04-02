@@ -107,13 +107,6 @@ public class FileTreeItem : INotifyPropertyChanged
         return Path.GetFileName(filePath).StartsWith('.');
     }
 
-    public static ObservableCollection<FileTreeItem> LoadRoot(string folderPath)
-    {
-        var root = new FileTreeItem(folderPath, true);
-        root.IsExpanded = true;
-        return root.Children;
-    }
-
     public static FileTreeItem CreateRootItem(string folderPath)
     {
         return new FileTreeItem(folderPath, true);
