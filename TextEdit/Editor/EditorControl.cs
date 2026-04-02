@@ -1577,6 +1577,36 @@ public class EditorControl : FrameworkElement, IScrollInfo
         PrecomputeLineStates();
     }
 
+    /// <summary>
+    /// Replaces the buffer content while preserving scroll position and caret.
+    /// Used when reloading a file that changed on disk.
+    /// </summary>
+    public void ReloadContent(string text)
+    {
+        var savedVOffset = _offset.Y;
+        var savedHOffset = _offset.X;
+        var savedLine = _caretLine;
+        var savedCol = _caretCol;
+
+        _buffer.SetContent(text, TabSize);
+        _selection.Clear();
+        _undoManager.Clear();
+        _cleanUndoDepth = 0;
+        _find.Clear();
+        _tokenCacheDirty = true;
+        InvalidateLineStates();
+        UpdateExtent();
+
+        // Clamp caret to new buffer bounds
+        _caretLine = Math.Min(savedLine, _buffer.Count - 1);
+        _caretCol = Math.Min(savedCol, _buffer[_caretLine].Length);
+
+        SetVerticalOffset(savedVOffset);
+        SetHorizontalOffset(savedHOffset);
+        InvalidateText();
+        PrecomputeLineStates();
+    }
+
     public string GetContent() => _buffer.GetContent();
 
     /// <summary>
