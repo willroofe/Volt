@@ -1530,14 +1530,17 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     protected override Size MeasureOverride(Size availableSize)
     {
-        if (Math.Abs(availableSize.Width - _viewport.Width) > 0.5
-            || Math.Abs(availableSize.Height - _viewport.Height) > 0.5)
+        bool viewportChanged = Math.Abs(availableSize.Width - _viewport.Width) > 0.5
+                            || Math.Abs(availableSize.Height - _viewport.Height) > 0.5;
+        if (viewportChanged)
         {
             _textVisualDirty = true;
             _gutterVisualDirty = true;
         }
         _viewport = availableSize;
         UpdateExtent();
+        if (viewportChanged)
+            ScrollOwner?.InvalidateScrollInfo();
         return availableSize;
     }
 
