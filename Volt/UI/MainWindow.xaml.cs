@@ -934,10 +934,7 @@ public partial class MainWindow : Window
     private void UpdateTitle()
     {
         if (_activeTab == null) return;
-        var name = _activeTab.FilePath != null ? Path.GetFileName(_activeTab.FilePath) : "Untitled";
-        var title = (Editor.IsDirty ? "\u2022 " : "") + name;
-        Title = title;
-        TitleText.Text = title;
+        Title = "Volt";
     }
 
     private bool PromptSaveTab(TabInfo tab)
