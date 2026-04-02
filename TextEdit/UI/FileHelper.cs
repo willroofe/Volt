@@ -75,9 +75,23 @@ internal static class FileHelper
         }
     }
 
+    /// <summary>
+    /// Reads all text from a file using FileShare.ReadWrite | FileShare.Delete so that
+    /// files locked by other processes (e.g. log files being written by a service) can
+    /// still be opened.
+    /// </summary>
+    public static string ReadAllText(string path, Encoding encoding)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream, encoding);
+        return reader.ReadToEnd();
+    }
+
     public static Encoding DetectEncoding(string path)
     {
-        using var stream = File.OpenRead(path);
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
         var bom = new byte[4];
         int read = stream.Read(bom, 0, 4);
 
