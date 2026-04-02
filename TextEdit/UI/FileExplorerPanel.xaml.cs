@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 
 namespace TextEdit;
 
@@ -121,7 +122,17 @@ public partial class FileExplorerPanel : UserControl
     {
         if (_projectManager?.CurrentProject == null) return;
 
-        var item = FolderTree.SelectedItem as FileTreeItem;
+        // Select the item under the cursor so right-click targets the right node
+        FileTreeItem? item = null;
+        if (e.OriginalSource is DependencyObject source)
+        {
+            var treeViewItem = FindVisualParent<TreeViewItem>(source);
+            if (treeViewItem != null)
+            {
+                treeViewItem.IsSelected = true;
+                item = treeViewItem.DataContext as FileTreeItem;
+            }
+        }
         var menu = new ContextMenu();
         var project = _projectManager.CurrentProject;
 
@@ -192,5 +203,15 @@ public partial class FileExplorerPanel : UserControl
         var mi = new MenuItem { Header = header };
         mi.Click += (_, _) => onClick();
         return mi;
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject child) where T : DependencyObject
+    {
+        while (child != null)
+        {
+            if (child is T parent) return parent;
+            child = VisualTreeHelper.GetParent(child);
+        }
+        return null;
     }
 }
