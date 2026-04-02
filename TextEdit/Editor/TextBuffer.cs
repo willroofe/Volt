@@ -192,6 +192,30 @@ public class TextBuffer
         IsDirty = false;
     }
 
+    /// <summary>
+    /// Appends text (read from the tail of a file) to the existing buffer.
+    /// The first piece of the new text is joined onto the current last line
+    /// (it may complete a partial line from the previous read).
+    /// Returns the line index where new content starts.
+    /// </summary>
+    public int AppendContent(string text, int tabSize)
+    {
+        var newLines = text.Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
+        for (int i = 0; i < newLines.Length; i++)
+            newLines[i] = ExpandTabs(newLines[i], tabSize);
+
+        // Join the first fragment onto the current last line
+        int appendStart = _lines.Count - 1;
+        _lines[appendStart] += newLines[0];
+
+        // Add any remaining lines
+        for (int i = 1; i < newLines.Length; i++)
+            _lines.Add(newLines[i]);
+
+        _maxLineLengthDirty = true;
+        return appendStart;
+    }
+
     public string GetContent() => string.Join(_lineEnding, _lines);
 
     public void Clear()

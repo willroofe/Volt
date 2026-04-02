@@ -21,6 +21,12 @@ public class TabInfo
     /// <summary>Tracks the last write time when we loaded or saved the file, to detect external changes.</summary>
     public DateTime LastKnownWriteTimeUtc { get; set; }
 
+    /// <summary>Tracks the file size at last load/reload, used to detect append-only changes.</summary>
+    public long LastKnownFileSize { get; set; }
+
+    /// <summary>Last bytes of the file at load time, used to verify append-only changes.</summary>
+    public byte[]? TailVerifyBytes { get; set; }
+
     /// <summary>Guards against re-entrant external change handling (MessageBox pumps messages).</summary>
     public bool IsHandlingExternalChange { get; set; }
 

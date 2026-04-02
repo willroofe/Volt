@@ -667,6 +667,8 @@ public partial class MainWindow : Window
             return;
         }
         tab.StartWatching();
+        tab.LastKnownFileSize = new FileInfo(tab.FilePath).Length;
+        tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(tab.FilePath, tab.LastKnownFileSize);
         tab.Editor.MarkClean();
         UpdateTabHeader(tab);
         if (tab == _activeTab) UpdateTitle();
@@ -706,6 +708,8 @@ public partial class MainWindow : Window
             return;
         }
         tab.StartWatching();
+        tab.LastKnownFileSize = new FileInfo(tab.FilePath).Length;
+        tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(tab.FilePath, tab.LastKnownFileSize);
         tab.Editor.MarkClean();
         UpdateTabHeader(tab);
         if (tab == _activeTab)
@@ -758,8 +762,30 @@ public partial class MainWindow : Window
 
         try
         {
-            tab.FileEncoding = FileHelper.DetectEncoding(tab.FilePath);
-            tab.Editor.ReloadContent(FileHelper.ReadAllText(tab.FilePath, tab.FileEncoding));
+            var currentSize = new FileInfo(tab.FilePath).Length;
+
+            // Fast path: file only grew, buffer is clean, and old content is untouched
+            if (!tab.Editor.IsDirty
+                && currentSize > tab.LastKnownFileSize
+                && tab.LastKnownFileSize > 0
+                && tab.TailVerifyBytes != null
+                && FileHelper.VerifyAppendOnly(tab.FilePath, tab.LastKnownFileSize, tab.TailVerifyBytes))
+            {
+                var (tail, newSize) = FileHelper.ReadTail(tab.FilePath, tab.FileEncoding, tab.LastKnownFileSize);
+                if (tail.Length > 0)
+                    tab.Editor.AppendContent(tail);
+                tab.LastKnownFileSize = newSize;
+                tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(tab.FilePath, newSize);
+            }
+            else
+            {
+                // Full reload: file was truncated, edited in place, or this is the first load
+                tab.FileEncoding = FileHelper.DetectEncoding(tab.FilePath);
+                tab.Editor.ReloadContent(FileHelper.ReadAllText(tab.FilePath, tab.FileEncoding));
+                tab.LastKnownFileSize = currentSize;
+                tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(tab.FilePath, currentSize);
+            }
+
             tab.LastKnownWriteTimeUtc = File.GetLastWriteTimeUtc(tab.FilePath);
             tab.Editor.MarkClean();
             UpdateTabHeader(tab);
@@ -816,6 +842,8 @@ public partial class MainWindow : Window
             tab.FilePath = fileName;
             tab.FileEncoding = FileHelper.DetectEncoding(fileName);
             tab.Editor.SetContent(FileHelper.ReadAllText(fileName, tab.FileEncoding));
+            tab.LastKnownFileSize = new FileInfo(fileName).Length;
+            tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(fileName, tab.LastKnownFileSize);
             tab.StartWatching();
             UpdateTabHeader(tab);
             lastTab = tab;
