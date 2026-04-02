@@ -55,7 +55,7 @@ public partial class FileExplorerPanel : UserControl
     public void OpenProject(Project project)
     {
         _openFolderPath = null;
-        HeaderText.Text = project.Name;
+        HeaderText.Text = "Explorer";
         RebuildProjectTree(project);
     }
 
