@@ -4,11 +4,20 @@ using System.IO;
 
 namespace TextEdit;
 
+public enum FileTreeItemKind
+{
+    File,
+    Directory,
+    VirtualFolder,
+    ProjectRoot
+}
+
 public class FileTreeItem : INotifyPropertyChanged
 {
     public string Name { get; }
     public string FullPath { get; }
     public bool IsDirectory { get; }
+    public FileTreeItemKind Kind { get; }
 
     private bool _isExpanded;
     public bool IsExpanded
@@ -40,23 +49,27 @@ public class FileTreeItem : INotifyPropertyChanged
         FullPath = fullPath;
         Name = Path.GetFileName(fullPath);
         IsDirectory = isDirectory;
+        Kind = isDirectory ? FileTreeItemKind.Directory : FileTreeItemKind.File;
 
         if (isDirectory)
         {
             // Add dummy placeholder so the expand arrow appears
-            Children.Add(new FileTreeItem("", false) { _hasPlaceholder = false });
+            Children.Add(CreatePlaceholder());
             _hasPlaceholder = true;
         }
     }
 
-    /// <summary>
-    /// Creates a dummy placeholder item (used internally to show the expand arrow).
-    /// </summary>
-    private FileTreeItem()
+    private FileTreeItem(string fullPath, string name, bool isDirectory, FileTreeItemKind kind)
     {
-        FullPath = "";
-        Name = "";
-        IsDirectory = false;
+        FullPath = fullPath;
+        Name = name;
+        IsDirectory = isDirectory;
+        Kind = kind;
+    }
+
+    private static FileTreeItem CreatePlaceholder()
+    {
+        return new FileTreeItem("", "", false, FileTreeItemKind.File);
     }
 
     private void LoadChildren()
@@ -104,5 +117,15 @@ public class FileTreeItem : INotifyPropertyChanged
     public static FileTreeItem CreateRootItem(string folderPath)
     {
         return new FileTreeItem(folderPath, true);
+    }
+
+    public static FileTreeItem CreateProjectRoot(string projectName)
+    {
+        return new FileTreeItem("", projectName, false, FileTreeItemKind.ProjectRoot);
+    }
+
+    public static FileTreeItem CreateVirtualFolder(string name)
+    {
+        return new FileTreeItem("", name, false, FileTreeItemKind.VirtualFolder);
     }
 }
