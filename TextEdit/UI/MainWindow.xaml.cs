@@ -1215,6 +1215,7 @@ public partial class MainWindow : Window
         else if (ctrl && !shift && e.Key == Key.F) { FindBarControl.Open(); e.Handled = true; }
         else if (ctrl && !shift && e.Key == Key.H) { FindBarControl.ToggleReplace(); e.Handled = true; }
         else if (ctrl && shift && e.Key == Key.P) { OpenCommandPalette(); e.Handled = true; }
+        else if (ctrl && shift && e.Key == Key.O) { OpenFolderInExplorer(); e.Handled = true; }
         else if (ctrl && shift && e.Key == Key.S) { OnSaveAs(this, new RoutedEventArgs()); e.Handled = true; }
         else if (ctrl && (Keyboard.Modifiers & ModifierKeys.Alt) != 0 && (e.Key == Key.S || e.SystemKey == Key.S)) { OnSettings(this, new RoutedEventArgs()); e.Handled = true; }
         else if (ctrl && !shift && e.Key == Key.S) { OnSave(this, new RoutedEventArgs()); e.Handled = true; }
