@@ -44,9 +44,8 @@ public partial class MainWindow : Window
         InitializeComponent();
         _settings = App.Current.Settings;
 
-        // Create the initial tab
-        var tab = CreateTab();
-        ActivateTab(tab);
+        // Restore session or create initial tab
+        RestoreSession();
 
         ApplySettings();
         UpdateTabOverflowBrushes();
@@ -533,6 +532,144 @@ public partial class MainWindow : Window
         editor.LineHeightMultiplier = _settings.Editor.Font.LineHeight;
     }
 
+    private void RestoreSession()
+    {
+        var session = _settings.Session;
+        if (session.Tabs.Count > 0)
+        {
+            TabInfo? activeTab = null;
+            int tabIndex = 0;
+            foreach (var st in session.Tabs)
+            {
+                // Skip file-backed tabs whose file no longer exists
+                if (st.FilePath != null && !st.IsDirty && !File.Exists(st.FilePath))
+                    continue;
+
+                var tab = CreateTab();
+
+                if (st.FilePath != null && File.Exists(st.FilePath))
+                {
+                    tab.FilePath = st.FilePath;
+                    tab.FileEncoding = FileHelper.DetectEncoding(st.FilePath);
+
+                    if (st.IsDirty)
+                    {
+                        // Load the on-disk version first, then overlay saved dirty content
+                        var savedContent = SessionSettings.LoadTabContent(tabIndex);
+                        tab.Editor.SetContent(savedContent ?? FileHelper.ReadAllText(st.FilePath, tab.FileEncoding));
+                        tab.Editor.MarkDirty();
+                    }
+                    else
+                    {
+                        tab.Editor.SetContent(FileHelper.ReadAllText(st.FilePath, tab.FileEncoding));
+                    }
+
+                    tab.LastKnownFileSize = new FileInfo(st.FilePath).Length;
+                    tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(st.FilePath, tab.LastKnownFileSize);
+                    tab.StartWatching();
+                }
+                else if (st.FilePath == null)
+                {
+                    // Untitled tab — restore saved content if available
+                    var savedContent = SessionSettings.LoadTabContent(tabIndex);
+                    if (savedContent != null)
+                    {
+                        tab.Editor.SetContent(savedContent);
+                        tab.Editor.MarkDirty();
+                    }
+                }
+                else
+                {
+                    // File no longer exists but was dirty — restore content as untitled
+                    var savedContent = SessionSettings.LoadTabContent(tabIndex);
+                    if (savedContent == null) { tabIndex++; continue; }
+                    tab.FilePath = null;
+                    tab.Editor.SetContent(savedContent);
+                    tab.Editor.MarkDirty();
+                }
+
+                UpdateTabHeader(tab);
+
+                // Defer caret/scroll restore until after layout so the editor has valid extents
+                var savedTab = st;
+                RoutedEventHandler? onLoaded = null;
+                onLoaded = (_, _) =>
+                {
+                    tab.Editor.Loaded -= onLoaded;
+                    tab.Editor.SetCaretPosition(savedTab.CaretLine, savedTab.CaretCol);
+                    tab.Editor.SetVerticalOffset(savedTab.ScrollVertical);
+                    tab.Editor.SetHorizontalOffset(savedTab.ScrollHorizontal);
+                    tab.Editor.InvalidateVisual();
+                };
+                tab.Editor.Loaded += onLoaded;
+
+                if (tabIndex == session.ActiveTabIndex)
+                    activeTab = tab;
+                tabIndex++;
+            }
+
+            if (_tabs.Count == 0)
+            {
+                var tab = CreateTab();
+                ActivateTab(tab);
+            }
+            else
+            {
+                ActivateTab(activeTab ?? _tabs[0]);
+            }
+        }
+        else
+        {
+            var tab = CreateTab();
+            ActivateTab(tab);
+        }
+
+        // Clean up session files after restore
+        SessionSettings.ClearSessionDir();
+    }
+
+    private void SaveSession()
+    {
+        SessionSettings.ClearSessionDir();
+
+        var sessionTabs = new List<SessionTab>();
+        int activeIdx = 0;
+        foreach (var t in _tabs)
+        {
+            bool dirty = t.Editor.IsDirty;
+            bool untitled = t.FilePath == null;
+
+            // Skip empty untitled tabs
+            if (untitled && !dirty && string.IsNullOrEmpty(t.Editor.GetContent()))
+                continue;
+
+            if (t == _activeTab)
+                activeIdx = sessionTabs.Count;
+
+            int idx = sessionTabs.Count;
+
+            // Save content for dirty or untitled tabs
+            if (dirty || untitled)
+                _settings.Session.SaveTabContent(idx, t.Editor.GetContent());
+
+            sessionTabs.Add(new SessionTab
+            {
+                FilePath = t.FilePath,
+                IsDirty = dirty,
+                CaretLine = t.Editor.CaretLine,
+                CaretCol = t.Editor.CaretCol,
+                ScrollVertical = t.Editor.VerticalOffset,
+                ScrollHorizontal = t.Editor.HorizontalOffset,
+            });
+        }
+
+        _settings.Session = new SessionSettings
+        {
+            ActiveTabIndex = activeIdx,
+            Tabs = sessionTabs
+        };
+    }
+
     private void RestoreWindowPosition()
     {
         if (_settings.WindowLeft.HasValue && _settings.WindowTop.HasValue
@@ -569,16 +706,30 @@ public partial class MainWindow : Window
 
     private void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        // Prompt save for each dirty tab
-        foreach (var tab in _tabs.ToList())
+        // Try to persist session; if it fails, fall back to prompting for dirty tabs
+        bool sessionSaved = false;
+        try
         {
-            if (tab.Editor.IsDirty)
+            SaveSession();
+            sessionSaved = true;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Session save failed: {ex.Message}");
+        }
+
+        if (!sessionSaved)
+        {
+            foreach (var tab in _tabs.ToList())
             {
-                ActivateTab(tab);
-                if (!PromptSaveTab(tab))
+                if (tab.Editor.IsDirty)
                 {
-                    e.Cancel = true;
-                    return;
+                    ActivateTab(tab);
+                    if (!PromptSaveTab(tab))
+                    {
+                        e.Cancel = true;
+                        return;
+                    }
                 }
             }
         }

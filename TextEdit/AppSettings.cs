@@ -35,6 +35,62 @@ public class EditorSettings
     public FindSettings Find { get; set; } = new();
 }
 
+public class SessionTab
+{
+    public string? FilePath { get; set; }
+    public bool IsDirty { get; set; }
+    public int CaretLine { get; set; }
+    public int CaretCol { get; set; }
+    public double ScrollVertical { get; set; }
+    public double ScrollHorizontal { get; set; }
+}
+
+public class SessionSettings
+{
+    public static readonly string SessionDir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "TextEdit", "Session");
+
+    public List<SessionTab> Tabs { get; set; } = [];
+    public int ActiveTabIndex { get; set; }
+
+    public static string TabContentPath(int index) => Path.Combine(SessionDir, $"tab-{index}.txt");
+
+    public void SaveTabContent(int index, string content)
+    {
+        Directory.CreateDirectory(SessionDir);
+        FileHelper.AtomicWriteText(TabContentPath(index), content, System.Text.Encoding.UTF8);
+    }
+
+    public static string? LoadTabContent(int index)
+    {
+        try
+        {
+            var path = TabContentPath(index);
+            return File.Exists(path) ? File.ReadAllText(path) : null;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to load session tab {index}: {ex.Message}");
+            return null;
+        }
+    }
+
+    public static void ClearSessionDir()
+    {
+        try
+        {
+            if (!Directory.Exists(SessionDir)) return;
+            foreach (var file in Directory.GetFiles(SessionDir))
+            {
+                try { File.Delete(file); }
+                catch { /* best effort */ }
+            }
+        }
+        catch { /* best effort */ }
+    }
+}
+
 public class AppSettings
 {
     private static readonly string SettingsPath = Path.Combine(
@@ -48,6 +104,7 @@ public class AppSettings
     public double? WindowWidth { get; set; }
     public double? WindowHeight { get; set; }
     public bool WindowMaximized { get; set; }
+    public SessionSettings Session { get; set; } = new();
 
     public static readonly string[] FindBarPositionOptions = ["Top", "Bottom"];
     public static readonly double[] FontSizeOptions = [8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 36];

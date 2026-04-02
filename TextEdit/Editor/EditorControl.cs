@@ -1578,6 +1578,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
         PrecomputeLineStates();
     }
 
+    public void SetCaretPosition(int line, int col)
+    {
+        _caretLine = Math.Clamp(line, 0, Math.Max(0, _buffer.Count - 1));
+        _caretCol = Math.Clamp(col, 0, _buffer[_caretLine].Length);
+        _selection.Clear();
+    }
+
     /// <summary>
     /// Replaces the buffer content while preserving scroll position and caret.
     /// Used when reloading a file that changed on disk.
@@ -1660,6 +1667,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
     {
         _cleanUndoDepth = _undoManager.UndoCount;
         _buffer.IsDirty = false;
+    }
+
+    public void MarkDirty()
+    {
+        _cleanUndoDepth = -1;
+        _buffer.IsDirty = true;
+        DirtyChanged?.Invoke(this, EventArgs.Empty);
     }
 
     // ──────────────────────────────────────────────────────────────────
