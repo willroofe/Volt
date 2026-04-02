@@ -138,6 +138,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     public int CaretLine => _caretLine;
     public int CaretCol => _caretCol;
+    public long CharCount => _buffer.CharCount;
 
     // ── Mouse drag ───────────────────────────────────────────────────
     private bool _isDragging;
