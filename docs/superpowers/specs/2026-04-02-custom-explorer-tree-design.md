@@ -55,7 +55,7 @@ FileTreeItem? SelectedItem { get; }
 // Events
 event Action<string>? FileOpenRequested;       // double-click on file
 event Action<FileTreeItem>? SelectionChanged;
-event Action<FileTreeItem>? ItemRightClicked;  // right-click, item already selected
+event Action<FileTreeItem?>? ItemRightClicked;  // right-click (null = empty area)
 
 // Methods
 void RefreshFlatList();  // call after external expand state changes
