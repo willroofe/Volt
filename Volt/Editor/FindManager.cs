@@ -84,10 +84,10 @@ public class FindManager
     }
 
     /// <summary>
-    /// Replace matches in reverse order (for ReplaceAll).
-    /// Returns the match list for reverse iteration by the caller.
+    /// Returns the match list for reverse iteration by the caller (used by ReplaceAll).
+    /// Matches are in forward order; the caller iterates in reverse to preserve positions.
     /// </summary>
-    public IReadOnlyList<(int Line, int Col, int Length)> GetMatchesReversed()
+    public IReadOnlyList<(int Line, int Col, int Length)> GetMatchesForReverseIteration()
     {
         return _matches;
     }

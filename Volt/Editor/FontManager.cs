@@ -11,6 +11,7 @@ namespace Volt;
 public class FontManager
 {
     private const double DefaultFontSize = 14;
+    private static readonly FontWeightConverter _fontWeightConverter = new();
 
     private Typeface _monoTypeface = null!;
     private GlyphTypeface _glyphTypeface = null!;
@@ -50,10 +51,10 @@ public class FontManager
 
     public string EditorFontWeight
     {
-        get => new FontWeightConverter().ConvertToString(_fontWeight)!;
+        get => _fontWeightConverter.ConvertToString(_fontWeight)!;
         set
         {
-            var fw = (FontWeight)new FontWeightConverter().ConvertFromString(value)!;
+            var fw = (FontWeight)_fontWeightConverter.ConvertFromString(value)!;
             Apply(_monoTypeface.FontFamily.Source, _fontSize, fw);
         }
     }
@@ -110,6 +111,7 @@ public class FontManager
     {
         if (length <= 0) return;
         var map = _glyphTypeface.CharacterToGlyphMap;
+        // Must allocate per call — GlyphRun retains a reference to the array
         var glyphIndices = new ushort[length];
         for (int i = 0; i < length; i++)
         {

@@ -15,6 +15,7 @@ public record LineState(char? OpenQuote, int BlockCommentIndex = -1,
 
 public class SyntaxManager
 {
+    private const string PerlRegexModifiers = "msixpodualngcer";
     public readonly LineState DefaultState = new(null);
     private readonly string GrammarsDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -160,7 +161,7 @@ public class SyntaxManager
             for (int i = 0; i < line.Length; i++) claimed[i] = true;
             return line.Length;
         }
-        while (endPos < line.Length && "msixpodualngcer".Contains(line[endPos]))
+        while (endPos < line.Length && PerlRegexModifiers.Contains(line[endPos]))
             endPos++;
         tokens.Add(new SyntaxToken(0, endPos, "regex"));
         for (int i = 0; i < endPos; i++) claimed[i] = true;
@@ -470,7 +471,7 @@ public class SyntaxManager
             if (!paired) return null; // grammar rules handle non-paired single-line regexes
 
             // Scan for trailing flags
-            while (endPos < line.Length && "msixpodualngcer".Contains(line[endPos]))
+            while (endPos < line.Length && PerlRegexModifiers.Contains(line[endPos]))
                 endPos++;
         }
 
@@ -585,7 +586,7 @@ public class SyntaxManager
                 File.WriteAllText(destPath, reader.ReadToEnd());
             }
         }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
+        catch (IOException ex) { System.Diagnostics.Debug.WriteLine($"Failed to extract default grammars: {ex.Message}"); }
+        catch (UnauthorizedAccessException ex) { System.Diagnostics.Debug.WriteLine($"Failed to extract default grammars: {ex.Message}"); }
     }
 }

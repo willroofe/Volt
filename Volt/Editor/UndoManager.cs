@@ -9,12 +9,17 @@ public class UndoManager
 {
     private const int MaxEntries = 200;
 
+    public abstract record UndoEntryBase(
+        int CaretLineBefore, int CaretColBefore,
+        int CaretLineAfter, int CaretColAfter);
+
     public record UndoEntry(
         int StartLine,
         List<string> Before,
         List<string> After,
         int CaretLineBefore, int CaretColBefore,
-        int CaretLineAfter, int CaretColAfter);
+        int CaretLineAfter, int CaretColAfter)
+        : UndoEntryBase(CaretLineBefore, CaretColBefore, CaretLineAfter, CaretColAfter);
 
     /// <summary>
     /// Compact undo entry for multi-line indent/unindent.
@@ -24,24 +29,21 @@ public class UndoManager
         int StartLine, int LineCount,
         int[] SpacesPerLine, bool IsIndent,
         int CaretLineBefore, int CaretColBefore,
-        int CaretLineAfter, int CaretColAfter);
+        int CaretLineAfter, int CaretColAfter)
+        : UndoEntryBase(CaretLineBefore, CaretColBefore, CaretLineAfter, CaretColAfter);
 
-    private readonly List<object> _undoStack = [];
-    private readonly List<object> _redoStack = [];
+    private readonly List<UndoEntryBase> _undoStack = [];
+    private readonly List<UndoEntryBase> _redoStack = [];
 
     public bool CanUndo => _undoStack.Count > 0;
     public bool CanRedo => _redoStack.Count > 0;
     public int UndoCount => _undoStack.Count;
 
     /// <summary>
-    /// Push a region-based undo entry. Clears the redo stack.
+    /// Push an undo entry. Clears the redo stack.
     /// Returns true if the oldest entry was evicted due to the size cap.
     /// </summary>
-    public bool Push(UndoEntry entry) => PushInternal(entry);
-
-    public bool Push(IndentEntry entry) => PushInternal(entry);
-
-    private bool PushInternal(object entry)
+    public bool Push(UndoEntryBase entry)
     {
         _undoStack.Add(entry);
         bool evicted = _undoStack.Count > MaxEntries;
@@ -53,9 +55,8 @@ public class UndoManager
 
     /// <summary>
     /// Pop the last undo entry, move it to the redo stack.
-    /// Returns UndoEntry or IndentEntry (caller checks type).
     /// </summary>
-    public object? Undo()
+    public UndoEntryBase? Undo()
     {
         if (_undoStack.Count == 0) return null;
         var entry = _undoStack[^1];
@@ -66,9 +67,8 @@ public class UndoManager
 
     /// <summary>
     /// Pop the last redo entry, move it back to the undo stack.
-    /// Returns UndoEntry or IndentEntry (caller checks type).
     /// </summary>
-    public object? Redo()
+    public UndoEntryBase? Redo()
     {
         if (_redoStack.Count == 0) return null;
         var entry = _redoStack[^1];

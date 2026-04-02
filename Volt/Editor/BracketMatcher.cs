@@ -68,7 +68,7 @@ public static class BracketMatcher
         int col = caretCol - 1;
         int minLine = Math.Max(0, caretLine - MaxScanLines);
 
-        while (true)
+        while (line >= minLine)
         {
             while (col < 0 || buffer[line].Length == 0)
             {
@@ -98,6 +98,7 @@ public static class BracketMatcher
 
             col--;
         }
+        return null;
     }
 
     private static (int line, int col)? ScanForBracket(
@@ -109,7 +110,7 @@ public static class BracketMatcher
         int maxLine = Math.Min(buffer.Count - 1, startLine + MaxScanLines);
         int minLine = Math.Max(0, startLine - MaxScanLines);
 
-        while (true)
+        while (line >= minLine && line <= maxLine)
         {
             if (forward)
             {
@@ -138,5 +139,6 @@ public static class BracketMatcher
 
             if (depth == 0) return (line, col);
         }
+        return null;
     }
 }
