@@ -9,6 +9,8 @@ public class TextBuffer
     private readonly List<string> _lines = [""];
     private int _maxLineLength;
     private bool _maxLineLengthDirty = true;
+    private long _charCount;
+    private bool _charCountDirty = true;
     private string _lineEnding = "\r\n";
     private bool _isDirty;
 
@@ -17,7 +19,7 @@ public class TextBuffer
     public string this[int index]
     {
         get => _lines[index];
-        set => _lines[index] = value;
+        set { NotifyLineChanging(index); _lines[index] = value; }
     }
 
     public string LineEnding => _lineEnding;
@@ -28,11 +30,16 @@ public class TextBuffer
     {
         get
         {
-            long total = 0;
-            for (int i = 0; i < _lines.Count; i++)
-                total += _lines[i].Length;
-            total += (long)(_lines.Count - 1) * _lineEnding.Length;
-            return total;
+            if (_charCountDirty)
+            {
+                long total = 0;
+                for (int i = 0; i < _lines.Count; i++)
+                    total += _lines[i].Length;
+                total += (long)(_lines.Count - 1) * _lineEnding.Length;
+                _charCount = total;
+                _charCountDirty = false;
+            }
+            return _charCount;
         }
     }
 
@@ -66,7 +73,11 @@ public class TextBuffer
         }
     }
 
-    public void InvalidateMaxLineLength() => _maxLineLengthDirty = true;
+    public void InvalidateMaxLineLength()
+    {
+        _maxLineLengthDirty = true;
+        _charCountDirty = true;
+    }
 
     /// <summary>
     /// Fast path: only check a specific line against the cached max.
@@ -86,6 +97,7 @@ public class TextBuffer
     /// </summary>
     public void NotifyLineChanging(int lineIndex)
     {
+        _charCountDirty = true;
         if (!_maxLineLengthDirty && lineIndex < _lines.Count
             && _lines[lineIndex].Length >= _maxLineLength)
             _maxLineLengthDirty = true;
@@ -95,19 +107,19 @@ public class TextBuffer
     public void InsertLine(int index, string line)
     {
         _lines.Insert(index, line);
-        _maxLineLengthDirty = true;
+        _maxLineLengthDirty = true; _charCountDirty = true;
     }
 
     public void RemoveAt(int index)
     {
         _lines.RemoveAt(index);
-        _maxLineLengthDirty = true;
+        _maxLineLengthDirty = true; _charCountDirty = true;
     }
 
     public void RemoveRange(int index, int count)
     {
         _lines.RemoveRange(index, count);
-        _maxLineLengthDirty = true;
+        _maxLineLengthDirty = true; _charCountDirty = true;
     }
 
     /// <summary>Get a copy of a range of lines (for undo snapshots).</summary>
@@ -142,7 +154,7 @@ public class TextBuffer
 
         if (_maxLineLengthDirty || removingMax)
         {
-            _maxLineLengthDirty = true;
+            _maxLineLengthDirty = true; _charCountDirty = true;
         }
         else
         {
@@ -177,9 +189,9 @@ public class TextBuffer
     /// <summary>Join a line with the next line, removing the next line.</summary>
     public void JoinWithNext(int line)
     {
-        _lines[line] += _lines[line + 1];
+        _lines[line] = string.Concat(_lines[line], _lines[line + 1]);
         _lines.RemoveAt(line + 1);
-        _maxLineLengthDirty = true;
+        _maxLineLengthDirty = true; _charCountDirty = true;
     }
 
     /// <summary>Truncate a line at the given column, returning the removed tail.</summary>
@@ -201,7 +213,7 @@ public class TextBuffer
             rawLines[i] = ExpandTabs(rawLines[i], tabSize);
         _lines.AddRange(rawLines);
         if (_lines.Count == 0) _lines.Add("");
-        _maxLineLengthDirty = true;
+        _maxLineLengthDirty = true; _charCountDirty = true;
         IsDirty = false;
     }
 
@@ -225,7 +237,7 @@ public class TextBuffer
         for (int i = 1; i < newLines.Length; i++)
             _lines.Add(newLines[i]);
 
-        _maxLineLengthDirty = true;
+        _maxLineLengthDirty = true; _charCountDirty = true;
         return appendStart;
     }
 
@@ -236,7 +248,7 @@ public class TextBuffer
         _lines.Clear();
         _lines.TrimExcess();
         _lines.Add("");
-        _maxLineLengthDirty = true;
+        _maxLineLengthDirty = true; _charCountDirty = true;
     }
 
     // ── Tab expansion ───────────────────────────────────────────────

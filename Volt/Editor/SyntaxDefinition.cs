@@ -117,8 +117,9 @@ public class SyntaxDefinition
                         BlockComments[i].EndRegex = new Regex(BlockComments[i].End,
                             RegexOptions.Compiled, RegexTimeout);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    System.Diagnostics.Debug.WriteLine($"Invalid block comment regex at index {i}: {ex.Message}");
                     BlockComments.RemoveAt(i);
                 }
             }
