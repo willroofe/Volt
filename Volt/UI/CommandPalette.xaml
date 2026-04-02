@@ -5,7 +5,7 @@
     <Grid>
         <!-- Overlay (semi-transparent dark background) -->
         <Border x:Name="_overlay"
-                Background="#80000000"
+                Background="{DynamicResource ThemeOverlayBg}"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
                 MouseLeftButtonDown="OnOverlayClick"/>

@@ -158,40 +158,45 @@ public class AppSettings
 
     private static AppSettings MigrateOldFormat(JsonElement root)
     {
-        var s = new AppSettings();
+        var settings = new AppSettings();
 
         if (root.TryGetProperty("ColorTheme", out var ct))
-            s.Application.ColorTheme = ct.GetString() ?? "Dark";
+            settings.Application.ColorTheme = ct.GetString() ?? "Dark";
 
         if (root.TryGetProperty("TabSize", out var ts))
-            s.Editor.TabSize = ts.GetInt32();
+            settings.Editor.TabSize = ts.GetInt32();
         if (root.TryGetProperty("FontFamily", out var ff))
-            s.Editor.Font.Family = ff.GetString();
+            settings.Editor.Font.Family = ff.GetString();
         if (root.TryGetProperty("FontSize", out var fs))
-            s.Editor.Font.Size = fs.GetDouble();
+            settings.Editor.Font.Size = fs.GetDouble();
         if (root.TryGetProperty("FontWeight", out var fw))
-            s.Editor.Font.Weight = fw.GetString() ?? "Normal";
+            settings.Editor.Font.Weight = fw.GetString() ?? "Normal";
         if (root.TryGetProperty("BlockCaret", out var bc))
-            s.Editor.Caret.BlockCaret = bc.GetBoolean();
+            settings.Editor.Caret.BlockCaret = bc.GetBoolean();
         if (root.TryGetProperty("CaretBlinkMs", out var cb))
-            s.Editor.Caret.BlinkMs = cb.GetInt32();
+            settings.Editor.Caret.BlinkMs = cb.GetInt32();
         if (root.TryGetProperty("FindBarPosition", out var fp))
-            s.Editor.Find.BarPosition = fp.GetString() ?? "Bottom";
+            settings.Editor.Find.BarPosition = fp.GetString() ?? "Bottom";
 
         if (root.TryGetProperty("WindowLeft", out var wl))
-            s.WindowLeft = wl.GetDouble();
+            settings.WindowLeft = wl.GetDouble();
         if (root.TryGetProperty("WindowTop", out var wt))
-            s.WindowTop = wt.GetDouble();
+            settings.WindowTop = wt.GetDouble();
         if (root.TryGetProperty("WindowWidth", out var ww))
-            s.WindowWidth = ww.GetDouble();
+            settings.WindowWidth = ww.GetDouble();
         if (root.TryGetProperty("WindowHeight", out var wh))
-            s.WindowHeight = wh.GetDouble();
+            settings.WindowHeight = wh.GetDouble();
         if (root.TryGetProperty("WindowMaximized", out var wm))
-            s.WindowMaximized = wm.GetBoolean();
+            settings.WindowMaximized = wm.GetBoolean();
 
-        // Side effect: saves in new format so migration only happens once.
-        // Callers of Load() should be aware this may write to disk.
-        s.Save();
-        return s;
+        // Intentional side effect: saves in new format so migration only happens once.
+        // If Save() fails, the migrated settings are still returned in-memory and the
+        // old-format file will trigger re-migration on next launch (acceptable).
+        try { settings.Save(); }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to save migrated settings: {ex.Message}");
+        }
+        return settings;
     }
 }

@@ -310,7 +310,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
     }
 
     private static Brush GetBrush(string key) =>
-        (Brush)Application.Current.Resources[key];
+        Application.Current.Resources[key] as Brush ?? Brushes.Magenta;
 
     // --- Mouse interaction ---
 

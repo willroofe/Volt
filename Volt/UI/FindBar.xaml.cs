@@ -7,8 +7,10 @@ namespace Volt;
 
 public partial class FindBar : UserControl
 {
-    private const double FindBarTopMargin = 67;    // title bar + tab bar height
-    private const double FindBarBottomMargin = 44;  // status bar height
+    // Sync with MainWindow.xaml: TitleBar Height(32) + separator(1) + TabStrip Height(33) + separator(1)
+    private const double FindBarTopMargin = 67;
+    // Sync with MainWindow.xaml: StatusBar Height(24) + separator(1) + extra padding
+    private const double FindBarBottomMargin = 44;
 
     private bool _matchCase;
     private EditorControl? _editor;

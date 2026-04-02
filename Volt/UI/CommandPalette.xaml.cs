@@ -7,7 +7,7 @@ namespace Volt;
 
 public record PaletteOption(string Label, Action ApplyPreview, Action Commit, Action Revert);
 
-public record PaletteCommand(string Name, Action? Toggle = null, Func<List<PaletteOption>>? GetOptions = null, Func<string>? CurrentValue = null);
+public record PaletteCommand(string Name, Action? Action = null, Func<List<PaletteOption>>? GetOptions = null, Func<string>? CurrentValue = null);
 
 public partial class CommandPalette : UserControl
 {
@@ -172,9 +172,9 @@ public partial class CommandPalette : UserControl
             if (_selectedIndex < 0 || _selectedIndex >= filtered.Count) return;
             var cmd = filtered[_selectedIndex];
 
-            if (cmd.Toggle != null)
+            if (cmd.Action != null)
             {
-                cmd.Toggle();
+                cmd.Action();
                 Visibility = Visibility.Collapsed;
                 Closed?.Invoke(this, EventArgs.Empty);
                 return;

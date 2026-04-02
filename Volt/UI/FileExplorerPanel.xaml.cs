@@ -143,7 +143,11 @@ public partial class FileExplorerPanel : UserControl
 
     private void OnItemRightClicked(FileTreeItem? item)
     {
-        if (_projectManager?.CurrentProject == null) return;
+        if (_projectManager?.CurrentProject == null)
+        {
+            ExplorerTree.ContextMenu = null;
+            return;
+        }
 
         var menu = new ContextMenu();
         var project = _projectManager.CurrentProject;
