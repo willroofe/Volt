@@ -230,10 +230,17 @@
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="Auto" SharedSizeGroup="Shortcut"/>
                                                 </Grid.ColumnDefinitions>
-                                                <ContentPresenter Grid.Column="0" ContentSource="Icon"
-                                                                  HorizontalAlignment="Center"
-                                                                  VerticalAlignment="Center"
-                                                                  Width="16" Height="16"/>
+                                                <Grid Grid.Column="0">
+                                                    <ContentPresenter ContentSource="Icon"
+                                                                      HorizontalAlignment="Center"
+                                                                      VerticalAlignment="Center"
+                                                                      Width="16" Height="16"/>
+                                                    <TextBlock x:Name="CheckMark" Text="&#xE73E;"
+                                                               FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource ThemeTextFg}"
+                                                               Visibility="Collapsed"/>
+                                                </Grid>
                                                 <ContentPresenter Grid.Column="1" ContentSource="Header"
                                                                   Margin="6,4,12,4"
                                                                   VerticalAlignment="Center"
@@ -248,13 +255,16 @@
                                             <Trigger Property="IsHighlighted" Value="True">
                                                 <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeMenuItemHover}"/>
                                             </Trigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/>
+                                            </Trigger>
                                         </ControlTemplate.Triggers>
                                     </ControlTemplate>
                                 </Setter.Value>
                             </Setter>
                         </Style>
                     </MenuItem.ItemContainerStyle>
-                    <MenuItem x:Name="MenuWordWrap" Header="_Word Wrap" Click="OnToggleWordWrap"/>
+                    <MenuItem x:Name="MenuWordWrap" Header="_Word Wrap" IsCheckable="True" Click="OnToggleWordWrap"/>
                 </MenuItem>
                 <MenuItem Header="_Project" Style="{StaticResource TopLevelMenuItem}">
                     <MenuItem.ItemContainerStyle>

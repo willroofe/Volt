@@ -542,6 +542,7 @@ public partial class MainWindow : Window
         foreach (var tab in _tabs)
             ApplySettingsToEditor(tab.Editor);
         FindBarControl.SetPosition(_settings.Editor.Find.BarPosition);
+        MenuWordWrap.IsChecked = _settings.Editor.WordWrap;
     }
 
     private void ApplySettingsToEditor(EditorControl editor)
@@ -653,6 +654,8 @@ public partial class MainWindow : Window
             tab = _activeTab;
         else
             tab = CreateTab();
+
+        if (!CheckFileSize(path)) return;
 
         tab.FilePath = path;
         tab.FileEncoding = FileHelper.DetectEncoding(path);
@@ -938,6 +941,19 @@ public partial class MainWindow : Window
         Title = "Volt";
     }
 
+    private const long MaxFileSizeBytes = 500L * 1024 * 1024;
+
+    private bool CheckFileSize(string path)
+    {
+        var info = new FileInfo(path);
+        if (!info.Exists || info.Length <= MaxFileSizeBytes) return true;
+        double sizeMb = info.Length / (1024.0 * 1024.0);
+        ThemedMessageBox.Show(this,
+            $"The file is {sizeMb:F0} MB which exceeds the 500 MB limit.",
+            "File Too Large");
+        return false;
+    }
+
     private bool PromptSaveTab(TabInfo tab)
     {
         if (!tab.Editor.IsDirty) return true;
@@ -1144,6 +1160,8 @@ public partial class MainWindow : Window
                 tab = CreateTab();
             }
 
+            if (!CheckFileSize(fileName)) continue;
+
             tab.FilePath = fileName;
             tab.FileEncoding = FileHelper.DetectEncoding(fileName);
             tab.Editor.SetContent(FileHelper.ReadAllText(fileName, tab.FileEncoding));
@@ -1176,7 +1194,11 @@ public partial class MainWindow : Window
 
     private void OnToggleWordWrap(object sender, RoutedEventArgs e)
     {
-        _settings.Editor.WordWrap = !_settings.Editor.WordWrap;
+        // When triggered from menu click, IsChecked is already toggled.
+        // When triggered from command palette, we need to flip it.
+        if (sender != MenuWordWrap)
+            MenuWordWrap.IsChecked = !MenuWordWrap.IsChecked;
+        _settings.Editor.WordWrap = MenuWordWrap.IsChecked;
         foreach (var tab in _tabs)
             tab.Editor.WordWrap = _settings.Editor.WordWrap;
         _settings.Save();
@@ -1289,7 +1311,8 @@ public partial class MainWindow : Window
             () => OnNewProject(this, new RoutedEventArgs()),
             () => OnOpenProject(this, new RoutedEventArgs()),
             () => OnSaveProject(this, new RoutedEventArgs()),
-            CloseCurrentProject);
+            CloseCurrentProject,
+            () => OnToggleWordWrap(this, new RoutedEventArgs()));
         CmdPalette.SetCommands(commands);
         CmdPalette.Open();
     }

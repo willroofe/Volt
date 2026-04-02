@@ -22,7 +22,8 @@ internal static class CommandPaletteCommands
         Action newProject,
         Action openProject,
         Action saveProject,
-        Action closeProject)
+        Action closeProject,
+        Action toggleWordWrap)
     {
         return
         [
@@ -103,16 +104,7 @@ internal static class CommandPaletteCommands
                 saveSettings();
             }),
 
-            new("Toggle Word Wrap", Toggle: () =>
-            {
-                settings.Editor.WordWrap = !settings.Editor.WordWrap;
-                foreach (var t in tabs)
-                {
-                    t.Editor.WordWrap = settings.Editor.WordWrap;
-                    t.Editor.InvalidateVisual();
-                }
-                saveSettings();
-            }),
+            new("Toggle Word Wrap", Toggle: toggleWordWrap),
 
             new("Find Bar Position", CurrentValue: () => settings.Editor.Find.BarPosition, GetOptions: () =>
             {
