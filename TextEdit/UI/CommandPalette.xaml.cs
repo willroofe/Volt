@@ -239,7 +239,7 @@ public partial class CommandPalette : UserControl
     {
         _commandList.Items.Clear();
         var filter = _filterInput.Text.Trim();
-        bool belowThreshold = _currentOptions == null && filter.Length < 3;
+        bool belowThreshold = _currentOptions == null && filter.Length < 1;
 
         if (belowThreshold)
         {
