@@ -15,7 +15,7 @@ dotnet run --project Volt/Volt.csproj
 
 The running app must be closed before rebuilding (the exe gets locked).
 
-**Tests** (`Volt.Tests/` — xUnit, 30 foundation tests covering core logic):
+**Tests** (`Volt.Tests/` — xUnit, 67 tests covering core logic):
 
 ```bash
 dotnet test Volt.Tests                              # run all tests

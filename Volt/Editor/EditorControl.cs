@@ -1620,24 +1620,30 @@ public class EditorControl : FrameworkElement, IScrollInfo
             if (_selection.HasSelection)
                 Clipboard.SetText(_selection.GetSelectedText(_buffer, _caretLine, _caretCol));
         }
-        catch (System.Runtime.InteropServices.ExternalException) { }
+        catch (System.Runtime.InteropServices.ExternalException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Clipboard copy failed: {ex.Message}");
+        }
     }
 
     private void HandleCut()
     {
+        if (!_selection.HasSelection) return;
+        ResetPreferredCol();
+        var (sl, _, el, _) = _selection.GetOrdered(_caretLine, _caretCol);
+        var text = _selection.GetSelectedText(_buffer, _caretLine, _caretCol);
         try
         {
-            if (_selection.HasSelection)
-            {
-                ResetPreferredCol();
-                var (sl, _, el, _) = _selection.GetOrdered(_caretLine, _caretCol);
-                var scope = BeginEdit(sl, el);
-                Clipboard.SetText(_selection.GetSelectedText(_buffer, _caretLine, _caretCol));
-                (_caretLine, _caretCol) = _selection.DeleteSelection(_buffer, _caretLine, _caretCol);
-                FinishEdit(scope);
-            }
+            Clipboard.SetText(text);
         }
-        catch (System.Runtime.InteropServices.ExternalException) { }
+        catch (System.Runtime.InteropServices.ExternalException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Clipboard cut failed: {ex.Message}");
+            return; // Don't delete if clipboard write failed
+        }
+        var scope = BeginEdit(sl, el);
+        (_caretLine, _caretCol) = _selection.DeleteSelection(_buffer, _caretLine, _caretCol);
+        FinishEdit(scope);
     }
 
     private void HandlePaste()
@@ -1802,7 +1808,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     public void SetCaretPosition(int line, int col)
     {
-        _caretLine = Math.Clamp(line, 0, Math.Max(0, _buffer.Count - 1));
+        if (_buffer.Count == 0) return;
+        _caretLine = Math.Clamp(line, 0, _buffer.Count - 1);
         _caretCol = Math.Clamp(col, 0, _buffer[_caretLine].Length);
         _selection.Clear();
     }

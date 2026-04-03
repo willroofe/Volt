@@ -800,8 +800,15 @@ public partial class MainWindow : Window
             return false;
         }
         tab.StartWatching();
-        tab.LastKnownFileSize = new FileInfo(tab.FilePath!).Length;
-        tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(tab.FilePath!, tab.LastKnownFileSize);
+        try
+        {
+            tab.LastKnownFileSize = new FileInfo(tab.FilePath!).Length;
+            tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(tab.FilePath!, tab.LastKnownFileSize);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Post-save metadata refresh failed: {ex.Message}");
+        }
         tab.Editor.MarkClean();
         UpdateTabHeader(tab);
         return true;

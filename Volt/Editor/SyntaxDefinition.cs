@@ -136,8 +136,9 @@ public class SyntaxDefinition
                     Interpolation.EscapeRegex = new Regex(Interpolation.EscapePattern,
                         RegexOptions.Compiled, RegexTimeout);
             }
-            catch
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"Failed to compile interpolation patterns: {ex.Message}");
                 Interpolation = null;
             }
         }
@@ -149,8 +150,9 @@ public class SyntaxDefinition
                 Heredoc.CompiledRegex = new Regex(Heredoc.Pattern,
                     RegexOptions.Compiled, RegexTimeout);
             }
-            catch
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"Failed to compile heredoc pattern: {ex.Message}");
                 Heredoc = null;
             }
         }
