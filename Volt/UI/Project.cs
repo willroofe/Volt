@@ -37,6 +37,9 @@ public class ProjectSession
 
     [JsonPropertyName("activeTabIndex")]
     public int ActiveTabIndex { get; set; }
+
+    [JsonPropertyName("expandedPaths")]
+    public List<string> ExpandedPaths { get; set; } = [];
 }
 
 public class ProjectSessionTab

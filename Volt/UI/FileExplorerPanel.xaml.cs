@@ -19,6 +19,7 @@ public partial class FileExplorerPanel : UserControl
     private string? _openFolderPath;
     private ProjectManager? _projectManager;
     private ObservableCollection<FileTreeItem>? _currentRootItems;
+    private HashSet<string>? _pendingExpandPaths;
 
     public FileExplorerPanel()
     {
@@ -50,6 +51,7 @@ public partial class FileExplorerPanel : UserControl
     {
         StopAllWatchers();
         _openFolderPath = null;
+        _pendingExpandPaths = null;
         HeaderText.Text = "Explorer";
         _currentRootItems = null;
         ExplorerTree.SetRootItems(null);
@@ -65,6 +67,7 @@ public partial class FileExplorerPanel : UserControl
     public void CloseProject()
     {
         StopAllWatchers();
+        _pendingExpandPaths = null;
         HeaderText.Text = "Explorer";
         _currentRootItems = null;
         ExplorerTree.SetRootItems(null);
@@ -77,6 +80,72 @@ public partial class FileExplorerPanel : UserControl
     }
 
     public string? OpenFolderPath => _openFolderPath;
+
+    public List<string> GetExpandedPaths()
+    {
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (_currentRootItems != null)
+            CollectExpandedPaths(_currentRootItems, paths);
+        return [.. paths];
+    }
+
+    public void RestoreExpandedPaths(IEnumerable<string> paths)
+    {
+        _pendingExpandPaths = new HashSet<string>(paths, StringComparer.OrdinalIgnoreCase);
+        if (_pendingExpandPaths.Count == 0)
+        {
+            _pendingExpandPaths = null;
+            return;
+        }
+        // Immediately scan the already-built tree (handles project roots whose
+        // children are added synchronously in RebuildProjectTree).
+        if (_currentRootItems != null)
+        {
+            TryExpandPendingInTree(_currentRootItems);
+            ExplorerTree.RefreshFlatList();
+        }
+    }
+
+    private void TryExpandPendingPaths(FileTreeItem changedItem)
+    {
+        if (_pendingExpandPaths == null || _pendingExpandPaths.Count == 0) return;
+        ExpandMatchingChildren(changedItem.Children);
+        if (_pendingExpandPaths is { Count: 0 })
+            _pendingExpandPaths = null;
+    }
+
+    private void TryExpandPendingInTree(IEnumerable<FileTreeItem> items)
+    {
+        if (_pendingExpandPaths == null || _pendingExpandPaths.Count == 0) return;
+        foreach (var item in items)
+        {
+            if (_pendingExpandPaths == null || _pendingExpandPaths.Count == 0) return;
+            if (item.IsExpanded)
+            {
+                ExpandMatchingChildren(item.Children);
+                TryExpandPendingInTree(item.Children);
+            }
+        }
+        if (_pendingExpandPaths is { Count: 0 })
+            _pendingExpandPaths = null;
+    }
+
+    private void ExpandMatchingChildren(IEnumerable<FileTreeItem> children)
+    {
+        foreach (var child in children)
+        {
+            if (!child.IsDirectory && child.Kind != FileTreeItemKind.VirtualFolder) continue;
+
+            string key = child.Kind == FileTreeItemKind.VirtualFolder
+                ? "vf:" + child.Name
+                : child.FullPath;
+
+            if (!string.IsNullOrEmpty(key) && _pendingExpandPaths!.Remove(key))
+            {
+                child.IsExpanded = true; // triggers LoadChildren -> TreeChanged -> re-enters here
+            }
+        }
+    }
 
     private void RebuildProjectTree(Project project)
     {
@@ -227,8 +296,9 @@ public partial class FileExplorerPanel : UserControl
         return mi;
     }
 
-    private void OnTreeChanged(FileTreeItem _)
+    private void OnTreeChanged(FileTreeItem item)
     {
+        TryExpandPendingPaths(item);
         ExplorerTree.RefreshFlatList();
     }
 

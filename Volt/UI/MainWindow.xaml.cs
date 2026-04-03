@@ -56,7 +56,11 @@ public partial class MainWindow : Window
         if (_settings.Editor.Explorer.PanelVisible)
         {
             if (_settings.Editor.Explorer.OpenFolderPath is string folderPath && Directory.Exists(folderPath))
+            {
                 ExplorerPanel.OpenFolder(folderPath);
+                if (_settings.Editor.Explorer.ExpandedPaths.Count > 0)
+                    ExplorerPanel.RestoreExpandedPaths(_settings.Editor.Explorer.ExpandedPaths);
+            }
             SetExplorerVisible(true);
         }
 
@@ -441,6 +445,7 @@ public partial class MainWindow : Window
         ExplorerPanel.CloseFolder();
         SetExplorerVisible(false);
         _settings.Editor.Explorer.OpenFolderPath = null;
+        _settings.Editor.Explorer.ExpandedPaths.Clear();
         _settings.Editor.Explorer.PanelVisible = false;
         _settings.Save();
     }
@@ -676,6 +681,7 @@ public partial class MainWindow : Window
         }
 
         _settings.WindowMaximized = WindowState == WindowState.Maximized;
+        _settings.Editor.Explorer.ExpandedPaths = ExplorerPanel.GetExpandedPaths();
         _settings.Save();
 
         foreach (var tab in _tabs)
@@ -1140,6 +1146,8 @@ public partial class MainWindow : Window
         var project = _projectManager.OpenProject(vprojPath);
 
         ExplorerPanel.OpenProject(project);
+        if (project.Session.ExpandedPaths.Count > 0)
+            ExplorerPanel.RestoreExpandedPaths(project.Session.ExpandedPaths);
         SetExplorerVisible(true);
         UpdateProjectMenuState(true);
 
@@ -1227,7 +1235,8 @@ public partial class MainWindow : Window
         _projectManager.CurrentProject.Session = new ProjectSession
         {
             Tabs = sessionTabs,
-            ActiveTabIndex = activeIdx
+            ActiveTabIndex = activeIdx,
+            ExpandedPaths = ExplorerPanel.GetExpandedPaths()
         };
     }
 
