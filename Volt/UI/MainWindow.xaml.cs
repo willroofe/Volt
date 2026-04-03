@@ -408,19 +408,46 @@ public partial class MainWindow : Window
 
         if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
 
-        ExplorerPanel.OpenFolder(dlg.SelectedPath);
-        _settings.Editor.Explorer.OpenFolderPath = dlg.SelectedPath;
+        SwitchToFolder(dlg.SelectedPath);
+    }
+
+    private void SwitchToFolder(string newFolderPath)
+    {
+        // Save current folder's tabs before switching
+        var currentFolder = ExplorerPanel.OpenFolderPath;
+        if (currentFolder != null)
+        {
+            SaveFolderSession(currentFolder);
+            _settings.Editor.Explorer.ExpandedPaths = ExplorerPanel.GetExpandedPaths();
+        }
+
+        CloseAllTabs();
+
+        ExplorerPanel.OpenFolder(newFolderPath);
+        _settings.Editor.Explorer.OpenFolderPath = newFolderPath;
         Shell.ShowPanel("file-explorer");
+
+        // Restore tabs for the new folder
+        RestoreFolderTabs(newFolderPath);
         _settings.Save();
     }
 
     private void CloseFolderInExplorer()
     {
+        var folderPath = ExplorerPanel.OpenFolderPath;
+        if (folderPath != null)
+            SaveFolderSession(folderPath);
+
+        CloseAllTabs();
         ExplorerPanel.CloseFolder();
         Shell.HidePanel("file-explorer");
         _settings.Editor.Explorer.OpenFolderPath = null;
         _settings.Editor.Explorer.ExpandedPaths.Clear();
         _settings.Save();
+
+        // Create a fresh empty tab
+        var tab = CreateTab();
+        ActivateTab(tab);
     }
 
     private void OnExplorerFileOpen(string path)
@@ -479,6 +506,14 @@ public partial class MainWindow : Window
         if (_settings.LastOpenProjectPath is string projPath && System.IO.File.Exists(projPath))
         {
             OpenProjectFromPath(projPath);
+            return;
+        }
+
+        // If a folder was open, restore its per-folder tabs
+        var folderPath = _settings.Editor.Explorer.OpenFolderPath;
+        if (folderPath != null && Directory.Exists(folderPath))
+        {
+            RestoreFolderTabs(folderPath);
             return;
         }
 
@@ -563,8 +598,91 @@ public partial class MainWindow : Window
 
     private void SaveSession()
     {
-        SessionSettings.ClearSessionDir();
-        _settings.Session = _sessionManager.SaveSession(_tabs, _activeTab);
+        var folderPath = ExplorerPanel.OpenFolderPath;
+        if (folderPath != null)
+        {
+            SaveFolderSession(folderPath);
+        }
+        else
+        {
+            SessionSettings.ClearSessionDir();
+            _settings.Session = _sessionManager.SaveSession(_tabs, _activeTab);
+        }
+    }
+
+    private void SaveFolderSession(string folderPath)
+    {
+        SessionSettings.ClearFolderSessionDir(folderPath);
+        _settings.FolderSessions[folderPath] = _sessionManager.SaveSession(_tabs, _activeTab, folderPath);
+    }
+
+    private void RestoreFolderTabs(string folderPath)
+    {
+        if (!_settings.FolderSessions.TryGetValue(folderPath, out var session) || session.Tabs.Count == 0)
+        {
+            var tab = CreateTab();
+            ActivateTab(tab);
+            return;
+        }
+
+        var restored = _sessionManager.RestoreSession(session, folderPath);
+        if (restored.Tabs.Count == 0)
+        {
+            var tab = CreateTab();
+            ActivateTab(tab);
+            return;
+        }
+
+        TabInfo? activeTab = null;
+        for (int i = 0; i < restored.Tabs.Count; i++)
+        {
+            var rt = restored.Tabs[i];
+            var tab = CreateTab();
+
+            if (rt.FilePath != null)
+            {
+                tab.FilePath = rt.FilePath;
+                tab.FileEncoding = FileHelper.DetectEncoding(rt.FilePath);
+
+                if (rt.IsDirty)
+                {
+                    tab.Editor.SetContent(rt.SavedContent ?? FileHelper.ReadAllText(rt.FilePath, tab.FileEncoding));
+                    tab.Editor.MarkDirty();
+                }
+                else
+                {
+                    tab.Editor.SetContent(FileHelper.ReadAllText(rt.FilePath, tab.FileEncoding));
+                }
+
+                tab.LastKnownFileSize = new FileInfo(rt.FilePath).Length;
+                tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(rt.FilePath, tab.LastKnownFileSize);
+                tab.StartWatching();
+            }
+            else if (rt.SavedContent != null)
+            {
+                tab.Editor.SetContent(rt.SavedContent);
+                tab.Editor.MarkDirty();
+            }
+
+            UpdateTabHeader(tab);
+
+            var restoredTab = rt;
+            RoutedEventHandler? onLoaded = null;
+            onLoaded = (_, _) =>
+            {
+                tab.Editor.Loaded -= onLoaded;
+                tab.Editor.SetCaretPosition(restoredTab.CaretLine, restoredTab.CaretCol);
+                tab.Editor.SetVerticalOffset(restoredTab.ScrollVertical);
+                tab.Editor.SetHorizontalOffset(restoredTab.ScrollHorizontal);
+                tab.Editor.InvalidateVisual();
+            };
+            tab.Editor.Loaded += onLoaded;
+
+            if (i == restored.ActiveTabIndex)
+                activeTab = tab;
+        }
+
+        ActivateTab(activeTab ?? _tabs[0]);
     }
 
     private void RestoreWindowPosition()
