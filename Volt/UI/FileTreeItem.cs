@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Windows.Threading;
 
 namespace Volt;
 
@@ -37,7 +38,15 @@ public class FileTreeItem : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    /// <summary>
+    /// Raised when this item's children have been refreshed due to a filesystem change.
+    /// Bubbles up from any descendant. The sender is the item whose children changed.
+    /// </summary>
+    public event Action<FileTreeItem>? TreeChanged;
+
     private bool _hasPlaceholder;
+    private FileSystemWatcher? _watcher;
+    private DispatcherTimer? _refreshTimer;
 
     private static readonly HashSet<string> IgnoredDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -88,12 +97,137 @@ public class FileTreeItem : INotifyPropertyChanged
                 .OrderBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase);
 
             foreach (var dir in dirs)
-                Children.Add(new FileTreeItem(dir, true));
+            {
+                var child = new FileTreeItem(dir, true);
+                child.TreeChanged += OnChildTreeChanged;
+                Children.Add(child);
+            }
             foreach (var file in files)
                 Children.Add(new FileTreeItem(file, false));
         }
         catch (UnauthorizedAccessException) { }
         catch (IOException) { }
+
+        StartWatching();
+    }
+
+    private void StartWatching()
+    {
+        StopWatching();
+        if (string.IsNullOrEmpty(FullPath) || !Directory.Exists(FullPath)) return;
+
+        try
+        {
+            _watcher = new FileSystemWatcher(FullPath)
+            {
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName,
+                IncludeSubdirectories = false,
+                EnableRaisingEvents = true
+            };
+            _watcher.Created += OnFileSystemChanged;
+            _watcher.Deleted += OnFileSystemChanged;
+            _watcher.Renamed += OnFileSystemChanged;
+        }
+        catch (Exception)
+        {
+            // Directory may have been deleted or become inaccessible
+            StopWatching();
+        }
+    }
+
+    public void StopWatching()
+    {
+        if (_watcher != null)
+        {
+            _watcher.EnableRaisingEvents = false;
+            _watcher.Created -= OnFileSystemChanged;
+            _watcher.Deleted -= OnFileSystemChanged;
+            _watcher.Renamed -= OnFileSystemChanged;
+            _watcher.Dispose();
+            _watcher = null;
+        }
+        _refreshTimer?.Stop();
+    }
+
+    /// <summary>
+    /// Recursively stops all file system watchers on this item and its descendants.
+    /// Call when removing the tree (closing folder/project).
+    /// </summary>
+    public void StopWatchingRecursive()
+    {
+        StopWatching();
+        foreach (var child in Children)
+            child.StopWatchingRecursive();
+    }
+
+    private void OnFileSystemChanged(object sender, FileSystemEventArgs e)
+    {
+        // Debounce: filesystem events often fire in bursts.
+        // FileSystemWatcher fires on a thread pool thread, so marshal to UI.
+        System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            _refreshTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+            _refreshTimer.Stop();
+            _refreshTimer.Tick -= OnRefreshTimerTick;
+            _refreshTimer.Tick += OnRefreshTimerTick;
+            _refreshTimer.Start();
+        });
+    }
+
+    private void OnRefreshTimerTick(object? sender, EventArgs e)
+    {
+        _refreshTimer?.Stop();
+        RefreshChildren();
+    }
+
+    private void RefreshChildren()
+    {
+        if (!_isExpanded || _hasPlaceholder) return;
+
+        // Stop watchers on old children before replacing them
+        foreach (var child in Children)
+            child.StopWatchingRecursive();
+
+        // Capture which subdirectories were expanded
+        var expandedDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var child in Children)
+        {
+            if (child.IsDirectory && child.IsExpanded && !string.IsNullOrEmpty(child.FullPath))
+                expandedDirs.Add(child.FullPath);
+        }
+
+        Children.Clear();
+
+        try
+        {
+            var dirs = Directory.GetDirectories(FullPath)
+                .Where(d => !IsIgnored(d))
+                .OrderBy(d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase);
+
+            var files = Directory.GetFiles(FullPath)
+                .Where(f => !IsHidden(f))
+                .OrderBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase);
+
+            foreach (var dir in dirs)
+            {
+                var child = new FileTreeItem(dir, true);
+                child.TreeChanged += OnChildTreeChanged;
+                if (expandedDirs.Contains(dir))
+                    child.IsExpanded = true;
+                Children.Add(child);
+            }
+            foreach (var file in files)
+                Children.Add(new FileTreeItem(file, false));
+        }
+        catch (UnauthorizedAccessException) { }
+        catch (IOException) { }
+
+        TreeChanged?.Invoke(this);
+    }
+
+    private void OnChildTreeChanged(FileTreeItem child)
+    {
+        TreeChanged?.Invoke(child);
     }
 
     private static bool IsIgnored(string dirPath)

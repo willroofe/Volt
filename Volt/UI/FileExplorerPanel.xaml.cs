@@ -35,9 +35,11 @@ public partial class FileExplorerPanel : UserControl
     public void OpenFolder(string path)
     {
         if (!Directory.Exists(path)) return;
+        StopAllWatchers();
         _openFolderPath = path;
         HeaderText.Text = Path.GetFileName(path);
         var root = new FileTreeItem(path, true);
+        root.TreeChanged += OnTreeChanged;
         root.IsExpanded = true;
         var items = new ObservableCollection<FileTreeItem> { root };
         _currentRootItems = items;
@@ -46,6 +48,7 @@ public partial class FileExplorerPanel : UserControl
 
     public void CloseFolder()
     {
+        StopAllWatchers();
         _openFolderPath = null;
         HeaderText.Text = "Explorer";
         _currentRootItems = null;
@@ -61,6 +64,7 @@ public partial class FileExplorerPanel : UserControl
 
     public void CloseProject()
     {
+        StopAllWatchers();
         HeaderText.Text = "Explorer";
         _currentRootItems = null;
         ExplorerTree.SetRootItems(null);
@@ -76,6 +80,8 @@ public partial class FileExplorerPanel : UserControl
 
     private void RebuildProjectTree(Project project)
     {
+        StopAllWatchers();
+
         // Capture expanded state before rebuilding
         var expandedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (_currentRootItems != null)
@@ -95,6 +101,7 @@ public partial class FileExplorerPanel : UserControl
                 if (Directory.Exists(folder.Path))
                 {
                     var dirItem = FileTreeItem.CreateRootItem(folder.Path);
+                    dirItem.TreeChanged += OnTreeChanged;
                     if (expandedPaths.Contains(folder.Path))
                         dirItem.IsExpanded = true;
                     vfItem.Children.Add(dirItem);
@@ -114,6 +121,7 @@ public partial class FileExplorerPanel : UserControl
             if (Directory.Exists(folder.Path))
             {
                 var dirItem = FileTreeItem.CreateRootItem(folder.Path);
+                dirItem.TreeChanged += OnTreeChanged;
                 if (expandedPaths.Contains(folder.Path))
                     dirItem.IsExpanded = true;
                 projectRoot.Children.Add(dirItem);
@@ -217,5 +225,17 @@ public partial class FileExplorerPanel : UserControl
         var mi = new MenuItem { Header = header };
         mi.Click += (_, _) => onClick();
         return mi;
+    }
+
+    private void OnTreeChanged(FileTreeItem _)
+    {
+        ExplorerTree.RefreshFlatList();
+    }
+
+    private void StopAllWatchers()
+    {
+        if (_currentRootItems == null) return;
+        foreach (var root in _currentRootItems)
+            root.StopWatchingRecursive();
     }
 }
