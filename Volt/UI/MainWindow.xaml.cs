@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private readonly SessionManager _sessionManager = new();
 
     private readonly TabHeaderFactory _tabHeaderFactory = new();
+    private readonly FileExplorerPanel ExplorerPanel = new();
 
     private EditorControl Editor => _activeTab!.Editor;
 
@@ -39,6 +40,13 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+
+        // Move editor content from root Grid into PanelShell center
+        var rootGrid = (Grid)Content;
+        rootGrid.Children.Remove(EditorColumnGrid);
+        EditorColumnGrid.Visibility = Visibility.Visible;
+        Shell.CenterContent = EditorColumnGrid;
+
         _settings = App.Current.Settings;
 
         _tabHeaderFactory.TabActivated += tab => ActivateTab(tab);
@@ -52,16 +60,16 @@ public partial class MainWindow : Window
         UpdateTabOverflowBrushes();
         RestoreWindowPosition();
 
-        // Restore explorer state
-        if (_settings.Editor.Explorer.PanelVisible)
+        // Register explorer panel with shell
+        Shell.RegisterPanel(ExplorerPanel, PanelPlacement.Left, 250);
+        RestorePanelLayout();
+
+        if (ExplorerPanel.OpenFolderPath == null &&
+            _settings.Editor.Explorer.OpenFolderPath is string folderPath && Directory.Exists(folderPath))
         {
-            if (_settings.Editor.Explorer.OpenFolderPath is string folderPath && Directory.Exists(folderPath))
-            {
-                ExplorerPanel.OpenFolder(folderPath);
-                if (_settings.Editor.Explorer.ExpandedPaths.Count > 0)
-                    ExplorerPanel.RestoreExpandedPaths(_settings.Editor.Explorer.ExpandedPaths);
-            }
-            SetExplorerVisible(true);
+            ExplorerPanel.OpenFolder(folderPath);
+            if (_settings.Editor.Explorer.ExpandedPaths.Count > 0)
+                ExplorerPanel.RestoreExpandedPaths(_settings.Editor.Explorer.ExpandedPaths);
         }
 
         CmdPalette.Closed += (_, _) => { if (_activeTab != null) Keyboard.Focus(Editor); };
@@ -80,11 +88,7 @@ public partial class MainWindow : Window
         ExplorerPanel.RenameVirtualFolderRequested += OnProjectRenameVirtualFolder;
         ExplorerPanel.MoveToVirtualFolderRequested += OnProjectMoveToVirtualFolder;
         ExplorerPanel.CloseProjectRequested += CloseCurrentProject;
-        ExplorerSplitter.DragCompleted += (_, _) =>
-        {
-            _settings.Editor.Explorer.PanelWidth = ExplorerColumn.ActualWidth;
-            _settings.Save();
-        };
+        Shell.PanelLayoutChanged += OnPanelLayoutChanged;
         SourceInitialized += (_, _) =>
         {
             ApplyDwmTheme();
@@ -373,52 +377,19 @@ public partial class MainWindow : Window
 
     private void ToggleExplorer()
     {
-        bool show = ExplorerColumn.Width.Value == 0;
-        SetExplorerVisible(show);
-        _settings.Editor.Explorer.PanelVisible = show;
-        _settings.Save();
+        Shell.TogglePanel("file-explorer");
     }
 
-    private void SetExplorerVisible(bool visible)
+    private void RestorePanelLayout()
     {
-        if (visible)
-        {
-            double width = Math.Clamp(_settings.Editor.Explorer.PanelWidth, 150, 600);
-            bool rightSide = _settings.Editor.Explorer.PanelSide == "Right";
+        if (_settings.Editor.PanelLayouts.Count > 0)
+            Shell.RestoreLayout(_settings.Editor.PanelLayouts);
+    }
 
-            // Always: col0=explorer, col1=splitter, col2=editor
-            // Use FlowDirection to mirror for right-side layout
-            Grid.SetColumn(ExplorerPanel, 0);
-            Grid.SetColumn(ExplorerSplitter, 1);
-            Grid.SetColumn(EditorArea, 2);
-
-            MainContentGrid.FlowDirection = rightSide ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
-            ExplorerPanel.FlowDirection = FlowDirection.LeftToRight;
-            EditorArea.FlowDirection = FlowDirection.LeftToRight;
-
-            ExplorerColumn.Width = new GridLength(width);
-            ExplorerColumn.MinWidth = 150;
-            ExplorerColumn.MaxWidth = 600;
-            SplitterColumn.Width = new GridLength(1);
-            EditorColumn.Width = new GridLength(1, GridUnitType.Star);
-            EditorColumn.MinWidth = 0;
-            EditorColumn.MaxWidth = double.PositiveInfinity;
-            ExplorerSplitter.Visibility = Visibility.Visible;
-            HeaderBorderBridge.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            MainContentGrid.FlowDirection = FlowDirection.LeftToRight;
-            ExplorerColumn.MinWidth = 0;
-            ExplorerColumn.MaxWidth = double.PositiveInfinity;
-            ExplorerColumn.Width = new GridLength(0);
-            SplitterColumn.Width = new GridLength(0);
-            EditorColumn.Width = new GridLength(1, GridUnitType.Star);
-            EditorColumn.MinWidth = 0;
-            EditorColumn.MaxWidth = double.PositiveInfinity;
-            ExplorerSplitter.Visibility = Visibility.Collapsed;
-            HeaderBorderBridge.Visibility = Visibility.Collapsed;
-        }
+    private void OnPanelLayoutChanged(string panelId, PanelPlacement placement, double size)
+    {
+        _settings.Editor.PanelLayouts = Shell.GetCurrentLayout();
+        _settings.Save();
     }
 
     private void OpenFolderInExplorer()
@@ -435,18 +406,16 @@ public partial class MainWindow : Window
 
         ExplorerPanel.OpenFolder(dlg.SelectedPath);
         _settings.Editor.Explorer.OpenFolderPath = dlg.SelectedPath;
-        SetExplorerVisible(true);
-        _settings.Editor.Explorer.PanelVisible = true;
+        Shell.ShowPanel("file-explorer");
         _settings.Save();
     }
 
     private void CloseFolderInExplorer()
     {
         ExplorerPanel.CloseFolder();
-        SetExplorerVisible(false);
+        Shell.HidePanel("file-explorer");
         _settings.Editor.Explorer.OpenFolderPath = null;
         _settings.Editor.Explorer.ExpandedPaths.Clear();
-        _settings.Editor.Explorer.PanelVisible = false;
         _settings.Save();
     }
 
@@ -682,6 +651,7 @@ public partial class MainWindow : Window
 
         _settings.WindowMaximized = WindowState == WindowState.Maximized;
         _settings.Editor.Explorer.ExpandedPaths = ExplorerPanel.GetExpandedPaths();
+        _settings.Editor.PanelLayouts = Shell.GetCurrentLayout();
         _settings.Save();
 
         foreach (var tab in _tabs)
@@ -963,8 +933,7 @@ public partial class MainWindow : Window
         var snapshot = new SettingsSnapshot(
             Editor.TabSize, _settings.Editor.Caret.BlockCaret, _settings.Editor.Caret.BlinkMs,
             Editor.FontFamilyName, Editor.EditorFontSize, Editor.EditorFontWeight,
-            Editor.LineHeightMultiplier, _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition,
-            _settings.Editor.Explorer.PanelSide);
+            Editor.LineHeightMultiplier, _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition);
         var dlg = new SettingsWindow(ThemeManager, snapshot) { Owner = this };
         dlg.Applied += (_, _) => ApplySettingsFromDialog(dlg);
         if (dlg.ShowDialog() == true)
@@ -982,9 +951,6 @@ public partial class MainWindow : Window
         _settings.Editor.Font.LineHeight = dlg.SelectedLineHeight;
         _settings.Application.ColorTheme = dlg.ColorThemeName;
         _settings.Editor.Find.BarPosition = dlg.FindBarPosition;
-        _settings.Editor.Explorer.PanelSide = dlg.PanelSide;
-        if (_settings.Editor.Explorer.PanelVisible)
-            SetExplorerVisible(true);
         _settings.Save();
         ApplySettings();
         ThemeManager.Apply(dlg.ColorThemeName);
@@ -1062,8 +1028,7 @@ public partial class MainWindow : Window
         if (_activeTab == null) return;
         var commands = CommandPaletteCommands.Build(new CommandPaletteContext(
             _tabs, _settings, ThemeManager, Editor, FindBarControl, () => _settings.Save(),
-            new ExplorerActions(ToggleExplorer, OpenFolderInExplorer, CloseFolderInExplorer,
-                () => { if (_settings.Editor.Explorer.PanelVisible) SetExplorerVisible(true); }),
+            new ExplorerActions(ToggleExplorer, OpenFolderInExplorer, CloseFolderInExplorer),
             new ProjectActions(
                 () => OnNewProject(this, new RoutedEventArgs()),
                 () => OnOpenProject(this, new RoutedEventArgs()),
@@ -1098,7 +1063,7 @@ public partial class MainWindow : Window
         _projectManager.SaveProject();
 
         ExplorerPanel.OpenProject(_projectManager.CurrentProject);
-        SetExplorerVisible(true);
+        Shell.ShowPanel("file-explorer");
         UpdateProjectMenuState(true);
 
         _settings.LastOpenProjectPath = dlg.FileName;
@@ -1148,11 +1113,10 @@ public partial class MainWindow : Window
         ExplorerPanel.OpenProject(project);
         if (project.Session.ExpandedPaths.Count > 0)
             ExplorerPanel.RestoreExpandedPaths(project.Session.ExpandedPaths);
-        SetExplorerVisible(true);
+        Shell.ShowPanel("file-explorer");
         UpdateProjectMenuState(true);
 
         _settings.LastOpenProjectPath = vprojPath;
-        _settings.Editor.Explorer.PanelVisible = true;
         _settings.Save();
 
         RestoreProjectSession(project);
