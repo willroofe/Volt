@@ -5,8 +5,7 @@ namespace Volt;
 public record SettingsSnapshot(
     int TabSize, bool BlockCaret, int CaretBlinkMs,
     string FontFamily, double FontSize, string FontWeight,
-    double LineHeight, string ColorTheme, string FindBarPosition,
-    string PanelSide);
+    double LineHeight, string ColorTheme, string FindBarPosition);
 
 public partial class SettingsWindow : Window
 {
@@ -19,7 +18,6 @@ public partial class SettingsWindow : Window
     public string ColorThemeName { get; private set; }
     public double SelectedLineHeight { get; private set; }
     public string FindBarPosition { get; private set; }
-    public string PanelSide { get; private set; }
 
     public event EventHandler? Applied;
 
@@ -46,8 +44,6 @@ public partial class SettingsWindow : Window
         CaretStyleBox.SelectedIndex = snapshot.BlockCaret ? 1 : 0;
         CaretBlinkSlider.Value = snapshot.CaretBlinkMs;
         FindBarPosBox.SelectedIndex = snapshot.FindBarPosition == "Top" ? 0 : 1;
-        PanelSide = snapshot.PanelSide;
-        PanelSideBox.SelectedIndex = snapshot.PanelSide == "Right" ? 1 : 0;
 
         // Populate font family dropdown
         _fontNames = FontManager.GetMonospaceFonts();
@@ -114,7 +110,6 @@ public partial class SettingsWindow : Window
         SelectedLineHeight = AppSettings.LineHeightOptions[Math.Max(0, LineHeightBox.SelectedIndex)];
         ColorThemeName = _themeNames[Math.Max(0, ColorThemeBox.SelectedIndex)];
         FindBarPosition = FindBarPosBox.SelectedIndex == 0 ? "Top" : "Bottom";
-        PanelSide = PanelSideBox.SelectedIndex == 1 ? "Right" : "Left";
     }
 
     private void OnApply(object sender, RoutedEventArgs e)

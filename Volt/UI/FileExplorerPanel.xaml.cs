@@ -5,7 +5,7 @@ using System.Windows.Controls;
 
 namespace Volt;
 
-public partial class FileExplorerPanel : UserControl
+public partial class FileExplorerPanel : UserControl, IPanel
 {
     public event Action<string>? FileOpenRequested;
     public event Action<string?>? AddFolderRequested;
@@ -20,6 +20,10 @@ public partial class FileExplorerPanel : UserControl
     private ProjectManager? _projectManager;
     private ObservableCollection<FileTreeItem>? _currentRootItems;
     private HashSet<string>? _pendingExpandPaths;
+
+    public string PanelId => "file-explorer";
+    public string Title => "Explorer";
+    public new UIElement Content => this;
 
     public FileExplorerPanel()
     {
