@@ -15,7 +15,7 @@ public partial class MainWindow : Window
     private readonly List<TabInfo> _tabs = [];
     private TabInfo? _activeTab;
     private AppSettings _settings;
-    private readonly ProjectManager _projectManager = new();
+    private readonly WorkspaceManager _workspaceManager = new();
     private readonly SessionManager _sessionManager = new();
 
     private readonly TabHeaderFactory _tabHeaderFactory = new();
@@ -81,14 +81,10 @@ public partial class MainWindow : Window
         Activated += (_, _) => CheckAllTabsForExternalChanges();
         ThemeManager.ThemeChanged += (_, _) => { ApplyDwmTheme(); UpdateTabOverflowBrushes(); };
         ExplorerPanel.FileOpenRequested += OnExplorerFileOpen;
-        ExplorerPanel.SetProjectManager(_projectManager);
-        ExplorerPanel.AddFolderRequested += OnProjectAddFolder;
-        ExplorerPanel.RemoveFolderRequested += OnProjectRemoveFolder;
-        ExplorerPanel.NewVirtualFolderRequested += OnProjectNewVirtualFolder;
-        ExplorerPanel.RemoveVirtualFolderRequested += OnProjectRemoveVirtualFolder;
-        ExplorerPanel.RenameVirtualFolderRequested += OnProjectRenameVirtualFolder;
-        ExplorerPanel.MoveToVirtualFolderRequested += OnProjectMoveToVirtualFolder;
-        ExplorerPanel.CloseProjectRequested += CloseCurrentProject;
+        ExplorerPanel.SetWorkspaceManager(_workspaceManager);
+        ExplorerPanel.AddFolderRequested += OnWorkspaceAddFolder;
+        ExplorerPanel.RemoveFolderRequested += OnWorkspaceRemoveFolder;
+        ExplorerPanel.CloseWorkspaceRequested += CloseCurrentWorkspace;
         Shell.PanelLayoutChanged += OnPanelLayoutChanged;
         SourceInitialized += (_, _) =>
         {
@@ -404,9 +400,12 @@ public partial class MainWindow : Window
 
         if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
 
-        // Close project if one is open (mode exclusivity) — after dialog confirms
-        if (_projectManager.CurrentProject != null)
-            CloseCurrentProject();
+        // Close workspace if one is open (mode exclusivity) — after dialog confirms
+        if (_workspaceManager.CurrentWorkspace != null)
+        {
+            if (!PromptCloseUnsavedWorkspace()) return;
+            CloseCurrentWorkspace();
+        }
 
         SwitchToFolder(dlg.SelectedPath);
     }
@@ -502,11 +501,36 @@ public partial class MainWindow : Window
 
     private void RestoreSession()
     {
-        // Restore project if one was open
-        if (_settings.LastOpenProjectPath is string projPath && System.IO.File.Exists(projPath))
+        // Restore workspace if one was open
+        if (_settings.LastOpenWorkspacePath is string wsPath && File.Exists(wsPath))
         {
-            OpenProjectFromPath(projPath);
+            OpenWorkspaceFromPath(wsPath);
             return;
+        }
+
+        // Restore unsaved workspace if one existed
+        if (_settings.UnsavedWorkspaceFolders is { Count: > 0 } unsavedFolders)
+        {
+            _workspaceManager.NewWorkspace("Untitled Workspace");
+            foreach (var folder in unsavedFolders)
+            {
+                if (Directory.Exists(folder))
+                    _workspaceManager.AddFolder(folder);
+            }
+
+            if (_workspaceManager.CurrentWorkspace!.Folders.Count > 0)
+            {
+                ExplorerPanel.OpenWorkspace(_workspaceManager.CurrentWorkspace);
+                Shell.ShowPanel("file-explorer");
+                UpdateWorkspaceMenuState(true);
+
+                // Create a default tab (unsaved workspaces don't persist session to file)
+                CreateTab();
+                ActivateTab(_tabs[0]);
+                return;
+            }
+
+            _workspaceManager.CloseWorkspace();
         }
 
         // If a folder was open, restore its per-folder tabs
@@ -721,17 +745,26 @@ public partial class MainWindow : Window
 
     private void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        // Save project session if a project is open
-        if (_projectManager.CurrentProject != null)
+        // Save workspace session if a workspace is open
+        if (_workspaceManager.CurrentWorkspace != null)
         {
             try
             {
-                CaptureProjectSession();
-                _projectManager.SaveProject();
+                CaptureWorkspaceSession();
+                if (_workspaceManager.CurrentWorkspace.FilePath != null)
+                {
+                    _workspaceManager.SaveWorkspace();
+                }
+                else
+                {
+                    // Persist unsaved workspace folders and session for restore on next launch
+                    _settings.UnsavedWorkspaceFolders = [.. _workspaceManager.CurrentWorkspace.Folders];
+                    _settings.LastOpenWorkspacePath = null;
+                }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Project save failed: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Workspace save failed: {ex.Message}");
             }
         }
 
@@ -1187,111 +1220,159 @@ public partial class MainWindow : Window
         var commands = CommandPaletteCommands.Build(new CommandPaletteContext(
             _tabs, _settings, ThemeManager, Editor, FindBarControl, () => _settings.Save(),
             new ExplorerActions(ToggleExplorer, OpenFolderInExplorer, CloseFolderInExplorer),
-            new ProjectActions(
-                () => OnNewProject(this, new RoutedEventArgs()),
-                () => OnOpenProject(this, new RoutedEventArgs()),
-                () => OnSaveProject(this, new RoutedEventArgs()),
-                CloseCurrentProject),
+            new WorkspaceActions(
+                () => OnNewWorkspace(this, new RoutedEventArgs()),
+                () => OnOpenWorkspace(this, new RoutedEventArgs()),
+                CloseCurrentWorkspace,
+                () => OnAddFolderToWorkspace(this, new RoutedEventArgs())),
             () => OnToggleWordWrap(this, new RoutedEventArgs())));
         CmdPalette.SetCommands(commands);
         CmdPalette.Open();
     }
 
-    // ── Project menu handlers ────────────────────────────────────────────────
+    // ── Workspace menu handlers ─────────────────────────────────────────────
 
-    private void OnNewProject(object sender, RoutedEventArgs e)
+    private void OnNewWorkspace(object sender, RoutedEventArgs e)
     {
-        var dlg = new Microsoft.Win32.SaveFileDialog
+        var dlg = new SaveFileDialog
         {
-            Filter = "Project Files (*.vproj)|*.vproj",
-            DefaultExt = ".vproj",
-            FileName = "MyProject.vproj"
+            Filter = "Workspace Files (*.volt-workspace)|*.volt-workspace",
+            DefaultExt = ".volt-workspace",
+            FileName = "MyWorkspace.volt-workspace"
         };
         if (dlg.ShowDialog() != true) return;
 
-        if (_projectManager.CurrentProject != null)
-            CloseCurrentProject();
+        if (_workspaceManager.CurrentWorkspace != null)
+        {
+            if (!PromptCloseUnsavedWorkspace()) return;
+            CloseCurrentWorkspace();
+        }
         else if (ExplorerPanel.OpenFolderPath != null)
             CloseFolderInExplorer();
 
         CloseAllTabs();
 
-        _projectManager.NewProject(System.IO.Path.GetFileNameWithoutExtension(dlg.FileName));
-        _projectManager.CurrentProject!.FilePath = dlg.FileName;
-        _projectManager.SaveProject();
+        _workspaceManager.NewWorkspace(Path.GetFileNameWithoutExtension(dlg.FileName));
+        _workspaceManager.CurrentWorkspace!.FilePath = dlg.FileName;
+        _workspaceManager.SaveWorkspace();
 
-        ExplorerPanel.OpenProject(_projectManager.CurrentProject);
+        ExplorerPanel.OpenWorkspace(_workspaceManager.CurrentWorkspace);
         Shell.ShowPanel("file-explorer");
-        UpdateProjectMenuState(true);
+        UpdateWorkspaceMenuState(true);
 
-        _settings.LastOpenProjectPath = dlg.FileName;
+        _settings.LastOpenWorkspacePath = dlg.FileName;
         _settings.Save();
+
+        CreateTab();
+        ActivateTab(_tabs[0]);
     }
 
-    private void OnOpenProject(object sender, RoutedEventArgs e)
+    private void OnOpenWorkspace(object sender, RoutedEventArgs e)
     {
-        var dlg = new Microsoft.Win32.OpenFileDialog
+        var dlg = new OpenFileDialog
         {
-            Filter = "Project Files (*.vproj)|*.vproj",
-            DefaultExt = ".vproj"
+            Filter = "Workspace Files (*.volt-workspace)|*.volt-workspace",
+            DefaultExt = ".volt-workspace"
         };
         if (dlg.ShowDialog() != true) return;
 
-        OpenProjectFromPath(dlg.FileName);
+        OpenWorkspaceFromPath(dlg.FileName);
     }
 
-    private void OnSaveProject(object sender, RoutedEventArgs e)
+    private void OnCloseWorkspace(object sender, RoutedEventArgs e)
     {
-        if (_projectManager.CurrentProject == null) return;
-        CaptureProjectSession();
-        _projectManager.SaveProject();
+        if (!PromptCloseUnsavedWorkspace()) return;
+        CloseCurrentWorkspace();
     }
 
-    private void OnCloseProject(object sender, RoutedEventArgs e)
+    private void OnAddFolderToWorkspace(object sender, RoutedEventArgs e)
     {
-        CloseCurrentProject();
+        var dlg = new System.Windows.Forms.FolderBrowserDialog();
+        if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+
+        if (_workspaceManager.CurrentWorkspace == null)
+        {
+            // Auto-create unsaved workspace from current folder (if any) + new folder
+            var currentFolder = ExplorerPanel.OpenFolderPath;
+
+            // Save current folder session before switching
+            if (currentFolder != null)
+            {
+                SaveFolderSession(currentFolder);
+                _settings.Editor.Explorer.ExpandedPaths = ExplorerPanel.GetExpandedPaths();
+            }
+
+            _workspaceManager.NewWorkspace("Untitled Workspace");
+            if (currentFolder != null)
+                _workspaceManager.AddFolder(currentFolder);
+
+            _settings.Editor.Explorer.OpenFolderPath = null;
+            _settings.LastOpenWorkspacePath = null;
+        }
+
+        _workspaceManager.AddFolder(dlg.SelectedPath);
+
+        // Auto-save if workspace has a file path
+        if (_workspaceManager.CurrentWorkspace!.FilePath != null)
+            _workspaceManager.SaveWorkspace();
+
+        ExplorerPanel.OpenWorkspace(_workspaceManager.CurrentWorkspace);
+        Shell.ShowPanel("file-explorer");
+        UpdateWorkspaceMenuState(true);
+        _settings.Save();
+
+        if (_tabs.Count == 0)
+        {
+            CreateTab();
+            ActivateTab(_tabs[0]);
+        }
     }
 
-    // ── Project helpers ──────────────────────────────────────────────────────
+    // ── Workspace helpers ────────────────────────────────────────────────────
 
-    private void OpenProjectFromPath(string vprojPath)
+    private void OpenWorkspaceFromPath(string workspacePath)
     {
-        if (!System.IO.File.Exists(vprojPath)) return;
+        if (!File.Exists(workspacePath)) return;
 
-        if (_projectManager.CurrentProject != null)
-            CloseCurrentProject();
+        if (_workspaceManager.CurrentWorkspace != null)
+        {
+            if (!PromptCloseUnsavedWorkspace()) return;
+            CloseCurrentWorkspace();
+        }
         else if (ExplorerPanel.OpenFolderPath != null)
             CloseFolderInExplorer();
 
         PromptSaveDirtyTabs();
         CloseAllTabs();
 
-        var project = _projectManager.OpenProject(vprojPath);
+        var workspace = _workspaceManager.OpenWorkspace(workspacePath);
 
-        ExplorerPanel.OpenProject(project);
-        if (project.Session.ExpandedPaths.Count > 0)
-            ExplorerPanel.RestoreExpandedPaths(project.Session.ExpandedPaths);
+        ExplorerPanel.OpenWorkspace(workspace);
+        if (workspace.Session.ExpandedPaths.Count > 0)
+            ExplorerPanel.RestoreExpandedPaths(workspace.Session.ExpandedPaths);
         Shell.ShowPanel("file-explorer");
-        UpdateProjectMenuState(true);
+        UpdateWorkspaceMenuState(true);
 
-        _settings.LastOpenProjectPath = vprojPath;
+        _settings.LastOpenWorkspacePath = workspacePath;
         _settings.Save();
 
-        RestoreProjectSession(project);
+        RestoreWorkspaceSession(workspace);
     }
 
-    private void CloseCurrentProject()
+    private void CloseCurrentWorkspace()
     {
-        if (_projectManager.CurrentProject == null) return;
+        if (_workspaceManager.CurrentWorkspace == null) return;
 
-        CaptureProjectSession();
-        _projectManager.SaveProject();
-        _projectManager.CloseProject();
+        CaptureWorkspaceSession();
+        if (_workspaceManager.CurrentWorkspace.FilePath != null)
+            _workspaceManager.SaveWorkspace();
+        _workspaceManager.CloseWorkspace();
 
-        ExplorerPanel.CloseProject();
-        UpdateProjectMenuState(false);
+        ExplorerPanel.CloseWorkspace();
+        UpdateWorkspaceMenuState(false);
 
-        _settings.LastOpenProjectPath = null;
+        _settings.LastOpenWorkspacePath = null;
+        _settings.UnsavedWorkspaceFolders = null;
         _settings.Save();
 
         CloseAllTabs();
@@ -1299,10 +1380,43 @@ public partial class MainWindow : Window
         ActivateTab(_tabs[0]);
     }
 
-    private void UpdateProjectMenuState(bool projectOpen)
+    /// <summary>
+    /// If the current workspace is unsaved, prompts the user to save or discard it.
+    /// Returns false if the user cancelled (caller should abort the operation).
+    /// </summary>
+    private bool PromptCloseUnsavedWorkspace()
     {
-        MenuSaveProject.IsEnabled = projectOpen;
-        MenuCloseProject.IsEnabled = projectOpen;
+        if (_workspaceManager.CurrentWorkspace == null) return true;
+        if (_workspaceManager.CurrentWorkspace.FilePath != null) return true;
+
+        var result = ThemedMessageBox.Show(this,
+            "Do you want to save the current workspace before closing it?",
+            "Unsaved Workspace", MessageBoxButton.YesNoCancel);
+
+        if (result == MessageBoxResult.Cancel) return false;
+
+        if (result == MessageBoxResult.Yes)
+        {
+            var saveDlg = new SaveFileDialog
+            {
+                Filter = "Workspace Files (*.volt-workspace)|*.volt-workspace",
+                DefaultExt = ".volt-workspace",
+                FileName = "MyWorkspace.volt-workspace"
+            };
+            if (saveDlg.ShowDialog() != true) return false;
+
+            _workspaceManager.CurrentWorkspace.FilePath = saveDlg.FileName;
+            _workspaceManager.CurrentWorkspace.Name = Path.GetFileNameWithoutExtension(saveDlg.FileName);
+            CaptureWorkspaceSession();
+            _workspaceManager.SaveWorkspace();
+        }
+
+        return true;
+    }
+
+    private void UpdateWorkspaceMenuState(bool workspaceOpen)
+    {
+        MenuCloseWorkspace.IsEnabled = workspaceOpen;
     }
 
     private void CloseAllTabs()
@@ -1329,13 +1443,13 @@ public partial class MainWindow : Window
         }
     }
 
-    // ── Session capture / restore ────────────────────────────────────────────
+    // ── Workspace session capture / restore ──────────────────────────────────
 
-    private void CaptureProjectSession()
+    private void CaptureWorkspaceSession()
     {
-        if (_projectManager.CurrentProject == null) return;
+        if (_workspaceManager.CurrentWorkspace == null) return;
 
-        var sessionTabs = new List<ProjectSessionTab>();
+        var sessionTabs = new List<WorkspaceSessionTab>();
         int activeIdx = 0;
 
         foreach (var t in _tabs)
@@ -1343,7 +1457,7 @@ public partial class MainWindow : Window
             if (t == _activeTab)
                 activeIdx = sessionTabs.Count;
 
-            sessionTabs.Add(new ProjectSessionTab
+            sessionTabs.Add(new WorkspaceSessionTab
             {
                 FilePath = t.FilePath,
                 IsDirty = t.Editor.IsDirty,
@@ -1354,7 +1468,7 @@ public partial class MainWindow : Window
             });
         }
 
-        _projectManager.CurrentProject.Session = new ProjectSession
+        _workspaceManager.CurrentWorkspace.Session = new WorkspaceSession
         {
             Tabs = sessionTabs,
             ActiveTabIndex = activeIdx,
@@ -1362,9 +1476,9 @@ public partial class MainWindow : Window
         };
     }
 
-    private void RestoreProjectSession(Project project)
+    private void RestoreWorkspaceSession(Workspace workspace)
     {
-        if (project.Session.Tabs.Count == 0)
+        if (workspace.Session.Tabs.Count == 0)
         {
             var tab = CreateTab();
             ActivateTab(tab);
@@ -1372,10 +1486,10 @@ public partial class MainWindow : Window
         }
 
         TabInfo? activeTab = null;
-        for (int i = 0; i < project.Session.Tabs.Count; i++)
+        for (int i = 0; i < workspace.Session.Tabs.Count; i++)
         {
-            var st = project.Session.Tabs[i];
-            if (st.FilePath != null && !System.IO.File.Exists(st.FilePath))
+            var st = workspace.Session.Tabs[i];
+            if (st.FilePath != null && !File.Exists(st.FilePath))
                 continue;
 
             var tab = CreateTab();
@@ -1385,12 +1499,12 @@ public partial class MainWindow : Window
                 tab.FilePath = st.FilePath;
                 tab.FileEncoding = FileHelper.DetectEncoding(st.FilePath);
                 tab.Editor.SetContent(FileHelper.ReadAllText(st.FilePath, tab.FileEncoding));
-                tab.LastKnownFileSize = new System.IO.FileInfo(st.FilePath).Length;
+                tab.LastKnownFileSize = new FileInfo(st.FilePath).Length;
                 tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(st.FilePath, tab.LastKnownFileSize);
                 tab.StartWatching();
             }
 
-            if (i == project.Session.ActiveTabIndex)
+            if (i == workspace.Session.ActiveTabIndex)
                 activeTab = tab;
 
             UpdateTabHeader(tab);
@@ -1407,9 +1521,9 @@ public partial class MainWindow : Window
 
         Dispatcher.InvokeAsync(() =>
         {
-            for (int i = 0; i < _tabs.Count && i < project.Session.Tabs.Count; i++)
+            for (int i = 0; i < _tabs.Count && i < workspace.Session.Tabs.Count; i++)
             {
-                var st = project.Session.Tabs[i];
+                var st = workspace.Session.Tabs[i];
                 var tab = _tabs[i];
                 tab.Editor.SetCaretPosition(st.CaretLine, st.CaretCol);
                 tab.ScrollHost?.ScrollToVerticalOffset(st.ScrollY);
@@ -1418,63 +1532,24 @@ public partial class MainWindow : Window
         }, System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
-    // ── Project context menu handlers ────────────────────────────────────────
+    // ── Workspace context menu handlers ──────────────────────────────────────
 
-    private void OnProjectAddFolder(string? virtualFolderName)
+    private void OnWorkspaceAddFolder()
     {
         var dlg = new System.Windows.Forms.FolderBrowserDialog();
         if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
 
-        _projectManager.AddFolder(dlg.SelectedPath);
-        if (virtualFolderName != null)
-            _projectManager.AssignToVirtualFolder(dlg.SelectedPath, virtualFolderName);
-        ExplorerPanel.RefreshProjectTree();
-        _projectManager.SaveProject();
+        _workspaceManager.AddFolder(dlg.SelectedPath);
+        if (_workspaceManager.CurrentWorkspace?.FilePath != null)
+            _workspaceManager.SaveWorkspace();
+        ExplorerPanel.RefreshWorkspaceTree();
     }
 
-    private void OnProjectRemoveFolder(string path)
+    private void OnWorkspaceRemoveFolder(string path)
     {
-        _projectManager.RemoveFolder(path);
-        ExplorerPanel.RefreshProjectTree();
-        _projectManager.SaveProject();
-    }
-
-    private void OnProjectNewVirtualFolder()
-    {
-        var name = PromptForInput("New Virtual Folder", "Enter a name:");
-        if (string.IsNullOrWhiteSpace(name)) return;
-
-        _projectManager.CreateVirtualFolder(name);
-        ExplorerPanel.RefreshProjectTree();
-        _projectManager.SaveProject();
-    }
-
-    private void OnProjectRemoveVirtualFolder(string name)
-    {
-        _projectManager.RemoveVirtualFolder(name);
-        ExplorerPanel.RefreshProjectTree();
-        _projectManager.SaveProject();
-    }
-
-    private void OnProjectRenameVirtualFolder(string oldName)
-    {
-        var newName = PromptForInput("Rename Virtual Folder", "Enter a new name:", oldName);
-        if (string.IsNullOrWhiteSpace(newName) || newName == oldName) return;
-
-        _projectManager.RenameVirtualFolder(oldName, newName);
-        ExplorerPanel.RefreshProjectTree();
-        _projectManager.SaveProject();
-    }
-
-    private void OnProjectMoveToVirtualFolder(string folderPath, string? virtualFolderName)
-    {
-        _projectManager.AssignToVirtualFolder(folderPath, virtualFolderName);
-        ExplorerPanel.RefreshProjectTree();
-        _projectManager.SaveProject();
-    }
-
-    private static string? PromptForInput(string title, string prompt, string defaultValue = "")
-    {
-        return ThemedInputBox.Show(Application.Current.MainWindow, title, prompt, defaultValue);
+        _workspaceManager.RemoveFolder(path);
+        if (_workspaceManager.CurrentWorkspace?.FilePath != null)
+            _workspaceManager.SaveWorkspace();
+        ExplorerPanel.RefreshWorkspaceTree();
     }
 }

@@ -8,16 +8,12 @@ namespace Volt;
 public partial class FileExplorerPanel : UserControl, IPanel
 {
     public event Action<string>? FileOpenRequested;
-    public event Action<string?>? AddFolderRequested;
+    public event Action? AddFolderRequested;
     public event Action<string>? RemoveFolderRequested;
-    public event Action? NewVirtualFolderRequested;
-    public event Action<string>? RemoveVirtualFolderRequested;
-    public event Action<string>? RenameVirtualFolderRequested;
-    public event Action<string, string?>? MoveToVirtualFolderRequested;
-    public event Action? CloseProjectRequested;
+    public event Action? CloseWorkspaceRequested;
 
     private string? _openFolderPath;
-    private ProjectManager? _projectManager;
+    private WorkspaceManager? _workspaceManager;
     private FileTreeItem? _folderRoot; // kept alive for watcher cleanup
     private ObservableCollection<FileTreeItem>? _currentRootItems;
     private HashSet<string>? _pendingExpandPaths;
@@ -42,9 +38,9 @@ public partial class FileExplorerPanel : UserControl, IPanel
         ExplorerTree.ItemRightClicked += OnItemRightClicked;
     }
 
-    public void SetProjectManager(ProjectManager manager)
+    public void SetWorkspaceManager(WorkspaceManager manager)
     {
-        _projectManager = manager;
+        _workspaceManager = manager;
     }
 
     public void OpenFolder(string path)
@@ -52,8 +48,6 @@ public partial class FileExplorerPanel : UserControl, IPanel
         if (!Directory.Exists(path)) return;
         StopAllWatchers();
         _openFolderPath = path;
-        var folderName = Path.GetFileName(path);
-        if (string.IsNullOrEmpty(folderName)) folderName = path; // root drives like "C:\"
         SetTitle("Explorer");
         var root = new FileTreeItem(path, true);
         root.TreeChanged += OnTreeChanged;
@@ -73,13 +67,13 @@ public partial class FileExplorerPanel : UserControl, IPanel
         ExplorerTree.SetRootItems(null);
     }
 
-    public void OpenProject(Project project)
+    public void OpenWorkspace(Workspace workspace)
     {
         _openFolderPath = null;
-        RebuildProjectTree(project);
+        RebuildWorkspaceTree(workspace);
     }
 
-    public void CloseProject()
+    public void CloseWorkspace()
     {
         StopAllWatchers();
         _pendingExpandPaths = null;
@@ -88,10 +82,10 @@ public partial class FileExplorerPanel : UserControl, IPanel
         ExplorerTree.SetRootItems(null);
     }
 
-    public void RefreshProjectTree()
+    public void RefreshWorkspaceTree()
     {
-        if (_projectManager?.CurrentProject is Project project)
-            RebuildProjectTree(project);
+        if (_workspaceManager?.CurrentWorkspace is Workspace workspace)
+            RebuildWorkspaceTree(workspace);
     }
 
     public string? OpenFolderPath => _openFolderPath;
@@ -112,9 +106,6 @@ public partial class FileExplorerPanel : UserControl, IPanel
             _pendingExpandPaths = null;
             return;
         }
-        // Expand matching root-level items first (they used to be children of a
-        // root node that was always expanded, but now they ARE the root items).
-        // Then recurse into any that were just expanded.
         if (_currentRootItems != null)
         {
             ExpandMatchingChildren(_currentRootItems);
@@ -151,24 +142,19 @@ public partial class FileExplorerPanel : UserControl, IPanel
     {
         foreach (var child in children)
         {
-            if (!child.IsDirectory && child.Kind != FileTreeItemKind.VirtualFolder) continue;
+            if (!child.IsDirectory) continue;
 
-            string key = child.Kind == FileTreeItemKind.VirtualFolder
-                ? "vf:" + child.Name
-                : child.FullPath;
-
-            if (!string.IsNullOrEmpty(key) && _pendingExpandPaths!.Remove(key))
+            if (!string.IsNullOrEmpty(child.FullPath) && _pendingExpandPaths!.Remove(child.FullPath))
             {
-                child.IsExpanded = true; // triggers LoadChildren -> TreeChanged -> re-enters here
+                child.IsExpanded = true;
             }
         }
     }
 
-    private void RebuildProjectTree(Project project)
+    private void RebuildWorkspaceTree(Workspace workspace)
     {
         StopAllWatchers();
 
-        // Capture expanded state before rebuilding
         var expandedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (_currentRootItems != null)
             CollectExpandedPaths(_currentRootItems, expandedPaths);
@@ -177,43 +163,15 @@ public partial class FileExplorerPanel : UserControl, IPanel
 
         var items = new ObservableCollection<FileTreeItem>();
 
-        // Add virtual folders with their assigned real folders
-        foreach (var vf in project.VirtualFolders)
+        foreach (var folderPath in workspace.Folders)
         {
-            var vfItem = FileTreeItem.CreateVirtualFolder(vf);
-            var assigned = project.Folders
-                .Where(f => string.Equals(f.VirtualParent, vf, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            foreach (var folder in assigned)
-            {
-                if (Directory.Exists(folder.Path))
-                {
-                    var dirItem = FileTreeItem.CreateRootItem(folder.Path);
-                    dirItem.TreeChanged += OnTreeChanged;
-                    if (expandedPaths.Contains(folder.Path))
-                        dirItem.IsExpanded = true;
-                    vfItem.Children.Add(dirItem);
-                }
-            }
-            if (expandedPaths.Contains("vf:" + vf))
-                vfItem.IsExpanded = true;
-            items.Add(vfItem);
-        }
+            if (!Directory.Exists(folderPath)) continue;
 
-        // Add unassigned real folders directly at the top level
-        var unassigned = project.Folders
-            .Where(f => f.VirtualParent == null)
-            .ToList();
-        foreach (var folder in unassigned)
-        {
-            if (Directory.Exists(folder.Path))
-            {
-                var dirItem = FileTreeItem.CreateRootItem(folder.Path);
-                dirItem.TreeChanged += OnTreeChanged;
-                if (expandedPaths.Contains(folder.Path))
-                    dirItem.IsExpanded = true;
-                items.Add(dirItem);
-            }
+            var dirItem = FileTreeItem.CreateRootItem(folderPath);
+            dirItem.TreeChanged += OnTreeChanged;
+            if (expandedPaths.Contains(folderPath))
+                dirItem.IsExpanded = true;
+            items.Add(dirItem);
         }
 
         _currentRootItems = items;
@@ -226,9 +184,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
         {
             if (!item.IsExpanded) continue;
 
-            if (item.Kind == FileTreeItemKind.VirtualFolder)
-                paths.Add("vf:" + item.Name);
-            else if (!string.IsNullOrEmpty(item.FullPath))
+            if (!string.IsNullOrEmpty(item.FullPath))
                 paths.Add(item.FullPath);
 
             CollectExpandedPaths(item.Children, paths);
@@ -237,68 +193,41 @@ public partial class FileExplorerPanel : UserControl, IPanel
 
     private void OnItemRightClicked(FileTreeItem? item)
     {
-        if (_projectManager?.CurrentProject == null)
+        if (_workspaceManager?.CurrentWorkspace == null)
         {
             ExplorerTree.ContextMenu = null;
             return;
         }
 
         var menu = ContextMenuHelper.Create();
-        var project = _projectManager.CurrentProject;
 
         if (item == null)
         {
-            menu.Items.Add(ContextMenuHelper.Item("Add Folder...", () => AddFolderRequested?.Invoke(null)));
-            menu.Items.Add(ContextMenuHelper.Item("New Virtual Folder", () => NewVirtualFolderRequested?.Invoke()));
+            menu.Items.Add(ContextMenuHelper.Item("Add Folder to Workspace", () => AddFolderRequested?.Invoke()));
             menu.Items.Add(ContextMenuHelper.Separator());
-            menu.Items.Add(ContextMenuHelper.Item("Close Project", () => CloseProjectRequested?.Invoke()));
+            menu.Items.Add(ContextMenuHelper.Item("Close Workspace", () => CloseWorkspaceRequested?.Invoke()));
             ExplorerTree.ContextMenu = menu;
             menu.IsOpen = true;
             return;
         }
 
-        switch (item.Kind)
+        if (IsTopLevelWorkspaceFolder(item))
         {
-            case FileTreeItemKind.VirtualFolder:
-                var targetVf = item.Name;
-                menu.Items.Add(ContextMenuHelper.Item("Add Folder...", () => AddFolderRequested?.Invoke(targetVf)));
-                menu.Items.Add(ContextMenuHelper.Item("Rename", () => RenameVirtualFolderRequested?.Invoke(item.Name)));
-                menu.Items.Add(ContextMenuHelper.Item("Remove Virtual Folder", () => RemoveVirtualFolderRequested?.Invoke(item.Name)));
-                break;
-
-            case FileTreeItemKind.Directory when IsTopLevelProjectFolder(item):
-                if (project.VirtualFolders.Count > 0)
-                {
-                    var moveMenu = ContextMenuHelper.Submenu("Move to Virtual Folder");
-                    moveMenu.Items.Add(ContextMenuHelper.Item("(Project Root)",
-                        () => MoveToVirtualFolderRequested?.Invoke(item.FullPath, null)));
-                    moveMenu.Items.Add(ContextMenuHelper.Separator());
-                    foreach (var vf in project.VirtualFolders)
-                    {
-                        var vfName = vf;
-                        moveMenu.Items.Add(ContextMenuHelper.Item(vfName,
-                            () => MoveToVirtualFolderRequested?.Invoke(item.FullPath, vfName)));
-                    }
-                    menu.Items.Add(moveMenu);
-                }
-                menu.Items.Add(ContextMenuHelper.Item("Remove from Project", () => RemoveFolderRequested?.Invoke(item.FullPath)));
-                break;
-
-            default:
-                return;
+            menu.Items.Add(ContextMenuHelper.Item("Remove from Workspace", () => RemoveFolderRequested?.Invoke(item.FullPath)));
+            ExplorerTree.ContextMenu = menu;
+            menu.IsOpen = true;
+            return;
         }
 
-        ExplorerTree.ContextMenu = menu;
-        menu.IsOpen = true;
+        ExplorerTree.ContextMenu = null;
     }
 
-    private bool IsTopLevelProjectFolder(FileTreeItem item)
+    private bool IsTopLevelWorkspaceFolder(FileTreeItem item)
     {
-        if (_projectManager?.CurrentProject == null) return false;
-        return _projectManager.CurrentProject.Folders.Any(f =>
-            string.Equals(f.Path, item.FullPath, StringComparison.OrdinalIgnoreCase));
+        if (_workspaceManager?.CurrentWorkspace == null) return false;
+        return _workspaceManager.CurrentWorkspace.Folders.Any(f =>
+            string.Equals(f, item.FullPath, StringComparison.OrdinalIgnoreCase));
     }
-
 
     private void OnTreeChanged(FileTreeItem item)
     {

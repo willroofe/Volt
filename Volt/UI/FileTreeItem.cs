@@ -8,9 +8,7 @@ namespace Volt;
 public enum FileTreeItemKind
 {
     File,
-    Directory,
-    VirtualFolder,
-    ProjectRoot
+    Directory
 }
 
 public class FileTreeItem : INotifyPropertyChanged
@@ -158,7 +156,7 @@ public class FileTreeItem : INotifyPropertyChanged
 
     /// <summary>
     /// Recursively stops all file system watchers on this item and its descendants.
-    /// Call when removing the tree (closing folder/project).
+    /// Call when removing the tree (closing folder/workspace).
     /// </summary>
     public void StopWatchingRecursive()
     {
@@ -258,13 +256,4 @@ public class FileTreeItem : INotifyPropertyChanged
         return new FileTreeItem(folderPath, true);
     }
 
-    public static FileTreeItem CreateProjectRoot(string projectName)
-    {
-        return new FileTreeItem("", projectName, false, FileTreeItemKind.ProjectRoot);
-    }
-
-    public static FileTreeItem CreateVirtualFolder(string name)
-    {
-        return new FileTreeItem("", name, false, FileTreeItemKind.VirtualFolder);
-    }
 }

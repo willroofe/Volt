@@ -304,8 +304,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             }
             x += ArrowZoneWidth;
 
-            // Icon (directories, virtual folders, and files — not project root)
-            if (row.Item.Kind != FileTreeItemKind.ProjectRoot)
+            // Icon
             {
                 var iconText = row.Item.Kind == FileTreeItemKind.File
                     ? _fileIconText!
@@ -317,23 +316,8 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             }
 
             // Name text
-            Brush nameBrush;
-            Typeface nameTypeface;
-            switch (row.Item.Kind)
-            {
-                case FileTreeItemKind.ProjectRoot:
-                    nameBrush = headerFgBrush;
-                    nameTypeface = SemiBoldTypeface;
-                    break;
-                case FileTreeItemKind.VirtualFolder:
-                    nameBrush = textBrush;
-                    nameTypeface = ItalicTypeface;
-                    break;
-                default:
-                    nameBrush = textBrush;
-                    nameTypeface = NormalTypeface;
-                    break;
-            }
+            Brush nameBrush = textBrush;
+            Typeface nameTypeface = NormalTypeface;
 
             double maxTextWidth = Math.Max(0, ActualWidth - x - 8);
             var nameText = new FormattedText(row.Item.Name, CultureInfo.CurrentCulture,
@@ -370,9 +354,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
     }
 
     private bool HasChildren(FileTreeItem item) =>
-        item.IsDirectory ||
-        item.Kind == FileTreeItemKind.VirtualFolder ||
-        item.Kind == FileTreeItemKind.ProjectRoot;
+        item.IsDirectory;
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
@@ -438,7 +420,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         }
         else
         {
-            // Right-clicked empty area — fire with null so panel can show project root menu
+            // Right-clicked empty area — fire with null so panel can show context menu
             _selectedRowIndex = -1;
             InvalidateVisual();
             ItemRightClicked?.Invoke(null);
@@ -467,16 +449,10 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
 
         var item = _flatRows[row].Item;
         double indent = _flatRows[row].Depth * IndentWidth + ArrowZoneWidth;
-        if (item.Kind == FileTreeItemKind.Directory || item.Kind == FileTreeItemKind.File)
-            indent += IconZoneWidth + IconGap;
+        indent += IconZoneWidth + IconGap;
         double maxTextWidth = Math.Max(0, ActualWidth - indent - 8);
         var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-        var typeface = item.Kind switch
-        {
-            FileTreeItemKind.ProjectRoot => SemiBoldTypeface,
-            FileTreeItemKind.VirtualFolder => ItalicTypeface,
-            _ => NormalTypeface
-        };
+        var typeface = NormalTypeface;
         var ft = new FormattedText(item.Name, CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight, typeface, 13, Brushes.Black, dpi);
 

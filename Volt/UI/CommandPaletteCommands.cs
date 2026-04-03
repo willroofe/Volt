@@ -8,12 +8,12 @@ internal record ExplorerActions(
     Action OpenFolder,
     Action CloseFolder);
 
-/// <summary>Project-related actions for the command palette.</summary>
-internal record ProjectActions(
+/// <summary>Workspace-related actions for the command palette.</summary>
+internal record WorkspaceActions(
     Action New,
     Action Open,
-    Action Save,
-    Action Close);
+    Action Close,
+    Action AddFolder);
 
 /// <summary>Groups the dependencies needed to build the command palette list.</summary>
 internal record CommandPaletteContext(
@@ -24,7 +24,7 @@ internal record CommandPaletteContext(
     FindBar FindBar,
     Action SaveSettings,
     ExplorerActions Explorer,
-    ProjectActions Project,
+    WorkspaceActions Workspace,
     Action ToggleWordWrap);
 
 /// <summary>
@@ -42,7 +42,7 @@ internal static class CommandPaletteCommands
         var findBar = ctx.FindBar;
         var saveSettings = ctx.SaveSettings;
         var explorer = ctx.Explorer;
-        var project = ctx.Project;
+        var workspace = ctx.Workspace;
         var toggleWordWrap = ctx.ToggleWordWrap;
         return
         [
@@ -138,17 +138,17 @@ internal static class CommandPaletteCommands
 
             new("Toggle File Explorer", Action: explorer.ToggleExplorer),
 
-            new("Explorer: Open Folder...", Action: explorer.OpenFolder),
+            new("Explorer: Open Folder", Action: explorer.OpenFolder),
 
             new("Explorer: Close Folder", Action: explorer.CloseFolder),
 
-            new("Project: New Project", Action: project.New),
+            new("Workspace: New Workspace", Action: workspace.New),
 
-            new("Project: Open Project...", Action: project.Open),
+            new("Workspace: Open Workspace", Action: workspace.Open),
 
-            new("Project: Save Project", Action: project.Save),
+            new("Workspace: Close Workspace", Action: workspace.Close),
 
-            new("Project: Close Project", Action: project.Close),
+            new("Workspace: Add Folder to Workspace", Action: workspace.AddFolder),
         ];
     }
 }
