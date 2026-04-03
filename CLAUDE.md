@@ -15,7 +15,7 @@ dotnet run --project Volt/Volt.csproj
 
 The running app must be closed before rebuilding (the exe gets locked).
 
-**Tests** (`Volt.Tests/` — xUnit, 67 tests covering core logic):
+**Tests** (`Volt.Tests/` — xUnit, 76 tests covering core logic):
 
 ```bash
 dotnet test Volt.Tests                              # run all tests
@@ -37,7 +37,8 @@ dotnet run -c Release --project Volt.Benchmarks -- --list flat            # list
 
 - **Editor/** — `EditorControl.cs`, `TextBuffer.cs`, `UndoManager.cs`, `SelectionManager.cs`, `FontManager.cs`, `FindManager.cs`, `BracketMatcher.cs`, `SyntaxManager.cs`, `SyntaxDefinition.cs`
 - **Theme/** — `ThemeManager.cs`, `ColorTheme.cs`
-- **UI/** — `MainWindow.xaml/.cs`, `CommandPalette.xaml/.cs`, `FindBar.xaml/.cs`, `SettingsWindow.xaml/.cs` (uses `SettingsSnapshot` record), `TabInfo.cs`, `DwmHelper.cs`, `FileHelper.cs`, `CommandPaletteCommands.cs`, `FileExplorerPanel.xaml/.cs`, `ExplorerTreeControl.cs`, `FileTreeItem.cs`, `ThemedMessageBox.xaml/.cs`, `Project.cs`, `ProjectManager.cs`
+- **UI/** — `MainWindow.xaml/.cs`, `CommandPalette.xaml/.cs`, `FindBar.xaml/.cs`, `SettingsWindow.xaml/.cs` (uses `SettingsSnapshot` record), `TabInfo.cs`, `DwmHelper.cs`, `FileHelper.cs`, `CommandPaletteCommands.cs`, `FileExplorerPanel.xaml/.cs`, `ExplorerTreeControl.cs`, `FileTreeItem.cs`, `ThemedMessageBox.xaml/.cs`, `Project.cs`, `ProjectManager.cs`, `ContextMenuHelper.cs`
+- **UI/Panels/** — `IPanel.cs` (interface + `PanelPlacement` enum), `PanelSlotConfig.cs` (layout persistence), `PanelShell.xaml/.cs` (generic dockable panel shell)
 - **Resources/** — `Themes/` (default-dark.json, default-light.json, gruvbox-dark.json), `Grammars/` (perl.json) — embedded resources extracted to `%AppData%/Volt/` on first run
 - **Root** — `App.xaml/.cs`, `AppSettings.cs`, `AssemblyInfo.cs`
 
@@ -74,6 +75,25 @@ All menus share the same `TopLevelMenuItem` custom `ControlTemplate` and the sam
 
 **Project** (`UI/Project.cs`) — JSON-serializable project model with folders, virtual folders, and session state. **ProjectManager** (`UI/ProjectManager.cs`) — project lifecycle management (new, open, save, close).
 
+### Panel System
+
+Generic dockable panel infrastructure supporting four dock regions (left, right, top, bottom) around a center editor zone.
+
+**IPanel** (`UI/Panels/IPanel.cs`) — interface that all dockable panels implement: `PanelId` (unique string), `Title` (display name), `Content` (the UIElement). Also defines `PanelPlacement` enum (Left, Right, Top, Bottom).
+
+**PanelShell** (`UI/Panels/PanelShell.xaml/.cs`) — `UserControl` that owns the layout. A 5×5 Grid with four dock regions and splitters around a center `ContentPresenter` bound to the `CenterContent` dependency property. Key API:
+- `RegisterPanel(IPanel, PanelPlacement, double defaultSize)` — places a panel in a region
+- `ShowPanel(panelId)` / `HidePanel(panelId)` / `TogglePanel(panelId)` — toggle visibility (sizes region to 0 or restores)
+- `MovePanel(panelId, newPlacement)` — relocates a panel to a different region
+- `RestoreLayout(configs)` / `GetCurrentLayout()` — serialization for settings persistence
+- `PanelLayoutChanged` event — fires on resize/show/hide for settings persistence
+
+**PanelSlotConfig** (`UI/Panels/PanelSlotConfig.cs`) — serializable layout state per panel (`PanelId`, `Placement`, `Size`, `Visible`). Stored in `AppSettings.Editor.PanelLayouts`.
+
+**Adding a new panel**: Implement `IPanel` on a UserControl, then call `Shell.RegisterPanel(panel, placement, defaultSize)` in MainWindow's constructor. The panel system handles splitters, show/hide, resize, and persistence automatically.
+
+**FileExplorerPanel** implements `IPanel` with `PanelId = "file-explorer"`. MainWindow creates it as a code-behind field (not XAML-declared) and registers it with the shell. The center zone hosts the EditorArea (tab bar + editor + find bar).
+
 ### Theming System
 
 Unified JSON-based theming — one theme file controls everything (editor, chrome, syntax). No separate light/dark mode toggle.
@@ -105,7 +125,7 @@ Unified JSON-based theming — one theme file controls everything (editor, chrom
 
 ### MainWindow (`UI/MainWindow.xaml` + `.cs`)
 
-UI shell (~1,600 lines) with tab management, file I/O, settings, project management, and keyboard shortcuts. Delegates to:
+UI shell (~1,400 lines) with tab management, file I/O, settings, project management, and keyboard shortcuts. Layout is delegated to `PanelShell` — MainWindow registers panels and uses `Shell.ShowPanel`/`Shell.HidePanel` instead of manual grid manipulation. Delegates to:
 - **FileHelper** (`UI/FileHelper.cs`) — `AtomicWriteText`, `DetectEncoding`, file type name lookup
 - **CommandPaletteCommands** (`UI/CommandPaletteCommands.cs`) — builds command list with preview/commit/revert lambdas; toggle commands (block caret, word wrap, explorer) use `Toggle:` parameter; option commands (theme, font, tab size) use `CurrentValue:`/`GetOptions:` with preview/commit/revert lambdas
 - **DwmHelper** (`UI/DwmHelper.cs`) — DWM window attribute management
