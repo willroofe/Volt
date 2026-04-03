@@ -15,7 +15,7 @@ dotnet run --project Volt/Volt.csproj
 
 The running app must be closed before rebuilding (the exe gets locked).
 
-**Tests** (`Volt.Tests/` — xUnit, 81 tests covering core logic):
+**Tests** (`Volt.Tests/` — xUnit, 83 tests covering core logic):
 
 ```bash
 dotnet test Volt.Tests                              # run all tests
@@ -72,7 +72,9 @@ All menus share the same `TopLevelMenuItem` custom `ControlTemplate` and the sam
 
 **FileExplorerPanel** (`UI/FileExplorerPanel.xaml/.cs`) — side panel for browsing folder contents, toggleable via command palette or settings. Supports two modes: single-folder (lightweight, no workspace file) and multi-root workspace (multiple folders as peer top-level nodes).
 
-**ExplorerTreeControl** (`UI/ExplorerTreeControl.cs`) — custom-rendered tree control for the file explorer, with expand/collapse, selection, tooltips for truncated names.
+**ExplorerTreeControl** (`UI/ExplorerTreeControl.cs`) — custom-rendered tree control (`FrameworkElement` + `IScrollInfo`), with expand/collapse, selection, tooltips for truncated names, drag-and-drop file moving with drop-target highlighting, and keyboard shortcuts (F2 rename, Delete, Ctrl+Z/Ctrl+Shift+Z undo/redo). Explorer selection syncs with the active tab — switching tabs highlights the corresponding file.
+
+**File management**: Right-click context menus offer New File, New Folder, Rename, Delete on files/folders. Drag-and-drop moves files between directories with visual drop-target feedback. All operations (create, rename, move, delete) support undo/redo via `Ctrl+Z`/`Ctrl+Shift+Z` in the explorer. Deleted files are staged to `%TEMP%/Volt-deleted/` for undo; staged files are sent to the recycle bin when the undo entry is discarded or the app closes (`FlushAllStagedDeletes()`). Root folders (single-folder root or workspace roots) are protected from rename/delete. File operations that affect open tabs update tab paths (rename/move) or close affected tabs (delete). The undo/redo state is tracked via `FileOperation` records with a `FileOperationKind` discriminator.
 
 **Workspace** (`UI/Workspace.cs`) — JSON-serializable workspace model (`.volt-workspace` files) with a list of folder paths and session state (tabs, expanded paths). **WorkspaceManager** (`UI/WorkspaceManager.cs`) — workspace lifecycle management (new, open, save, close, add/remove folder).
 
@@ -118,7 +120,7 @@ Unified JSON-based theming — one theme file controls everything (editor, chrom
 
 **DwmHelper** (`UI/DwmHelper.cs`) — applies `DWMWA_USE_IMMERSIVE_DARK_MODE` and `DWMWA_CAPTION_COLOR` (from `ThemeChromeBrush`) and `DWMWA_BORDER_COLOR` (from `ThemeBorderBrush`) to match the active theme. Called from MainWindow on `SourceInitialized` and `ThemeChanged`.
 
-**ColorTheme** (`Theme/ColorTheme.cs`) — JSON model with `editor`, `chrome` (17 `DynamicResource` keys), and `scopes` sections. Color format: `#RRGGBB` or `#AARRGGBB`.
+**ColorTheme** (`Theme/ColorTheme.cs`) — JSON model with `editor`, `chrome`, and `scopes` sections. Color format: `#RRGGBB` or `#AARRGGBB`. **ThemeResourceKeys** (`Theme/ThemeResourceKeys.cs`) — centralised `const string` keys for all `DynamicResource` names, preventing typo bugs.
 
 **Adding a new theme**: Drop a JSON file in `%AppData%/Volt/Themes/` with `name`, `editor`, `chrome`, and `scopes` sections.
 
@@ -150,7 +152,8 @@ UI shell (~1,500 lines) with tab management, file I/O, settings, workspace manag
 
 ## Key Design Rules
 
-- **All XAML colours use `{DynamicResource}`** — never hardcode colours in XAML (except close-button red `#E81123` which is theme-invariant). New colour keys must be added to: `ChromeColors` in `ColorTheme.cs`, `ThemeManager.UpdateAppResources()`, `App.xaml` defaults, and the default theme JSON files.
+- **All XAML colours use `{DynamicResource}`** — never hardcode colours in XAML (except close-button red `#E81123` which is theme-invariant). New colour keys must be added to: `ThemeResourceKeys.cs` (const string), `ChromeColors` in `ColorTheme.cs`, `ThemeManager.UpdateAppResources()`, `App.xaml` defaults, and all default theme JSON files in `Resources/Themes/`.
+- **Context menu icons** use Segoe MDL2 Assets glyphs via `ContextMenuHelper.Item(header, iconGlyph, onClick)`. Icon foreground uses `ThemeResourceKeys.TextFg`.
 - **Dead zone overlay** (6px) at bottom of menu bar prevents accidental hover on adjacent menu items when moving toward dropdown.
 - **EditorControl never caches brushes locally** — always reads from the `ThemeManager` instance property so theme changes take effect immediately.
 - **Grammar rule order matters** — rules are applied in definition order, first match wins. Strings should come before comments (so `#` inside strings isn't treated as a comment).
