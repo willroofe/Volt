@@ -22,8 +22,17 @@ public partial class FileExplorerPanel : UserControl, IPanel
     private HashSet<string>? _pendingExpandPaths;
 
     public string PanelId => "file-explorer";
-    public string Title => "Explorer";
+    public string Title => _title;
     public new UIElement Content => this;
+    public event Action? TitleChanged;
+
+    private string _title = "Explorer";
+
+    private void SetTitle(string title)
+    {
+        _title = title;
+        TitleChanged?.Invoke();
+    }
 
     public FileExplorerPanel()
     {
@@ -42,7 +51,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
         if (!Directory.Exists(path)) return;
         StopAllWatchers();
         _openFolderPath = path;
-        HeaderText.Text = Path.GetFileName(path);
+        SetTitle(Path.GetFileName(path));
         var root = new FileTreeItem(path, true);
         root.TreeChanged += OnTreeChanged;
         root.IsExpanded = true;
@@ -56,7 +65,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
         StopAllWatchers();
         _openFolderPath = null;
         _pendingExpandPaths = null;
-        HeaderText.Text = "Explorer";
+        SetTitle("Explorer");
         _currentRootItems = null;
         ExplorerTree.SetRootItems(null);
     }
@@ -64,7 +73,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
     public void OpenProject(Project project)
     {
         _openFolderPath = null;
-        HeaderText.Text = "Explorer";
+        SetTitle("Explorer");
         RebuildProjectTree(project);
     }
 
@@ -72,7 +81,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
     {
         StopAllWatchers();
         _pendingExpandPaths = null;
-        HeaderText.Text = "Explorer";
+        SetTitle("Explorer");
         _currentRootItems = null;
         ExplorerTree.SetRootItems(null);
     }

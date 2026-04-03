@@ -7,6 +7,7 @@ public interface IPanel
     string PanelId { get; }
     string Title { get; }
     UIElement Content { get; }
+    event Action? TitleChanged;
 }
 
 public enum PanelPlacement
