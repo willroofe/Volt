@@ -1198,6 +1198,42 @@ public class EditorControl : FrameworkElement, IScrollInfo
         e.Handled = true;
     }
 
+    protected override void OnMouseRightButtonUp(MouseButtonEventArgs e)
+    {
+        Focus();
+        var menu = ContextMenuHelper.Create();
+
+        bool hasSel = _selection.HasSelection;
+        bool hasClip;
+        try { hasClip = Clipboard.ContainsText(); }
+        catch (System.Runtime.InteropServices.ExternalException) { hasClip = false; }
+
+        if (hasSel)
+        {
+            var cut = ContextMenuHelper.Item("Cut", HandleCut);
+            cut.InputGestureText = "Ctrl+X";
+            menu.Items.Add(cut);
+
+            var copy = ContextMenuHelper.Item("Copy", HandleCopy);
+            copy.InputGestureText = "Ctrl+C";
+            menu.Items.Add(copy);
+        }
+
+        if (hasClip)
+        {
+            var paste = ContextMenuHelper.Item("Paste", HandlePaste);
+            paste.InputGestureText = "Ctrl+V";
+            menu.Items.Add(paste);
+        }
+
+        if (menu.Items.Count > 0)
+        {
+            ContextMenu = menu;
+            menu.IsOpen = true;
+        }
+        e.Handled = true;
+    }
+
     // ──────────────────────────────────────────────────────────────────
     //  Text input (printable characters)
     // ──────────────────────────────────────────────────────────────────
