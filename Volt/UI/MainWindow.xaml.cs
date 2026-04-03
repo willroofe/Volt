@@ -1004,7 +1004,8 @@ public partial class MainWindow : Window
         else if (ctrl && !shift && e.Key == Key.W) { if (_activeTab != null) CloseTab(_activeTab); e.Handled = true; }
         else if (ctrl && (e.Key == Key.OemPlus || e.Key == Key.Add)) { StepFontSize(1); e.Handled = true; }
         else if (ctrl && (e.Key == Key.OemMinus || e.Key == Key.Subtract)) { StepFontSize(-1); e.Handled = true; }
-        else if (ctrl && !shift && e.Key == Key.B) { ToggleExplorer(); e.Handled = true; }
+        else if (ctrl && (Keyboard.Modifiers & ModifierKeys.Alt) != 0 && (e.Key == Key.B || e.SystemKey == Key.B)) { Shell.ToggleRegion(PanelPlacement.Right); e.Handled = true; }
+        else if (ctrl && !shift && e.Key == Key.B) { Shell.ToggleRegion(PanelPlacement.Left); e.Handled = true; }
         else base.OnKeyDown(e);
     }
 
