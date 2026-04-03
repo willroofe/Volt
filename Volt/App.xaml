@@ -424,7 +424,7 @@
                                         BorderBrush="{DynamicResource ThemeMenuPopupBorder}" BorderThickness="1"
                                         CornerRadius="3" Margin="0,0,6,6">
                                     <Border.Effect>
-                                        <DropShadowEffect ShadowDepth="1" Opacity="0.2" BlurRadius="4"/>
+                                        <DropShadowEffect ShadowDepth="2" Opacity="0.4" BlurRadius="8"/>
                                     </Border.Effect>
                                     <StackPanel IsItemsHost="True" Margin="0,3"
                                                 KeyboardNavigation.DirectionalNavigation="Cycle"
@@ -459,7 +459,7 @@
                                 BorderBrush="{DynamicResource ThemeMenuPopupBorder}" BorderThickness="1"
                                 CornerRadius="3" Margin="0,0,6,6">
                             <Border.Effect>
-                                <DropShadowEffect ShadowDepth="1" Opacity="0.2" BlurRadius="4"/>
+                                <DropShadowEffect ShadowDepth="2" Opacity="0.4" BlurRadius="8"/>
                             </Border.Effect>
                             <StackPanel IsItemsHost="True" Margin="0,3"
                                         KeyboardNavigation.DirectionalNavigation="Cycle"
