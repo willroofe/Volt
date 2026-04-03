@@ -8,11 +8,12 @@ namespace Volt;
 public partial class FindBar : UserControl
 {
     // IMPORTANT: These margins must stay in sync with MainWindow.xaml layout heights.
-    // Top: TitleBar Height(32) + separator(1) + TabStrip Height(33) + separator(1) = 67
-    // Bottom: StatusBar Height(24) + separator(1) + extra padding(19) = 44
-    // If you change TitleBar, TabStrip, or StatusBar heights in MainWindow.xaml, update these.
-    private const double FindBarTopMargin = 67;
-    private const double FindBarBottomMargin = 44;
+    // FindBar is now inside EditorColumnGrid (scoped to the editor panel).
+    // Top: TabStrip Height(33) + border(1) = 34
+    // Bottom: just extra padding(19) — status bar is outside the grid
+    // If you change TabStrip height in MainWindow.xaml, update these.
+    private const double FindBarTopMargin = 34;
+    private const double FindBarBottomMargin = 19;
 
     private bool _matchCase;
     private EditorControl? _editor;
@@ -42,7 +43,7 @@ public partial class FindBar : UserControl
         VerticalAlignment = top ? VerticalAlignment.Top : VerticalAlignment.Bottom;
         Margin = top ? new Thickness(0, FindBarTopMargin, 0, 0) : new Thickness(0, 0, 0, FindBarBottomMargin);
         _panel.VerticalAlignment = top ? VerticalAlignment.Top : VerticalAlignment.Bottom;
-        _panel.Margin = new Thickness(0, 8, 0, 8);
+        _panel.Margin = new Thickness(16, 8, 16, 8);
     }
 
     public void Open(bool showReplace = false)
@@ -72,7 +73,7 @@ public partial class FindBar : UserControl
     {
         _replaceRow.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         _toggleTransform.Angle = visible ? 180 : 0;
-        _findRow.Margin = new Thickness(8, 6, 8, visible ? 2 : 6);
+        _findRow.Margin = new Thickness(10, 8, 10, visible ? 2 : 8);
     }
 
     public void Close()
