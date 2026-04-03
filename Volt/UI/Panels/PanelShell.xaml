@@ -1,0 +1,57 @@
+<UserControl x:Class="Volt.PanelShell"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Volt">
+    <Grid x:Name="RootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition x:Name="TopRow" Height="0"/>
+            <RowDefinition x:Name="TopSplitterRow" Height="0"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition x:Name="BottomSplitterRow" Height="0"/>
+            <RowDefinition x:Name="BottomRow" Height="0"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="LeftCol" Width="0"/>
+            <ColumnDefinition x:Name="LeftSplitterCol" Width="0"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition x:Name="RightSplitterCol" Width="0"/>
+            <ColumnDefinition x:Name="RightCol" Width="0"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Top region -->
+        <ContentPresenter x:Name="TopContent" Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="5"/>
+        <GridSplitter x:Name="TopSplitter" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="5"
+                      Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                      Background="{DynamicResource ThemeBorderBrush}"
+                      ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
+                      Visibility="Collapsed"/>
+
+        <!-- Left region -->
+        <ContentPresenter x:Name="LeftContent" Grid.Row="2" Grid.Column="0"/>
+        <GridSplitter x:Name="LeftSplitter" Grid.Row="2" Grid.Column="1"
+                      Width="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                      Background="{DynamicResource ThemeBorderBrush}"
+                      ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                      Visibility="Collapsed"/>
+
+        <!-- Center -->
+        <ContentPresenter x:Name="CenterPresenter" Grid.Row="2" Grid.Column="2"
+                          Content="{Binding CenterContent, RelativeSource={RelativeSource AncestorType=local:PanelShell}}"/>
+
+        <!-- Right region -->
+        <GridSplitter x:Name="RightSplitter" Grid.Row="2" Grid.Column="3"
+                      Width="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                      Background="{DynamicResource ThemeBorderBrush}"
+                      ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                      Visibility="Collapsed"/>
+        <ContentPresenter x:Name="RightContent" Grid.Row="2" Grid.Column="4"/>
+
+        <!-- Bottom region -->
+        <GridSplitter x:Name="BottomSplitter" Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="5"
+                      Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                      Background="{DynamicResource ThemeBorderBrush}"
+                      ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
+                      Visibility="Collapsed"/>
+        <ContentPresenter x:Name="BottomContent" Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="5"/>
+    </Grid>
+</UserControl>
