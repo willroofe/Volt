@@ -64,19 +64,19 @@ public class TextBufferTests
     }
 
     [Fact]
-    public void IsDirty_TracksModifications()
+    public void IsDirty_SetContentClearsFlag_SetterTogglesIt()
     {
         var buf = new TextBuffer();
         buf.SetContent("hello", tabSize: 4);
-
         Assert.False(buf.IsDirty);
 
-        buf.InsertAt(0, 5, "!");
         buf.IsDirty = true;
-
         Assert.True(buf.IsDirty);
 
         buf.IsDirty = false;
+        Assert.False(buf.IsDirty);
+
+        buf.SetContent("new content", tabSize: 4);
         Assert.False(buf.IsDirty);
     }
 
