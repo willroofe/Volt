@@ -76,6 +76,7 @@
                                  Background="Transparent"
                                  Foreground="{DynamicResource ThemeTextFg}"
                                  CaretBrush="{DynamicResource ThemeTextFg}"
+                                 SelectionBrush="{DynamicResource ThemeInputSelection}"
                                  TextChanged="OnInputTextChanged"/>
                     </DockPanel>
                 </Border>

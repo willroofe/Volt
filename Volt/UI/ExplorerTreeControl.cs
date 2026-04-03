@@ -41,6 +41,13 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
     private Size _viewport;
     private Size _extent;
 
+    // Drag-and-drop state
+    private int _dragStartRowIndex = -1;
+    private Point _dragStartPoint;
+    private bool _isDragging;
+    private int _dropTargetRowIndex = -1;
+    private const double DragThreshold = 5.0;
+
     // Tooltip (managed manually — WPF's auto-tooltip doesn't work per-row on a single control)
     private readonly ToolTip _rowToolTip = new() { Placement = PlacementMode.Mouse };
     private readonly DispatcherTimer _tooltipTimer;
@@ -55,6 +62,11 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
     public event Action<string>? FileOpenRequested;
     public event Action<FileTreeItem>? SelectionChanged;
     public event Action<FileTreeItem?>? ItemRightClicked;
+    public event Action<string, string>? FileMoveRequested;
+    public event Action<FileTreeItem>? RenameRequested;
+    public event Action<FileTreeItem>? DeleteRequested;
+    public event Action? UndoRequested;
+    public event Action? RedoRequested;
 
     public FileTreeItem? SelectedItem =>
         _selectedRowIndex >= 0 && _selectedRowIndex < _flatRows.Count
@@ -65,6 +77,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
     {
         ClipToBounds = true;
         Focusable = true;
+        AllowDrop = true;
 
         _tooltipTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _tooltipTimer.Tick += (_, _) =>
@@ -131,6 +144,33 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         _hoverRowIndex = -1;
         _verticalOffset = 0;
         RebuildFlatList();
+    }
+
+    public void SelectByPath(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            if (_selectedRowIndex != -1)
+            {
+                _selectedRowIndex = -1;
+                InvalidateVisual();
+            }
+            return;
+        }
+
+        var idx = _flatRows.FindIndex(r =>
+            string.Equals(r.Item.FullPath, path, StringComparison.OrdinalIgnoreCase));
+        if (idx < 0 || idx == _selectedRowIndex) return;
+
+        _selectedRowIndex = idx;
+        // Scroll the selected row into view
+        double rowTop = idx * RowHeight;
+        if (rowTop < _verticalOffset)
+            SetVerticalOffset(rowTop);
+        else if (rowTop + RowHeight > _verticalOffset + _viewport.Height)
+            SetVerticalOffset(rowTop + RowHeight - _viewport.Height);
+
+        InvalidateVisual();
     }
 
     public void RefreshFlatList()
@@ -276,8 +316,15 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             double y = i * RowHeight - _verticalOffset;
             double indent = row.Depth * IndentWidth;
 
-            // Hover / selection highlight (rounded corners, with margin)
-            if (i == _selectedRowIndex)
+            // Hover / selection / drop-target highlight (rounded corners, with margin)
+            if (i == _dropTargetRowIndex)
+            {
+                var dropBrush = GetBrush(ThemeResourceKeys.ExplorerDropTarget);
+                dc.DrawRoundedRectangle(dropBrush, null,
+                    new Rect(HighlightMargin, y, ActualWidth - HighlightMargin * 2, RowHeight),
+                    HighlightRadius, HighlightRadius);
+            }
+            else if (i == _selectedRowIndex)
             {
                 dc.DrawRoundedRectangle(selectedBrush, null,
                     new Rect(HighlightMargin, y, ActualWidth - HighlightMargin * 2, RowHeight),
@@ -394,12 +441,59 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             item.IsExpanded = !item.IsExpanded;
             RefreshFlatList();
         }
+        else
+        {
+            // Record potential drag start (not in arrow zone)
+            _dragStartRowIndex = row;
+            _dragStartPoint = e.GetPosition(this);
+            _isDragging = false;
+        }
         e.Handled = true;
     }
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
+        _dragStartRowIndex = -1;
+        _isDragging = false;
         e.Handled = true;
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        var shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+
+        if (ctrl && e.Key == Key.Z)
+        {
+            if (shift)
+                RedoRequested?.Invoke();
+            else
+                UndoRequested?.Invoke();
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && e.Key == Key.Y)
+        {
+            RedoRequested?.Invoke();
+            e.Handled = true;
+            return;
+        }
+
+        if (_selectedRowIndex < 0 || _selectedRowIndex >= _flatRows.Count) return;
+        var item = _flatRows[_selectedRowIndex].Item;
+        if (string.IsNullOrEmpty(item.FullPath)) return;
+
+        if (e.Key == Key.F2)
+        {
+            RenameRequested?.Invoke(item);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Delete)
+        {
+            DeleteRequested?.Invoke(item);
+            e.Handled = true;
+        }
     }
 
     protected override void OnMouseRightButtonDown(MouseButtonEventArgs e)
@@ -437,6 +531,27 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             InvalidateVisual();
             UpdateTooltip(row);
         }
+
+        // Drag initiation
+        if (e.LeftButton == MouseButtonState.Pressed &&
+            _dragStartRowIndex >= 0 && _dragStartRowIndex < _flatRows.Count && !_isDragging)
+        {
+            var pos = e.GetPosition(this);
+            if (Math.Abs(pos.X - _dragStartPoint.X) > DragThreshold ||
+                Math.Abs(pos.Y - _dragStartPoint.Y) > DragThreshold)
+            {
+                _isDragging = true;
+                var item = _flatRows[_dragStartRowIndex].Item;
+                if (!string.IsNullOrEmpty(item.FullPath))
+                {
+                    var data = new DataObject(DataFormats.FileDrop, new[] { item.FullPath });
+                    DragDrop.DoDragDrop(this, data, DragDropEffects.Move);
+                }
+                _isDragging = false;
+                _dragStartRowIndex = -1;
+                ClearDropTarget();
+            }
+        }
     }
 
     private void UpdateTooltip(int row)
@@ -473,6 +588,132 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             _pendingTooltipText = null;
             InvalidateVisual();
         }
+    }
+
+    // --- Drag-and-drop ---
+
+    protected override void OnDragOver(DragEventArgs e)
+    {
+        e.Effects = DragDropEffects.None;
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop)) { ClearDropTarget(); return; }
+
+        var sourcePaths = e.Data.GetData(DataFormats.FileDrop) as string[];
+        var sourcePath = sourcePaths is { Length: > 0 } ? sourcePaths[0] : null;
+        if (sourcePath == null) { ClearDropTarget(); return; }
+
+        int row = HitTestRowFromPoint(e.GetPosition(this));
+        if (row >= 0 && row < _flatRows.Count)
+        {
+            var targetItem = _flatRows[row].Item;
+            // Resolve drop target to a directory
+            string? targetDir;
+            int targetRowIdx;
+            if (targetItem.IsDirectory)
+            {
+                targetDir = targetItem.FullPath;
+                targetRowIdx = row;
+            }
+            else
+            {
+                var parent = FindParentDirectoryRow(row);
+                if (parent == null) { ClearDropTarget(); e.Handled = true; return; }
+                targetDir = parent.Value.Item.FullPath;
+                targetRowIdx = _flatRows.IndexOf(parent.Value);
+            }
+
+            var sourceParent = System.IO.Path.GetDirectoryName(sourcePath);
+            // Don't allow drop onto same parent or into own subtree
+            if (!string.Equals(sourceParent, targetDir, StringComparison.OrdinalIgnoreCase) &&
+                !targetDir!.StartsWith(sourcePath + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(targetDir, sourcePath, StringComparison.OrdinalIgnoreCase))
+            {
+                e.Effects = DragDropEffects.Move;
+                SetDropTarget(targetRowIdx);
+            }
+            else
+            {
+                ClearDropTarget();
+            }
+        }
+        else
+        {
+            ClearDropTarget();
+        }
+        e.Handled = true;
+    }
+
+    protected override void OnDrop(DragEventArgs e)
+    {
+        ClearDropTarget();
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+
+        var sourcePaths = e.Data.GetData(DataFormats.FileDrop) as string[];
+        var sourcePath = sourcePaths is { Length: > 0 } ? sourcePaths[0] : null;
+        if (sourcePath == null) return;
+
+        int row = HitTestRowFromPoint(e.GetPosition(this));
+        if (row < 0 || row >= _flatRows.Count) return;
+
+        var targetItem = _flatRows[row].Item;
+        string? targetDir;
+        if (targetItem.IsDirectory)
+        {
+            targetDir = targetItem.FullPath;
+        }
+        else
+        {
+            var parent = FindParentDirectoryRow(row);
+            targetDir = parent?.Item.FullPath;
+        }
+        if (targetDir == null) return;
+
+        var fileName = System.IO.Path.GetFileName(sourcePath);
+        var destPath = System.IO.Path.Combine(targetDir, fileName!);
+
+        if (string.Equals(sourcePath, destPath, StringComparison.OrdinalIgnoreCase)) return;
+        if (System.IO.Directory.Exists(sourcePath) &&
+            destPath.StartsWith(sourcePath + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        FileMoveRequested?.Invoke(sourcePath, destPath);
+        e.Handled = true;
+    }
+
+    protected override void OnDragLeave(DragEventArgs e)
+    {
+        ClearDropTarget();
+    }
+
+    private int HitTestRowFromPoint(Point pos)
+    {
+        int row = (int)((pos.Y + _verticalOffset) / RowHeight);
+        return row >= 0 && row < _flatRows.Count ? row : -1;
+    }
+
+    private FlatRow? FindParentDirectoryRow(int childIndex)
+    {
+        if (childIndex < 0 || childIndex >= _flatRows.Count) return null;
+        int targetDepth = _flatRows[childIndex].Depth - 1;
+        for (int i = childIndex - 1; i >= 0; i--)
+        {
+            if (_flatRows[i].Depth == targetDepth && _flatRows[i].Item.IsDirectory)
+                return _flatRows[i];
+        }
+        return null;
+    }
+
+    private void SetDropTarget(int rowIndex)
+    {
+        if (_dropTargetRowIndex == rowIndex) return;
+        _dropTargetRowIndex = rowIndex;
+        InvalidateVisual();
+    }
+
+    private void ClearDropTarget()
+    {
+        if (_dropTargetRowIndex < 0) return;
+        _dropTargetRowIndex = -1;
+        InvalidateVisual();
     }
 
     readonly record struct FlatRow(FileTreeItem Item, int Depth);

@@ -209,7 +209,13 @@
                         </MenuItem.Icon>
                     </MenuItem>
                     <MenuItem Header="Open _Folder" InputGestureText="Ctrl+Shift+O" Click="OnOpenFolder"/>
-                    <MenuItem x:Name="MenuAddFolderToWorkspace" Header="Add Folder to _Workspace" Click="OnAddFolderToWorkspace"/>
+                    <MenuItem x:Name="MenuAddFolderToWorkspace" Header="Add Folder to _Workspace" Click="OnAddFolderToWorkspace">
+                        <MenuItem.Icon>
+                            <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                       Foreground="{DynamicResource ThemeTextFg}"
+                                       VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        </MenuItem.Icon>
+                    </MenuItem>
                 </MenuItem>
                 <MenuItem Header="_Edit" Style="{StaticResource TopLevelMenuItem}"
                          ItemContainerStyle="{StaticResource MenuItemCheckableStyle}">
@@ -226,7 +232,13 @@
                          ItemContainerStyle="{StaticResource MenuItemDropdownStyle}">
                     <MenuItem Header="_New Workspace" Click="OnNewWorkspace"/>
                     <MenuItem Header="_Open Workspace" Click="OnOpenWorkspace"/>
-                    <MenuItem x:Name="MenuCloseWorkspace" Header="_Close Workspace" Click="OnCloseWorkspace" IsEnabled="False"/>
+                    <MenuItem x:Name="MenuCloseWorkspace" Header="_Close Workspace" Click="OnCloseWorkspace" IsEnabled="False">
+                        <MenuItem.Icon>
+                            <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                       Foreground="{DynamicResource ThemeTextFg}"
+                                       VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        </MenuItem.Icon>
+                    </MenuItem>
                 </MenuItem>
             </Menu>
 

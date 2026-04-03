@@ -79,7 +79,7 @@
                      Padding="4,3,4,3"
                      Foreground="{DynamicResource ThemeTextFg}"
                      CaretBrush="{DynamicResource ThemeTextFg}"
-                     SelectionBrush="{DynamicResource ThemeMenuItemHover}">
+                     SelectionBrush="{DynamicResource ThemeInputSelection}">
                 <TextBox.Template>
                     <ControlTemplate TargetType="TextBox">
                         <Border x:Name="Bd" Background="{DynamicResource ThemeContentBg}"

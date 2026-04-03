@@ -40,7 +40,9 @@
     "explorerHeaderBackground": "#1D2021",
     "explorerHeaderForeground": "#665C54",
     "explorerItemHover": "#3C3836",
-    "explorerItemSelected": "#504945"
+    "explorerItemSelected": "#504945",
+    "explorerDropTarget": "#3D4220",
+    "inputSelection": "#60458588"
   },
   "scopes": {
     "comment": "#928374",

@@ -49,6 +49,8 @@ public class ChromeColors
     [JsonPropertyName("explorerHeaderForeground")] public string ExplorerHeaderForeground { get; set; } = "#888888";
     [JsonPropertyName("explorerItemHover")] public string ExplorerItemHover { get; set; } = "#E0E0E0";
     [JsonPropertyName("explorerItemSelected")] public string ExplorerItemSelected { get; set; } = "#D0D0D0";
+    [JsonPropertyName("explorerDropTarget")] public string ExplorerDropTarget { get; set; } = "#B8D4E8";
+    [JsonPropertyName("inputSelection")] public string InputSelection { get; set; } = "#80339900";
 }
 
 public class ColorTheme

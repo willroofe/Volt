@@ -85,6 +85,8 @@ public partial class MainWindow : Window
         ExplorerPanel.AddFolderRequested += OnWorkspaceAddFolder;
         ExplorerPanel.RemoveFolderRequested += OnWorkspaceRemoveFolder;
         ExplorerPanel.CloseWorkspaceRequested += CloseCurrentWorkspace;
+        ExplorerPanel.FileRenamed += OnExplorerFileRenamed;
+        ExplorerPanel.FileDeleted += OnExplorerFileDeleted;
         Shell.PanelLayoutChanged += OnPanelLayoutChanged;
         SourceInitialized += (_, _) =>
         {
@@ -139,6 +141,7 @@ public partial class MainWindow : Window
         UpdateCaretPos();
         UpdateAllTabHeaders();
         BringTabIntoView(tab);
+        ExplorerPanel.SelectFile(tab.FilePath);
 
         Keyboard.Focus(tab.Editor);
     }
@@ -456,6 +459,69 @@ public partial class MainWindow : Window
         {
             ActivateTab(tab);
             FindBarControl.RefreshSearch();
+        }
+    }
+
+    private void OnExplorerFileRenamed(string oldPath, string newPath)
+    {
+        foreach (var tab in _tabs)
+        {
+            if (tab.FilePath == null) continue;
+            if (string.Equals(tab.FilePath, oldPath, StringComparison.OrdinalIgnoreCase))
+            {
+                tab.FilePath = newPath;
+                tab.Editor.SetGrammar(SyntaxManager.GetDefinition(Path.GetExtension(newPath)));
+                UpdateTabHeader(tab);
+                if (tab == _activeTab) UpdateTitle();
+            }
+            else if (tab.FilePath.StartsWith(oldPath + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            {
+                // File was inside a renamed/moved directory
+                tab.FilePath = Path.Combine(newPath, tab.FilePath[(oldPath.Length + 1)..]);
+                UpdateTabHeader(tab);
+                if (tab == _activeTab) UpdateTitle();
+            }
+        }
+    }
+
+    private void OnExplorerFileDeleted(string path)
+    {
+        var affectedTabs = _tabs.Where(t =>
+            t.FilePath != null &&
+            (string.Equals(t.FilePath, path, StringComparison.OrdinalIgnoreCase) ||
+             t.FilePath.StartsWith(path + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        foreach (var tab in affectedTabs)
+            ForceCloseTab(tab);
+    }
+
+    private void ForceCloseTab(TabInfo tab)
+    {
+        int idx = _tabs.IndexOf(tab);
+        _tabs.Remove(tab);
+        TabStrip.Children.Remove(tab.HeaderElement);
+
+        if (tab == _activeTab)
+        {
+            tab.Editor.DirtyChanged -= OnActiveDirtyChanged;
+            tab.Editor.CaretMoved -= OnActiveCaretMoved;
+            _activeTab = null;
+        }
+
+        tab.FileChangedExternally -= OnFileChangedExternally;
+        tab.StopWatching();
+        tab.Editor.ReleaseResources();
+
+        if (_tabs.Count == 0)
+        {
+            var newTab = CreateTab();
+            ActivateTab(newTab);
+        }
+        else if (_activeTab == null)
+        {
+            int nextIdx = Math.Min(idx, _tabs.Count - 1);
+            ActivateTab(_tabs[nextIdx]);
         }
     }
 
@@ -812,6 +878,8 @@ public partial class MainWindow : Window
 
         foreach (var tab in _tabs)
             tab.StopWatching();
+
+        ExplorerPanel.FlushAllStagedDeletes();
     }
 
     private void UpdateCaretPos()

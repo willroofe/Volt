@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 
 namespace Volt;
 
@@ -19,6 +20,22 @@ public static class ContextMenuHelper
     {
         var mi = new MenuItem { Header = header, Style = MenuItemStyle };
         mi.Click += (_, _) => onClick();
+        return mi;
+    }
+
+    /// <summary>Creates a themed MenuItem with a Segoe MDL2 Assets icon and a click handler.</summary>
+    public static MenuItem Item(string header, string iconGlyph, Action onClick)
+    {
+        var mi = Item(header, onClick);
+        mi.Icon = new TextBlock
+        {
+            Text = iconGlyph,
+            FontFamily = new FontFamily("Segoe MDL2 Assets"),
+            FontSize = 12,
+            Foreground = (Brush)Application.Current.Resources[ThemeResourceKeys.TextFg],
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
         return mi;
     }
 
