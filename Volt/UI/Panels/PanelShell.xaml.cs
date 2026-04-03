@@ -320,7 +320,7 @@ public partial class PanelShell : UserControl
     private void ShowSplitter(PanelPlacement placement)
     {
         GetSplitter(placement).Visibility = Visibility.Visible;
-        SetSplitterRowCol(placement, 1);
+        SetSplitterRowCol(placement, 5);
     }
 
     private void HideSplitter(PanelPlacement placement)
