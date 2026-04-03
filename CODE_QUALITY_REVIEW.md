@@ -21,11 +21,11 @@ Following review, all minor and moderate findings were resolved:
 
 | Severity | Total | Resolved | Remaining |
 |----------|-------|----------|-----------|
-| Critical | 3 | 2 | 1 |
+| Critical | 3 | 3 | 0 |
 | Moderate | 12 | 11 | 0 |
 | Minor | 10 | 8 | 0 |
 | N/A | — | 2 skipped | — |
-| **Total** | **25** | **23** | **1** |
+| **Total** | **25** | **24** | **0** |
 
 *G7 (moderate) was noted as acceptable during review. G5/G6 (minor) were non-issues. D5 (minor, CI/CD) is infrastructure rather than code quality.*
 
@@ -84,8 +84,8 @@ Added explanatory comment above `OnRender` documenting the intentional deviation
 
 ## Good Practices
 
-### G1. No test framework configured (Critical) — OPEN
-No unit test project exists. The extracted helper classes (TextBuffer, UndoManager, SelectionManager, FindManager, BracketMatcher, SyntaxManager, WrapLayout) are well-suited for unit testing.
+### G1. No test framework configured (Critical) — RESOLVED
+Added `Volt.Tests` xUnit project with 30 foundation tests covering `TextBuffer`, `UndoManager`, `FindManager`, `BracketMatcher`, `WrapLayout`, and `SyntaxManager`. Run with `dotnet test Volt.Tests`.
 
 ### G2. Global mutable state via `App.Current` (Moderate) — RESOLVED
 - `EditorControl` now accepts `ThemeManager` and `SyntaxManager` via constructor parameters (read-only `{ get; }` properties)
@@ -165,7 +165,7 @@ Added `"JSON Files (*.json)|*.json"` and `"Markdown Files (*.md)|*.md"` to the s
 
 | # | Severity | Category | Status | Description |
 |---|----------|----------|--------|-------------|
-| G1 | Critical | Good Practices | **OPEN** | No test framework or tests |
+| G1 | Critical | Good Practices | RESOLVED | No test framework or tests |
 | G3 | Critical | Good Practices | RESOLVED | Thread safety of `_activeGrammar` |
 | A2 | Critical | Architecture | RESOLVED | Shared grammar state across all editors |
 | R1 | Moderate | Readability | RESOLVED | EditorControl monolith → WrapLayout extracted |
