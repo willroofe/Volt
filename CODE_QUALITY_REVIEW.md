@@ -21,11 +21,11 @@ Following review, all minor and moderate findings were resolved:
 
 | Severity | Total | Resolved | Remaining |
 |----------|-------|----------|-----------|
-| Critical | 3 | 0 | 3 |
+| Critical | 3 | 2 | 1 |
 | Moderate | 12 | 11 | 0 |
 | Minor | 10 | 8 | 0 |
 | N/A | — | 2 skipped | — |
-| **Total** | **25** | **21** | **3** |
+| **Total** | **25** | **23** | **1** |
 
 *G7 (moderate) was noted as acceptable during review. G5/G6 (minor) were non-issues. D5 (minor, CI/CD) is infrastructure rather than code quality.*
 
@@ -92,8 +92,8 @@ No unit test project exists. The extracted helper classes (TextBuffer, UndoManag
 - `TabInfo` passes these through to the `EditorControl` constructor
 - `ExplorerTreeControl` uses typed `App.Current` accessor instead of unsafe cast `((App)Application.Current)`
 
-### G3. Thread safety of SyntaxManager (Critical) — OPEN
-`_activeGrammar` remains a shared mutable field. Making grammar state per-editor is the recommended fix.
+### G3. Thread safety of SyntaxManager (Critical) — RESOLVED
+`_activeGrammar` removed from `SyntaxManager`. Grammar state is now per-`EditorControl` — each editor stores its own `SyntaxDefinition?` and passes it to `Tokenize()`. `SyntaxManager` is now a stateless grammar registry.
 
 ### G4. Exception handling is generally appropriate (Positive observation)
 No changes needed.
@@ -114,8 +114,8 @@ Noted as pragmatic and acceptable during review. The `MaxEntries = 200` cap and 
 ### A1. `EditorControl` depends on `ThemeManager` via post-construction properties (Moderate) — RESOLVED
 Constructor changed from parameterless to `EditorControl(ThemeManager, SyntaxManager)`. Properties changed from `{ get; set; } = null!` to `{ get; }` (read-only, set in constructor). No invalid intermediate state is possible.
 
-### A2. Shared grammar across all editors (Critical) — OPEN
-`_activeGrammar` is still a single shared field. Recommended fix: store the active `SyntaxDefinition` per-EditorControl.
+### A2. Shared grammar across all editors (Critical) — RESOLVED
+`_activeGrammar` removed. Each `EditorControl` owns its grammar via `_grammar` field, set by `SetGrammar()`. `SyntaxManager.GetDefinition()` provides pure lookups with no shared mutable state.
 
 ### A3. Session save/restore logic is interleaved with MainWindow (Moderate) — RESOLVED
 Created `Volt/UI/SessionManager.cs` with:
@@ -166,8 +166,8 @@ Added `"JSON Files (*.json)|*.json"` and `"Markdown Files (*.md)|*.md"` to the s
 | # | Severity | Category | Status | Description |
 |---|----------|----------|--------|-------------|
 | G1 | Critical | Good Practices | **OPEN** | No test framework or tests |
-| G3 | Critical | Good Practices | **OPEN** | Thread safety of `_activeGrammar` |
-| A2 | Critical | Architecture | **OPEN** | Shared grammar state across all editors |
+| G3 | Critical | Good Practices | RESOLVED | Thread safety of `_activeGrammar` |
+| A2 | Critical | Architecture | RESOLVED | Shared grammar state across all editors |
 | R1 | Moderate | Readability | RESOLVED | EditorControl monolith → WrapLayout extracted |
 | R2 | Moderate | Readability | RESOLVED | MainWindow monolith → 3 classes extracted |
 | M1 | Moderate | Maintainability | RESOLVED | PromptForInput → ThemedInputBox.xaml |
