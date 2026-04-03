@@ -15,7 +15,7 @@ dotnet run --project Volt/Volt.csproj
 
 The running app must be closed before rebuilding (the exe gets locked).
 
-**Tests** (`Volt.Tests/` — xUnit, 76 tests covering core logic):
+**Tests** (`Volt.Tests/` — xUnit, 81 tests covering core logic):
 
 ```bash
 dotnet test Volt.Tests                              # run all tests
@@ -38,7 +38,7 @@ dotnet run -c Release --project Volt.Benchmarks -- --list flat            # list
 - **Editor/** — `EditorControl.cs`, `TextBuffer.cs`, `UndoManager.cs`, `SelectionManager.cs`, `FontManager.cs`, `FindManager.cs`, `BracketMatcher.cs`, `SyntaxManager.cs`, `SyntaxDefinition.cs`
 - **Theme/** — `ThemeManager.cs`, `ColorTheme.cs`
 - **UI/** — `MainWindow.xaml/.cs`, `CommandPalette.xaml/.cs`, `FindBar.xaml/.cs`, `SettingsWindow.xaml/.cs` (uses `SettingsSnapshot` record), `TabInfo.cs`, `DwmHelper.cs`, `FileHelper.cs`, `CommandPaletteCommands.cs`, `FileExplorerPanel.xaml/.cs`, `ExplorerTreeControl.cs`, `FileTreeItem.cs`, `ThemedMessageBox.xaml/.cs`, `Project.cs`, `ProjectManager.cs`, `ContextMenuHelper.cs`
-- **UI/Panels/** — `IPanel.cs` (interface + `PanelPlacement` enum), `PanelSlotConfig.cs` (layout persistence), `PanelShell.xaml/.cs` (generic dockable panel shell)
+- **UI/Panels/** — `IPanel.cs` (interface + `PanelPlacement` enum), `PanelSlotConfig.cs` (layout persistence), `PanelShell.xaml/.cs` (panel layout coordinator), `TabRegion.xaml/.cs` (tabbed region control), `PanelContainer.cs` (thin panel wrapper)
 - **Resources/** — `Themes/` (default-dark.json, default-light.json, gruvbox-dark.json), `Grammars/` (perl.json) — embedded resources extracted to `%AppData%/Volt/` on first run
 - **Root** — `App.xaml/.cs`, `AppSettings.cs`, `AssemblyInfo.cs`
 
@@ -81,16 +81,22 @@ Generic dockable panel infrastructure supporting four dock regions (left, right,
 
 **IPanel** (`UI/Panels/IPanel.cs`) — interface that all dockable panels implement: `PanelId` (unique string), `Title` (display name), `Content` (the UIElement). Also defines `PanelPlacement` enum (Left, Right, Top, Bottom).
 
-**PanelShell** (`UI/Panels/PanelShell.xaml/.cs`) — `UserControl` that owns the layout. A 5×5 Grid with four dock regions and splitters around a center `ContentPresenter` bound to the `CenterContent` dependency property. Key API:
-- `RegisterPanel(IPanel, PanelPlacement, double defaultSize)` — places a panel in a region
-- `ShowPanel(panelId)` / `HidePanel(panelId)` / `TogglePanel(panelId)` — toggle visibility (sizes region to 0 or restores)
+**PanelShell** (`UI/Panels/PanelShell.xaml/.cs`) — `UserControl` that owns the layout. A 5×5 Grid with four dock regions and splitters around a center `ContentPresenter` bound to the `CenterContent` dependency property. Manages four persistent `TabRegion` instances (one per placement). Key API:
+- `RegisterPanel(IPanel, PanelPlacement, double defaultSize)` — registers a panel with a default region
+- `ShowPanel(panelId)` / `HidePanel(panelId)` / `TogglePanel(panelId)` — add/remove panel tabs in regions
 - `MovePanel(panelId, newPlacement)` — relocates a panel to a different region
+- `ToggleRegion(placement)` — collapse/restore an entire region (remembers tabs)
+- `GetAvailablePanels()` — returns registered panels not currently visible (for "+" menu)
 - `RestoreLayout(configs)` / `GetCurrentLayout()` — serialization for settings persistence
 - `PanelLayoutChanged` event — fires on resize/show/hide for settings persistence
 
-**PanelSlotConfig** (`UI/Panels/PanelSlotConfig.cs`) — serializable layout state per panel (`PanelId`, `Placement`, `Size`, `Visible`). Stored in `AppSettings.Editor.PanelLayouts`.
+**TabRegion** (`UI/Panels/TabRegion.xaml/.cs`) — `UserControl` managing a tab strip with "+" button per dock region. Shows tabs for each panel, supports click-to-switch, right-click-to-close, and drag-to-reposition. Empty state shows just the "+" button. Raises `AddPanelRequested`, `PanelClosed`, `PanelDragStarted`, and `ActiveTabChanged` events.
 
-**Adding a new panel**: Implement `IPanel` on a UserControl, then call `Shell.RegisterPanel(panel, placement, defaultSize)` in MainWindow's constructor. The panel system handles splitters, show/hide, resize, and persistence automatically.
+**PanelContainer** (`UI/Panels/PanelContainer.cs`) — thin `ContentControl` wrapper around an `IPanel`. Holds the panel reference and hosts its `Content`. Tab strip and drag handling are managed by `TabRegion`.
+
+**PanelSlotConfig** (`UI/Panels/PanelSlotConfig.cs`) — serializable layout state per panel (`PanelId`, `Placement`, `Size`, `Visible`, `TabIndex`, `IsActiveTab`). Stored in `AppSettings.Editor.PanelLayouts`.
+
+**Adding a new panel**: Implement `IPanel` on a UserControl, then call `Shell.RegisterPanel(panel, placement, defaultSize)` in MainWindow's constructor. The panel system handles tabs, splitters, show/hide, resize, and persistence automatically.
 
 **FileExplorerPanel** implements `IPanel` with `PanelId = "file-explorer"`. MainWindow creates it as a code-behind field (not XAML-declared) and registers it with the shell. The center zone hosts the EditorArea (tab bar + editor + find bar).
 
