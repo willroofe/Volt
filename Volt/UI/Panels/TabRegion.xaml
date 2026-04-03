@@ -1,0 +1,45 @@
+<UserControl x:Class="Volt.TabRegion"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DockPanel>
+        <!-- Header bar: tab strip + "+" button -->
+        <Border DockPanel.Dock="Top"
+                BorderThickness="0,0,0,1"
+                Background="{DynamicResource ThemeExplorerHeaderBg}"
+                BorderBrush="{DynamicResource ThemeTabBorder}">
+            <DockPanel Height="33">
+                <Button x:Name="AddButton" DockPanel.Dock="Right"
+                        Width="28" Height="28" Margin="4,0"
+                        Content="&#xE710;"
+                        FontFamily="Segoe MDL2 Assets" FontSize="10"
+                        Foreground="{DynamicResource ThemeButtonFg}"
+                        Background="Transparent" BorderThickness="0"
+                        Focusable="False" Cursor="Hand"
+                        ToolTip="Add Panel">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Bd" Background="Transparent" CornerRadius="3">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background"
+                                            Value="{DynamicResource ThemeButtonHover}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+                <ScrollViewer x:Name="TabScrollViewer"
+                              HorizontalScrollBarVisibility="Hidden"
+                              VerticalScrollBarVisibility="Disabled"
+                              CanContentScroll="False">
+                    <StackPanel x:Name="TabStrip" Orientation="Horizontal"/>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- Active panel content -->
+        <ContentPresenter x:Name="ContentArea"/>
+    </DockPanel>
+</UserControl>
