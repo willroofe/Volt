@@ -295,7 +295,7 @@ public partial class CommandPalette : UserControl
             FocusVisualStyle = null,
             Focusable = false,
         };
-        item.SetResourceReference(ListBoxItem.BackgroundProperty, ThemeResourceKeys.MenuPopupBg);
+        item.Background = Brushes.Transparent;
 
         // Mouse click to select
         item.MouseLeftButtonUp += (_, _) =>
@@ -341,7 +341,7 @@ public partial class CommandPalette : UserControl
             }
             else
             {
-                item.SetResourceReference(ListBoxItem.BackgroundProperty, ThemeResourceKeys.MenuPopupBg);
+                item.Background = Brushes.Transparent;
             }
         }
     }
