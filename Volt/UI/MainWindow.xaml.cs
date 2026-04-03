@@ -398,15 +398,15 @@ public partial class MainWindow : Window
 
     private void OpenFolderInExplorer()
     {
-        // Close project if one is open (mode exclusivity)
-        if (_projectManager.CurrentProject != null)
-            CloseCurrentProject();
-
         var dlg = new System.Windows.Forms.FolderBrowserDialog();
         if (_settings.Editor.Explorer.OpenFolderPath is string prev && Directory.Exists(prev))
             dlg.SelectedPath = prev;
 
         if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+
+        // Close project if one is open (mode exclusivity) — after dialog confirms
+        if (_projectManager.CurrentProject != null)
+            CloseCurrentProject();
 
         SwitchToFolder(dlg.SelectedPath);
     }
