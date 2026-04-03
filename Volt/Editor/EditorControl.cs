@@ -21,6 +21,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public ThemeManager ThemeManager { get; }
     public SyntaxManager SyntaxManager { get; }
 
+    private SyntaxDefinition? _grammar;
+
+    public string LanguageName => _grammar?.Name ?? "Plain Text";
+
+    public void SetGrammar(SyntaxDefinition? grammar)
+    {
+        _grammar = grammar;
+        InvalidateSyntax();
+    }
+
     // ── Caret ────────────────────────────────────────────────────────
     private int _caretLine;
     private int _caretCol;
@@ -460,7 +470,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (_tokenCache.TryGetValue(_caretLine, out var cached) && cached.content == line && cached.inState == inState)
             tokens = cached.tokens;
         else
-            tokens = SyntaxManager.Tokenize(line, inState, out _);
+            tokens = SyntaxManager.Tokenize(line, _grammar, inState, out _);
         if (tokens.Count > 0)
         {
             foreach (var token in tokens)
@@ -715,7 +725,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             {
                 for (int i = from; i < _buffer.Count && i + 1 < _lineStates.Count; i++)
                 {
-                    SyntaxManager.Tokenize(_buffer[i], _lineStates[i], out var outState);
+                    SyntaxManager.Tokenize(_buffer[i], _grammar, _lineStates[i], out var outState);
                     if (_lineStates[i + 1] == outState)
                         break;
                     _lineStates[i + 1] = outState;
@@ -727,7 +737,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             int lineIdx = _lineStates.Count - 1;
             var inState = _lineStates[lineIdx];
-            SyntaxManager.Tokenize(_buffer[lineIdx], inState, out var outState);
+            SyntaxManager.Tokenize(_buffer[lineIdx], _grammar, inState, out var outState);
             _lineStates.Add(outState);
         }
     }
@@ -980,7 +990,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             if (!_tokenCache.TryGetValue(i, out var cached)
                 || cached.content != line || cached.inState != inState)
             {
-                var tokens = SyntaxManager.Tokenize(line, inState, out _);
+                var tokens = SyntaxManager.Tokenize(line, _grammar, inState, out _);
                 _tokenCache[i] = (line, inState, tokens);
                 cached = _tokenCache[i];
             }

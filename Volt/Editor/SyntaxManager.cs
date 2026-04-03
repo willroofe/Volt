@@ -22,7 +22,6 @@ public class SyntaxManager
 
     private readonly List<SyntaxDefinition> _grammars = [];
     private Dictionary<string, SyntaxDefinition> _extensionMap = new(StringComparer.OrdinalIgnoreCase);
-    private SyntaxDefinition? _activeGrammar;
 
     private bool _initialized;
 
@@ -34,36 +33,31 @@ public class SyntaxManager
         LoadGrammars();
     }
 
-    public SyntaxDefinition? ActiveGrammar => _activeGrammar;
-
-    public void SetLanguageByExtension(string? extension)
+    public SyntaxDefinition? GetDefinition(string? extension)
     {
-        _activeGrammar = null;
-        if (string.IsNullOrEmpty(extension)) return;
-
+        if (string.IsNullOrEmpty(extension)) return null;
         var ext = extension.ToLowerInvariant();
-        _extensionMap.TryGetValue(ext, out _activeGrammar);
+        _extensionMap.TryGetValue(ext, out var grammar);
+        return grammar;
     }
 
-    public string ActiveLanguageName => _activeGrammar?.Name ?? "Plain Text";
-
     /// <summary>Tokenize a single line (no multi-line state).</summary>
-    public List<SyntaxToken> Tokenize(string line)
+    public List<SyntaxToken> Tokenize(string line, SyntaxDefinition? grammar)
     {
-        return Tokenize(line, DefaultState, out _);
+        return Tokenize(line, grammar, DefaultState, out _);
     }
 
     /// <summary>Tokenize a line with multi-line continuation support.</summary>
-    public List<SyntaxToken> Tokenize(string line, LineState inState, out LineState outState)
+    public List<SyntaxToken> Tokenize(string line, SyntaxDefinition? grammar, LineState inState, out LineState outState)
     {
         outState = DefaultState;
-        if (_activeGrammar == null) return [];
+        if (grammar == null) return [];
 
         // Handle full-line continuation states (block comment, heredoc, regex)
-        var result = TryTokenizeBlockComment(line, inState, ref outState);
+        var result = TryTokenizeBlockComment(line, grammar, inState, ref outState);
         if (result != null) return result;
 
-        result = TryTokenizeHeredocContinuation(line, inState, ref outState);
+        result = TryTokenizeHeredocContinuation(line, grammar, inState, ref outState);
         if (result != null) return result;
 
         var claimed = new bool[line.Length];
@@ -76,28 +70,28 @@ public class SyntaxManager
         if (outState.OpenQuote != null && ruleStart == 0)
         {
             // Entire line still inside a string — return early
-            if (_activeGrammar.Interpolation != null)
-                tokens = ExpandInterpolation(tokens, line, _activeGrammar.Interpolation);
+            if (grammar.Interpolation != null)
+                tokens = ExpandInterpolation(tokens, line, grammar.Interpolation);
             return tokens;
         }
 
         // Apply grammar rules and claim tokens
-        ApplyGrammarRules(line, ruleStart, tokens, claimed);
+        ApplyGrammarRules(line, grammar, ruleStart, tokens, claimed);
 
         // Post-rule detection: heredocs, unclaimed regexes, unclosed strings
-        DetectHeredocMarker(line, tokens, claimed, ref outState);
+        DetectHeredocMarker(line, grammar, tokens, claimed, ref outState);
         DetectRegexPatterns(line, tokens, claimed, ref outState);
         DetectUnclosedStringAtEOL(line, tokens, claimed, ref outState);
 
-        if (_activeGrammar.Interpolation != null)
-            tokens = ExpandInterpolation(tokens, line, _activeGrammar.Interpolation);
+        if (grammar.Interpolation != null)
+            tokens = ExpandInterpolation(tokens, line, grammar.Interpolation);
         tokens.Sort((a, b) => a.Start.CompareTo(b.Start));
         return tokens;
     }
 
-    private List<SyntaxToken>? TryTokenizeBlockComment(string line, LineState inState, ref LineState outState)
+    private List<SyntaxToken>? TryTokenizeBlockComment(string line, SyntaxDefinition grammar, LineState inState, ref LineState outState)
     {
-        var bcs = _activeGrammar!.BlockComments;
+        var bcs = grammar.BlockComments;
 
         // Continue existing block comment
         if (inState.BlockCommentIndex >= 0 && bcs != null && inState.BlockCommentIndex < bcs.Count)
@@ -124,7 +118,7 @@ public class SyntaxManager
         return null;
     }
 
-    private List<SyntaxToken>? TryTokenizeHeredocContinuation(string line, LineState inState, ref LineState outState)
+    private List<SyntaxToken>? TryTokenizeHeredocContinuation(string line, SyntaxDefinition grammar, LineState inState, ref LineState outState)
     {
         if (inState.HeredocDelimiter == null) return null;
 
@@ -133,8 +127,8 @@ public class SyntaxManager
         if (line.Length > 0)
         {
             var hdTokens = new List<SyntaxToken> { new(0, line.Length, "string") };
-            if (inState.HeredocInterpolate && _activeGrammar!.Interpolation != null)
-                hdTokens = ExpandInterpolation(hdTokens, line, _activeGrammar.Interpolation);
+            if (inState.HeredocInterpolate && grammar.Interpolation != null)
+                hdTokens = ExpandInterpolation(hdTokens, line, grammar.Interpolation);
             return hdTokens;
         }
         return [];
@@ -180,7 +174,7 @@ public class SyntaxManager
         return len;
     }
 
-    private void ApplyGrammarRules(string line, int ruleStart,
+    private void ApplyGrammarRules(string line, SyntaxDefinition grammar, int ruleStart,
         List<SyntaxToken> tokens, bool[] claimed)
     {
         // Collect all candidate matches with rule priority.
@@ -188,9 +182,9 @@ public class SyntaxManager
         // overlapping matches (e.g. #.*$ at every # position) are all captured
         // as candidates — the greedy claiming pass then picks the right one.
         var candidates = new List<(int Priority, int Start, int Length, string Scope)>();
-        for (int r = 0; r < _activeGrammar!.Rules.Count; r++)
+        for (int r = 0; r < grammar.Rules.Count; r++)
         {
-            var rule = _activeGrammar.Rules[r];
+            var rule = grammar.Rules[r];
             if (rule.CompiledRegex == null) continue;
 
             try
@@ -225,10 +219,10 @@ public class SyntaxManager
         }
     }
 
-    private void DetectHeredocMarker(string line,
+    private void DetectHeredocMarker(string line, SyntaxDefinition grammar,
         List<SyntaxToken> tokens, bool[] claimed, ref LineState outState)
     {
-        var hd = _activeGrammar!.Heredoc;
+        var hd = grammar.Heredoc;
         if (hd?.CompiledRegex == null) return;
 
         var hMatch = hd.CompiledRegex.Match(line);
@@ -543,11 +537,9 @@ public class SyntaxManager
 
     public void ReloadGrammars()
     {
-        var activeExt = _activeGrammar?.Extensions.FirstOrDefault();
         _grammars.Clear();
         _extensionMap.Clear();
         LoadGrammars();
-        if (activeExt != null) SetLanguageByExtension(activeExt);
     }
 
     private void LoadGrammars()
