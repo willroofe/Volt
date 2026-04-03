@@ -52,7 +52,9 @@ public partial class FileExplorerPanel : UserControl, IPanel
         if (!Directory.Exists(path)) return;
         StopAllWatchers();
         _openFolderPath = path;
-        SetTitle("Explorer (" + Path.GetFileName(path) + ")");
+        var folderName = Path.GetFileName(path);
+        if (string.IsNullOrEmpty(folderName)) folderName = path; // root drives like "C:\"
+        SetTitle("Explorer (" + folderName + ")");
         var root = new FileTreeItem(path, true);
         root.TreeChanged += OnTreeChanged;
         root.IsExpanded = true;
