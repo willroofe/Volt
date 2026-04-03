@@ -1010,6 +1010,8 @@ public partial class MainWindow : Window
         else if (ctrl && (e.Key == Key.OemMinus || e.Key == Key.Subtract)) { StepFontSize(-1); e.Handled = true; }
         else if (ctrl && (Keyboard.Modifiers & ModifierKeys.Alt) != 0 && (e.Key == Key.B || e.SystemKey == Key.B)) { Shell.ToggleRegion(PanelPlacement.Right); e.Handled = true; }
         else if (ctrl && !shift && e.Key == Key.B) { Shell.ToggleRegion(PanelPlacement.Left); e.Handled = true; }
+        else if (ctrl && shift && e.Key == Key.J) { Shell.ToggleRegion(PanelPlacement.Top); e.Handled = true; }
+        else if (ctrl && !shift && e.Key == Key.J) { Shell.ToggleRegion(PanelPlacement.Bottom); e.Handled = true; }
         else base.OnKeyDown(e);
     }
 
