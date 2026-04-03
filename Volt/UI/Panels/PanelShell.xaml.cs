@@ -9,6 +9,7 @@ public partial class PanelShell : UserControl
     private readonly Dictionary<string, PanelRegistration> _panels = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<PanelPlacement, TabRegion> _regions = [];
     private readonly Dictionary<PanelPlacement, double> _regionSizes = [];
+    private readonly HashSet<string> _collapsedByToggle = new(StringComparer.OrdinalIgnoreCase);
     private string? _draggingPanelId;
     private PanelPlacement? _highlightedZone;
 
@@ -103,10 +104,11 @@ public partial class PanelShell : UserControl
     {
         if (IsRegionVisible(placement))
         {
-            // Collapse: hide all panels in this region but remember their placement
+            // Collapse: hide all panels in this region, remember which ones for restore
             var panelsInRegion = _panels.Values.Where(r => r.Placement == placement && r.IsVisible).ToList();
             foreach (var reg in panelsInRegion)
             {
+                _collapsedByToggle.Add(reg.Panel.PanelId);
                 reg.IsVisible = false;
                 _regions[placement].RemovePanel(reg.Panel.PanelId);
             }
@@ -116,11 +118,16 @@ public partial class PanelShell : UserControl
         }
         else
         {
-            // Restore: show panels that were assigned to this region, or show empty "+" state
-            var panelsInRegion = _panels.Values.Where(r => r.Placement == placement && !r.IsVisible).ToList();
-            if (panelsInRegion.Count > 0)
+            // Restore only panels that were previously collapsed by ToggleRegion
+            var toRestore = _panels.Values
+                .Where(r => r.Placement == placement && _collapsedByToggle.Contains(r.Panel.PanelId))
+                .ToList();
+            foreach (var reg in toRestore)
+                _collapsedByToggle.Remove(reg.Panel.PanelId);
+
+            if (toRestore.Count > 0)
             {
-                foreach (var reg in panelsInRegion)
+                foreach (var reg in toRestore)
                     ShowPanel(reg.Panel.PanelId);
             }
             else
@@ -183,7 +190,7 @@ public partial class PanelShell : UserControl
                 Placement = reg.Placement,
                 Size = GetRegionSize(reg.Placement),
                 Visible = reg.IsVisible,
-                TabIndex = region.GetTabIndex(reg.Panel.PanelId),
+                TabIndex = Math.Max(0, region.GetTabIndex(reg.Panel.PanelId)),
                 IsActiveTab = region.IsActiveTab(reg.Panel.PanelId)
             });
         }
