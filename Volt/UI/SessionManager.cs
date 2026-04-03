@@ -13,7 +13,7 @@ internal class SessionManager
     /// Saves dirty/untitled tab content to the session directory.
     /// The caller is responsible for calling SessionSettings.ClearSessionDir() before this method.
     /// </summary>
-    public SessionSettings SaveSession(IReadOnlyList<TabInfo> tabs, TabInfo? activeTab)
+    public SessionSettings SaveSession(IReadOnlyList<TabInfo> tabs, TabInfo? activeTab, string? folderPath = null)
     {
         var result = new SessionSettings();
         int activeIdx = 0;
@@ -34,7 +34,12 @@ internal class SessionManager
 
             // Save content for dirty or untitled tabs
             if (dirty || untitled)
-                result.SaveTabContent(idx, t.Editor.GetContent());
+            {
+                if (folderPath != null)
+                    result.SaveFolderTabContent(folderPath, idx, t.Editor.GetContent());
+                else
+                    result.SaveTabContent(idx, t.Editor.GetContent());
+            }
 
             result.Tabs.Add(new SessionTab
             {
@@ -55,7 +60,7 @@ internal class SessionManager
     /// Reads session data and returns a data structure describing what tabs to restore.
     /// Does NOT create any UI elements — the caller is responsible for creating tabs from the result.
     /// </summary>
-    public RestoredSession RestoreSession(SessionSettings session)
+    public RestoredSession RestoreSession(SessionSettings session, string? folderPath = null)
     {
         var restoredTabs = new List<RestoredTab>();
         int activeTabIndex = 0;
@@ -78,23 +83,25 @@ internal class SessionManager
             {
                 if (st.IsDirty)
                 {
-                    // Load saved dirty content (overlay on-disk version happens in caller)
-                    savedContent = SessionSettings.LoadTabContent(tabIndex);
+                    savedContent = folderPath != null
+                        ? SessionSettings.LoadFolderTabContent(folderPath, tabIndex)
+                        : SessionSettings.LoadTabContent(tabIndex);
                     isDirty = true;
                 }
-                // For clean file-backed tabs, savedContent stays null — caller reads from disk
             }
             else if (st.FilePath == null)
             {
-                // Untitled tab — restore saved content if available
-                savedContent = SessionSettings.LoadTabContent(tabIndex);
+                savedContent = folderPath != null
+                    ? SessionSettings.LoadFolderTabContent(folderPath, tabIndex)
+                    : SessionSettings.LoadTabContent(tabIndex);
                 if (savedContent != null)
                     isDirty = true;
             }
             else
             {
-                // File no longer exists but was dirty — restore content as untitled
-                savedContent = SessionSettings.LoadTabContent(tabIndex);
+                savedContent = folderPath != null
+                    ? SessionSettings.LoadFolderTabContent(folderPath, tabIndex)
+                    : SessionSettings.LoadTabContent(tabIndex);
                 if (savedContent == null)
                 {
                     tabIndex++;

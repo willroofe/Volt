@@ -64,10 +64,29 @@ public class SessionSettings
 
     public static string TabContentPath(int index) => Path.Combine(SessionDir, $"tab-{index}.txt");
 
+    public static string FolderSessionDir(string folderPath)
+    {
+        // Use a hash of the folder path to create a unique subdirectory
+        var hash = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(folderPath.ToLowerInvariant())))[..16];
+        return Path.Combine(SessionDir, "folders", hash);
+    }
+
+    public static string FolderTabContentPath(string folderPath, int index)
+        => Path.Combine(FolderSessionDir(folderPath), $"tab-{index}.txt");
+
     public void SaveTabContent(int index, string content)
     {
         Directory.CreateDirectory(SessionDir);
         FileHelper.AtomicWriteText(TabContentPath(index), content, System.Text.Encoding.UTF8);
+    }
+
+    public void SaveFolderTabContent(string folderPath, int index, string content)
+    {
+        var dir = FolderSessionDir(folderPath);
+        Directory.CreateDirectory(dir);
+        FileHelper.AtomicWriteText(FolderTabContentPath(folderPath, index), content, System.Text.Encoding.UTF8);
     }
 
     public static string? LoadTabContent(int index)
@@ -84,12 +103,41 @@ public class SessionSettings
         }
     }
 
+    public static string? LoadFolderTabContent(string folderPath, int index)
+    {
+        try
+        {
+            var path = FolderTabContentPath(folderPath, index);
+            return File.Exists(path) ? File.ReadAllText(path) : null;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to load folder session tab {index}: {ex.Message}");
+            return null;
+        }
+    }
+
     public static void ClearSessionDir()
     {
         try
         {
             if (!Directory.Exists(SessionDir)) return;
             foreach (var file in Directory.GetFiles(SessionDir))
+            {
+                try { File.Delete(file); }
+                catch { /* best effort */ }
+            }
+        }
+        catch { /* best effort */ }
+    }
+
+    public static void ClearFolderSessionDir(string folderPath)
+    {
+        try
+        {
+            var dir = FolderSessionDir(folderPath);
+            if (!Directory.Exists(dir)) return;
+            foreach (var file in Directory.GetFiles(dir))
             {
                 try { File.Delete(file); }
                 catch { /* best effort */ }
@@ -113,6 +161,7 @@ public class AppSettings
     public bool WindowMaximized { get; set; }
     public string? LastOpenProjectPath { get; set; }
     public SessionSettings Session { get; set; } = new();
+    public Dictionary<string, SessionSettings> FolderSessions { get; set; } = new();
 
     public static readonly string[] FindBarPositionOptions = ["Top", "Bottom"];
     public static readonly double[] FontSizeOptions = [8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 36];
