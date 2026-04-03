@@ -203,12 +203,13 @@
                     </MenuItem>
                     <MenuItem Header="Save _As..." InputGestureText="Ctrl+Shift+S" Click="OnSaveAs"/>
                     <Separator/>
-                    <MenuItem Header="_Open" InputGestureText="Ctrl+O" Click="OnOpen">
+                    <MenuItem Header="_Open File" InputGestureText="Ctrl+O" Click="OnOpen">
                         <MenuItem.Icon>
                             <TextBlock Text="&#xE838;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
                         </MenuItem.Icon>
                     </MenuItem>
                     <MenuItem Header="Open _Folder" InputGestureText="Ctrl+Shift+O" Click="OnOpenFolder"/>
+                    <MenuItem x:Name="MenuAddFolderToWorkspace" Header="Add Folder to _Workspace" Click="OnAddFolderToWorkspace"/>
                 </MenuItem>
                 <MenuItem Header="_Edit" Style="{StaticResource TopLevelMenuItem}"
                          ItemContainerStyle="{StaticResource MenuItemCheckableStyle}">
@@ -221,12 +222,11 @@
                     <MenuItem x:Name="MenuViewTop" Header="_Top Panel" IsCheckable="True" InputGestureText="Ctrl+Alt+J" Click="OnToggleTopPanel"/>
                     <MenuItem x:Name="MenuViewBottom" Header="_Bottom Panel" IsCheckable="True" InputGestureText="Ctrl+J" Click="OnToggleBottomPanel"/>
                 </MenuItem>
-                <MenuItem Header="_Project" Style="{StaticResource TopLevelMenuItem}"
+                <MenuItem Header="_Workspace" Style="{StaticResource TopLevelMenuItem}"
                          ItemContainerStyle="{StaticResource MenuItemDropdownStyle}">
-                    <MenuItem Header="_New Project" Click="OnNewProject"/>
-                    <MenuItem Header="_Open Project" Click="OnOpenProject"/>
-                    <MenuItem x:Name="MenuSaveProject" Header="_Save Project" Click="OnSaveProject" IsEnabled="False"/>
-                    <MenuItem x:Name="MenuCloseProject" Header="_Close Project" Click="OnCloseProject" IsEnabled="False"/>
+                    <MenuItem Header="_New Workspace" Click="OnNewWorkspace"/>
+                    <MenuItem Header="_Open Workspace" Click="OnOpenWorkspace"/>
+                    <MenuItem x:Name="MenuCloseWorkspace" Header="_Close Workspace" Click="OnCloseWorkspace" IsEnabled="False"/>
                 </MenuItem>
             </Menu>
 

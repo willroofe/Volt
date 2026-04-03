@@ -2,38 +2,25 @@ using System.Text.Json.Serialization;
 
 namespace Volt;
 
-public class Project
+public class Workspace
 {
     [JsonPropertyName("name")]
-    public string Name { get; set; } = "Untitled Project";
+    public string Name { get; set; } = "Untitled Workspace";
 
     [JsonIgnore]
     public string? FilePath { get; set; }
 
-    [JsonPropertyName("virtualFolders")]
-    public List<string> VirtualFolders { get; set; } = [];
-
     [JsonPropertyName("folders")]
-    public List<ProjectFolder> Folders { get; set; } = [];
+    public List<string> Folders { get; set; } = [];
 
     [JsonPropertyName("session")]
-    public ProjectSession Session { get; set; } = new();
+    public WorkspaceSession Session { get; set; } = new();
 }
 
-public class ProjectFolder
-{
-    [JsonPropertyName("path")]
-    public string Path { get; set; } = "";
-
-    [JsonPropertyName("virtualParent")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? VirtualParent { get; set; }
-}
-
-public class ProjectSession
+public class WorkspaceSession
 {
     [JsonPropertyName("tabs")]
-    public List<ProjectSessionTab> Tabs { get; set; } = [];
+    public List<WorkspaceSessionTab> Tabs { get; set; } = [];
 
     [JsonPropertyName("activeTabIndex")]
     public int ActiveTabIndex { get; set; }
@@ -42,7 +29,7 @@ public class ProjectSession
     public List<string> ExpandedPaths { get; set; } = [];
 }
 
-public class ProjectSessionTab
+public class WorkspaceSessionTab
 {
     [JsonPropertyName("filePath")]
     public string? FilePath { get; set; }
