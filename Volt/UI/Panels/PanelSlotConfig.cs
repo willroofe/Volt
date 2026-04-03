@@ -9,3 +9,9 @@ public class PanelSlotConfig
     public int TabIndex { get; set; }
     public bool IsActiveTab { get; set; }
 }
+
+public class RegionState
+{
+    public PanelPlacement Placement { get; set; }
+    public double Size { get; set; }
+}

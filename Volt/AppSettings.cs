@@ -42,6 +42,7 @@ public class EditorSettings
     public FindSettings Find { get; set; } = new();
     public ExplorerSettings Explorer { get; set; } = new();
     public List<PanelSlotConfig> PanelLayouts { get; set; } = [];
+    public List<RegionState> OpenRegions { get; set; } = [];
 }
 
 public class SessionTab
