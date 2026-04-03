@@ -521,10 +521,10 @@ public partial class PanelShell : UserControl
 
             double minProp = double.MaxValue;
             bool skipCurrent = currentPlacement.HasValue && !sourceHasOtherTabs;
-            if (!(skipCurrent && currentPlacement == PanelPlacement.Left) && pLeft < threshold && pLeft < minProp) { minProp = pLeft; zone = PanelPlacement.Left; }
-            if (!(skipCurrent && currentPlacement == PanelPlacement.Right) && pRight < threshold && pRight < minProp) { minProp = pRight; zone = PanelPlacement.Right; }
-            if (!(skipCurrent && currentPlacement == PanelPlacement.Top) && pTop < threshold && pTop < minProp) { minProp = pTop; zone = PanelPlacement.Top; }
-            if (!(skipCurrent && currentPlacement == PanelPlacement.Bottom) && pBottom < threshold && pBottom < minProp) { zone = PanelPlacement.Bottom; }
+            if (!IsRegionVisible(PanelPlacement.Left) && !(skipCurrent && currentPlacement == PanelPlacement.Left) && pLeft < threshold && pLeft < minProp) { minProp = pLeft; zone = PanelPlacement.Left; }
+            if (!IsRegionVisible(PanelPlacement.Right) && !(skipCurrent && currentPlacement == PanelPlacement.Right) && pRight < threshold && pRight < minProp) { minProp = pRight; zone = PanelPlacement.Right; }
+            if (!IsRegionVisible(PanelPlacement.Top) && !(skipCurrent && currentPlacement == PanelPlacement.Top) && pTop < threshold && pTop < minProp) { minProp = pTop; zone = PanelPlacement.Top; }
+            if (!IsRegionVisible(PanelPlacement.Bottom) && !(skipCurrent && currentPlacement == PanelPlacement.Bottom) && pBottom < threshold && pBottom < minProp) { zone = PanelPlacement.Bottom; }
         }
 
         if (zone != _highlightedZone)
