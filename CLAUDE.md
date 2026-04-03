@@ -13,7 +13,15 @@ dotnet build Volt.sln
 dotnet run --project Volt/Volt.csproj
 ```
 
-No test framework is configured. The running app must be closed before rebuilding (the exe gets locked).
+The running app must be closed before rebuilding (the exe gets locked).
+
+**Tests** (`Volt.Tests/` — xUnit, 30 foundation tests covering core logic):
+
+```bash
+dotnet test Volt.Tests                              # run all tests
+dotnet test Volt.Tests --filter TextBuffer          # specific class
+dotnet test Volt.Tests --verbosity normal           # verbose output
+```
 
 **Benchmarks** (`Volt.Benchmarks/` — BenchmarkDotNet, InProcess toolchain for .NET 10 + WPF):
 
@@ -25,7 +33,7 @@ dotnet run -c Release --project Volt.Benchmarks -- --list flat            # list
 
 ## Architecture
 
-**Single-project solution** with one WPF application project (`Volt/`), organized into subdirectories:
+**Three-project solution** — one WPF application (`Volt/`), one xUnit test project (`Volt.Tests/`), one benchmark project (`Volt.Benchmarks/`). The main project is organized into subdirectories:
 
 - **Editor/** — `EditorControl.cs`, `TextBuffer.cs`, `UndoManager.cs`, `SelectionManager.cs`, `FontManager.cs`, `FindManager.cs`, `BracketMatcher.cs`, `SyntaxManager.cs`, `SyntaxDefinition.cs`
 - **Theme/** — `ThemeManager.cs`, `ColorTheme.cs`
@@ -85,10 +93,12 @@ Unified JSON-based theming — one theme file controls everything (editor, chrom
 
 ### Syntax Highlighting
 
-**SyntaxManager** (`Editor/SyntaxManager.cs`) — instance class owned by `App`, accessed via `App.Current.SyntaxManager`:
+**SyntaxManager** (`Editor/SyntaxManager.cs`) — stateless grammar registry owned by `App`, accessed via `App.Current.SyntaxManager`:
 - Loads grammar JSON from `%AppData%/Volt/Grammars/`
-- `Tokenize(line, LineState, out LineState)` — orchestrator that delegates to phase-specific private methods (block comments, heredocs, regex continuation, string continuation, grammar rules, post-rule detection). First-match-wins regex rules with multi-line string state tracking.
+- `GetDefinition(extension)` — pure lookup returning `SyntaxDefinition?` for a file extension
+- `Tokenize(line, grammar, LineState, out LineState)` — accepts grammar explicitly (no shared mutable state). Orchestrator that delegates to phase-specific private methods (block comments, heredocs, regex continuation, string continuation, grammar rules, post-rule detection). First-match-wins regex rules with multi-line string state tracking.
 - Post-processes double-quoted strings for interpolated variables and escape sequences via `ExpandInterpolation`
+- Each `EditorControl` owns its own `SyntaxDefinition?` via `_grammar` field, set by `SetGrammar()`. This ensures thread-safe tokenization across tabs (background line-state precomputation never uses the wrong grammar).
 - EditorControl maintains `List<LineState>` with convergence optimization — revalidation stops early when output state matches cached value
 
 **Adding a new language**: Drop a JSON file in `%AppData%/Volt/Grammars/` with `name`, `extensions`, and `rules`.
