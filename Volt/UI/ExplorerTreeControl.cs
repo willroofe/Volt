@@ -45,6 +45,12 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
     private readonly DispatcherTimer _tooltipTimer;
     private string? _pendingTooltipText;
 
+    // Cached FormattedText for fixed icon glyphs (invalidated on theme/DPI change)
+    private FormattedText? _chevronRightMuted, _chevronDownText;
+    private FormattedText? _fileIconText, _folderIconText;
+    private double _cachedDpi;
+    private Brush? _cachedTextBrush, _cachedMutedBrush;
+
     public event Action<string>? FileOpenRequested;
     public event Action<FileTreeItem>? SelectionChanged;
     public event Action<FileTreeItem?>? ItemRightClicked;
@@ -81,7 +87,35 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         };
     }
 
-    private void OnThemeChanged(object? sender, EventArgs e) => InvalidateVisual();
+    private void OnThemeChanged(object? sender, EventArgs e)
+    {
+        InvalidateGlyphCache();
+        InvalidateVisual();
+    }
+
+    private void InvalidateGlyphCache()
+    {
+        _chevronRightMuted = _chevronDownText = null;
+        _fileIconText = _folderIconText = null;
+        _cachedTextBrush = _cachedMutedBrush = null;
+    }
+
+    private void EnsureGlyphCache(Brush textBrush, Brush mutedBrush, double dpi)
+    {
+        if (_cachedTextBrush == textBrush && _cachedMutedBrush == mutedBrush && _cachedDpi == dpi)
+            return;
+        _cachedTextBrush = textBrush;
+        _cachedMutedBrush = mutedBrush;
+        _cachedDpi = dpi;
+        _chevronRightMuted = new FormattedText(ChevronRight, CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight, IconTypeface, 8, mutedBrush, dpi);
+        _chevronDownText = new FormattedText(ChevronDown, CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight, IconTypeface, 8, textBrush, dpi);
+        _fileIconText = new FormattedText(FileIcon, CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight, IconTypeface, 12, mutedBrush, dpi);
+        _folderIconText = new FormattedText(FolderIcon, CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight, IconTypeface, 12, textBrush, dpi);
+    }
 
     // --- Public API ---
 
@@ -229,6 +263,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         var mutedBrush = GetBrush(ThemeResourceKeys.TextFgMuted);
         var headerFgBrush = GetBrush(ThemeResourceKeys.ExplorerHeaderFg);
         var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        EnsureGlyphCache(textBrush, mutedBrush, dpi);
 
         for (int i = firstVisible; i <= lastVisible; i++)
         {
@@ -255,10 +290,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             // Arrow chevron (muted when collapsed, normal text color when expanded)
             if (HasChildren(row.Item))
             {
-                string chevron = row.Item.IsExpanded ? ChevronDown : ChevronRight;
-                var arrowBrush = row.Item.IsExpanded ? textBrush : mutedBrush;
-                var arrowText = new FormattedText(chevron, CultureInfo.CurrentCulture,
-                    FlowDirection.LeftToRight, IconTypeface, 8, arrowBrush, dpi);
+                var arrowText = row.Item.IsExpanded ? _chevronDownText! : _chevronRightMuted!;
                 double arrowX = x + (ArrowZoneWidth - arrowText.Width) / 2;
                 double arrowY = y + (RowHeight - arrowText.Height) / 2;
                 dc.DrawText(arrowText, new Point(arrowX, arrowY));
@@ -268,10 +300,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             // Icon (directories, virtual folders, and files — not project root)
             if (row.Item.Kind != FileTreeItemKind.ProjectRoot)
             {
-                string icon = row.Item.Kind == FileTreeItemKind.File ? FileIcon : FolderIcon;
-                var iconBrush = row.Item.Kind == FileTreeItemKind.File ? mutedBrush : textBrush;
-                var iconText = new FormattedText(icon, CultureInfo.CurrentCulture,
-                    FlowDirection.LeftToRight, IconTypeface, 12, iconBrush, dpi);
+                var iconText = row.Item.Kind == FileTreeItemKind.File ? _fileIconText! : _folderIconText!;
                 double iconX = x + (IconZoneWidth - iconText.Width) / 2;
                 double iconY = y + (RowHeight - iconText.Height) / 2;
                 dc.DrawText(iconText, new Point(iconX, iconY));

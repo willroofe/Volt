@@ -81,20 +81,25 @@ public class FileTreeItem : INotifyPropertyChanged
         return new FileTreeItem("", "", false, FileTreeItemKind.File);
     }
 
-    private void LoadChildren()
+    private async void LoadChildren()
     {
-        _hasPlaceholder = false;
-        Children.Clear();
-
         try
         {
-            var dirs = Directory.GetDirectories(FullPath)
-                .Where(d => !IsIgnored(d))
-                .OrderBy(d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase);
+            var (dirs, files) = await Task.Run(() =>
+            {
+                var d = Directory.GetDirectories(FullPath)
+                    .Where(dp => !IsIgnored(dp))
+                    .OrderBy(dp => Path.GetFileName(dp), StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                var f = Directory.GetFiles(FullPath)
+                    .Where(fp => !IsHidden(fp))
+                    .OrderBy(fp => Path.GetFileName(fp), StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                return (d, f);
+            });
 
-            var files = Directory.GetFiles(FullPath)
-                .Where(f => !IsHidden(f))
-                .OrderBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase);
+            _hasPlaceholder = false;
+            Children.Clear();
 
             foreach (var dir in dirs)
             {
@@ -105,10 +110,11 @@ public class FileTreeItem : INotifyPropertyChanged
             foreach (var file in files)
                 Children.Add(new FileTreeItem(file, false));
         }
-        catch (UnauthorizedAccessException) { }
-        catch (IOException) { }
+        catch (UnauthorizedAccessException) { _hasPlaceholder = false; Children.Clear(); }
+        catch (IOException) { _hasPlaceholder = false; Children.Clear(); }
 
         StartWatching();
+        TreeChanged?.Invoke(this);
     }
 
     private void StartWatching()
@@ -180,7 +186,7 @@ public class FileTreeItem : INotifyPropertyChanged
         RefreshChildren();
     }
 
-    private void RefreshChildren()
+    private async void RefreshChildren()
     {
         if (!_isExpanded || _hasPlaceholder) return;
 
@@ -200,13 +206,18 @@ public class FileTreeItem : INotifyPropertyChanged
 
         try
         {
-            var dirs = Directory.GetDirectories(FullPath)
-                .Where(d => !IsIgnored(d))
-                .OrderBy(d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase);
-
-            var files = Directory.GetFiles(FullPath)
-                .Where(f => !IsHidden(f))
-                .OrderBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase);
+            var (dirs, files) = await Task.Run(() =>
+            {
+                var d = Directory.GetDirectories(FullPath)
+                    .Where(dp => !IsIgnored(dp))
+                    .OrderBy(dp => Path.GetFileName(dp), StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                var f = Directory.GetFiles(FullPath)
+                    .Where(fp => !IsHidden(fp))
+                    .OrderBy(fp => Path.GetFileName(fp), StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                return (d, f);
+            });
 
             foreach (var dir in dirs)
             {

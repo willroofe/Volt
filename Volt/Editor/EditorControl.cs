@@ -111,6 +111,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private readonly Dictionary<int, (string content, LineState inState, List<SyntaxToken> tokens)> _tokenCache = new();
     private readonly List<int> _pruneKeys = new();
     private bool _tokenCacheDirty;
+    private readonly Dictionary<int, string> _lineNumStrings = new();
+    private static readonly string[] IndentStrings = Enumerable.Range(0, 9).Select(n => new string(' ', n)).ToArray();
 
     // ── Multi-line syntax state ────────────────────────────────────
     private readonly List<LineState> _lineStates = new();
@@ -264,6 +266,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         Unloaded += (_, _) =>
         {
             _blinkTimer.Stop();
+            _font.BeforeFontChanged -= OnBeforeFontChanged;
+            _font.FontChanged -= OnFontChanged;
             if (ThemeManager != null)
                 ThemeManager.ThemeChanged -= OnThemeChanged;
         };
@@ -304,8 +308,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     new Rect(caretX, caretY, _font.CharWidth, _font.LineHeight));
                 if (_caretCol < _buffer[_caretLine].Length)
                 {
-                    var ch = _buffer[_caretLine][_caretCol].ToString();
-                    _font.DrawGlyphRun(dc, ch, 0, 1, caretX, caretY, ThemeManager.EditorBg);
+                    _font.DrawGlyphRun(dc, _buffer[_caretLine], _caretCol, 1, caretX, caretY, ThemeManager.EditorBg);
                 }
             }
             else
@@ -453,7 +456,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             if (spaces == 0) continue;
             int lineIdx = indent.StartLine + i;
             if (add)
-                _buffer.InsertAt(lineIdx, 0, new string(' ', spaces));
+                _buffer.InsertAt(lineIdx, 0, spaces < IndentStrings.Length ? IndentStrings[spaces] : new string(' ', spaces));
             else
                 _buffer.DeleteAt(lineIdx, 0, spaces);
         }
@@ -1093,7 +1096,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
             double y = _wordWrap ? _wrap.CumulOffset(i) * _font.LineHeight : i * _font.LineHeight;
             var brush = i == _caretLine
                 ? ThemeManager.ActiveLineNumberFg : ThemeManager.GutterFg;
-            var numStr = (i + 1).ToString();
+            int lineNum = i + 1;
+            if (!_lineNumStrings.TryGetValue(lineNum, out var numStr))
+            {
+                numStr = lineNum.ToString();
+                _lineNumStrings[lineNum] = numStr;
+            }
             double numWidth = numStr.Length * _font.CharWidth;
             _font.DrawGlyphRun(dc, numStr, 0, numStr.Length,
                 _gutterWidth - numWidth - GutterPadding, y, brush);
@@ -1783,6 +1791,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _cleanUndoDepth = 0;
         _find.Clear();
         _tokenCacheDirty = true;
+        _lineNumStrings.Clear();
         InvalidateLineStates();
         UpdateExtent();
         SetVerticalOffset(0);

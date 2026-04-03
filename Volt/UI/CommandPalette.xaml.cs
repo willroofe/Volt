@@ -224,7 +224,7 @@ public partial class CommandPalette : UserControl
     {
         var filter = _filterInput.Text.Trim();
         if (string.IsNullOrEmpty(filter)) return _commands;
-        return _commands.Where(c => c.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();
+        return _commands.FindAll(c => c.Name.Contains(filter, StringComparison.OrdinalIgnoreCase));
     }
 
     private List<PaletteOption> GetFilteredOptions()
@@ -232,7 +232,7 @@ public partial class CommandPalette : UserControl
         if (_currentOptions == null) return [];
         var filter = _filterInput.Text.Trim();
         if (string.IsNullOrEmpty(filter)) return _currentOptions;
-        return _currentOptions.Where(o => o.Label.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();
+        return _currentOptions.FindAll(o => o.Label.Contains(filter, StringComparison.OrdinalIgnoreCase));
     }
 
     private void RefreshList()

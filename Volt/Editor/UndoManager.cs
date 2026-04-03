@@ -32,7 +32,7 @@ public class UndoManager
         int CaretLineAfter, int CaretColAfter)
         : UndoEntryBase(CaretLineBefore, CaretColBefore, CaretLineAfter, CaretColAfter);
 
-    private readonly List<UndoEntryBase> _undoStack = [];
+    private readonly LinkedList<UndoEntryBase> _undoStack = new();
     private readonly List<UndoEntryBase> _redoStack = [];
 
     public bool CanUndo => _undoStack.Count > 0;
@@ -45,10 +45,10 @@ public class UndoManager
     /// </summary>
     public bool Push(UndoEntryBase entry)
     {
-        _undoStack.Add(entry);
+        _undoStack.AddLast(entry);
         bool evicted = _undoStack.Count > MaxEntries;
         if (evicted)
-            _undoStack.RemoveAt(0);
+            _undoStack.RemoveFirst();
         _redoStack.Clear();
         return evicted;
     }
@@ -59,8 +59,8 @@ public class UndoManager
     public UndoEntryBase? Undo()
     {
         if (_undoStack.Count == 0) return null;
-        var entry = _undoStack[^1];
-        _undoStack.RemoveAt(_undoStack.Count - 1);
+        var entry = _undoStack.Last!.Value;
+        _undoStack.RemoveLast();
         _redoStack.Add(entry);
         return entry;
     }
@@ -73,14 +73,13 @@ public class UndoManager
         if (_redoStack.Count == 0) return null;
         var entry = _redoStack[^1];
         _redoStack.RemoveAt(_redoStack.Count - 1);
-        _undoStack.Add(entry);
+        _undoStack.AddLast(entry);
         return entry;
     }
 
     public void Clear()
     {
         _undoStack.Clear();
-        _undoStack.TrimExcess();
         _redoStack.Clear();
         _redoStack.TrimExcess();
     }
