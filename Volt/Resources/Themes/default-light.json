@@ -43,16 +43,16 @@
     "explorerItemSelected": "#E0E0E0"
   },
   "scopes": {
-    "comment": "#008000",
-    "string": "#A31515",
-    "keyword": "#0000FF",
-    "variable": "#001080",
-    "number": "#098658",
-    "operator": "#000000",
-    "regex": "#811F3F",
-    "type": "#267F99",
-    "function": "#795E26",
-    "hashkey": "#2B6CB0",
-    "escape": "#A1260D"
+    "comment": "#8C9BAA",
+    "string": "#B05A4A",
+    "keyword": "#5A8BA8",
+    "variable": "#5E7F96",
+    "number": "#6A9A78",
+    "operator": "#555555",
+    "regex": "#A06070",
+    "type": "#6882A0",
+    "function": "#9A8560",
+    "hashkey": "#5A8BA8",
+    "escape": "#8A7A60"
   }
 }
