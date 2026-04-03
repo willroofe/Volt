@@ -708,8 +708,7 @@ public partial class MainWindow : Window
     {
         if (_activeTab == null) return;
         var ext = _activeTab.FilePath != null ? Path.GetExtension(_activeTab.FilePath).ToLowerInvariant() : "";
-        SyntaxManager.SetLanguageByExtension(ext);
-        Editor.InvalidateSyntax();
+        Editor.SetGrammar(SyntaxManager.GetDefinition(ext));
         FileTypeText.Text = FileHelper.GetFileTypeName(ext);
         EncodingText.Text = GetEncodingLabel();
         LineEndingText.Text = Editor.LineEnding;
