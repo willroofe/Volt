@@ -63,6 +63,7 @@ public partial class MainWindow : Window
         // Register explorer panel with shell
         Shell.RegisterPanel(ExplorerPanel, PanelPlacement.Left, 250);
         RestorePanelLayout();
+        SyncViewMenuChecks();
 
         if (ExplorerPanel.OpenFolderPath == null &&
             _settings.Editor.Explorer.OpenFolderPath is string folderPath && Directory.Exists(folderPath))
@@ -932,6 +933,38 @@ public partial class MainWindow : Window
         _settings.Save();
     }
 
+    private void OnToggleLeftPanel(object sender, RoutedEventArgs e)
+    {
+        Shell.ToggleRegion(PanelPlacement.Left);
+        SyncViewMenuChecks();
+    }
+
+    private void OnToggleRightPanel(object sender, RoutedEventArgs e)
+    {
+        Shell.ToggleRegion(PanelPlacement.Right);
+        SyncViewMenuChecks();
+    }
+
+    private void OnToggleTopPanel(object sender, RoutedEventArgs e)
+    {
+        Shell.ToggleRegion(PanelPlacement.Top);
+        SyncViewMenuChecks();
+    }
+
+    private void OnToggleBottomPanel(object sender, RoutedEventArgs e)
+    {
+        Shell.ToggleRegion(PanelPlacement.Bottom);
+        SyncViewMenuChecks();
+    }
+
+    private void SyncViewMenuChecks()
+    {
+        MenuViewLeft.IsChecked = Shell.IsRegionVisible(PanelPlacement.Left);
+        MenuViewRight.IsChecked = Shell.IsRegionVisible(PanelPlacement.Right);
+        MenuViewTop.IsChecked = Shell.IsRegionVisible(PanelPlacement.Top);
+        MenuViewBottom.IsChecked = Shell.IsRegionVisible(PanelPlacement.Bottom);
+    }
+
     private void OnSettings(object sender, RoutedEventArgs e)
     {
         var snapshot = new SettingsSnapshot(
@@ -1008,10 +1041,10 @@ public partial class MainWindow : Window
         else if (ctrl && !shift && e.Key == Key.W) { if (_activeTab != null) CloseTab(_activeTab); e.Handled = true; }
         else if (ctrl && (e.Key == Key.OemPlus || e.Key == Key.Add)) { StepFontSize(1); e.Handled = true; }
         else if (ctrl && (e.Key == Key.OemMinus || e.Key == Key.Subtract)) { StepFontSize(-1); e.Handled = true; }
-        else if (ctrl && (Keyboard.Modifiers & ModifierKeys.Alt) != 0 && (e.Key == Key.B || e.SystemKey == Key.B)) { Shell.ToggleRegion(PanelPlacement.Right); e.Handled = true; }
-        else if (ctrl && !shift && e.Key == Key.B) { Shell.ToggleRegion(PanelPlacement.Left); e.Handled = true; }
-        else if (ctrl && shift && e.Key == Key.J) { Shell.ToggleRegion(PanelPlacement.Top); e.Handled = true; }
-        else if (ctrl && !shift && e.Key == Key.J) { Shell.ToggleRegion(PanelPlacement.Bottom); e.Handled = true; }
+        else if (ctrl && (Keyboard.Modifiers & ModifierKeys.Alt) != 0 && (e.Key == Key.B || e.SystemKey == Key.B)) { Shell.ToggleRegion(PanelPlacement.Right); SyncViewMenuChecks(); e.Handled = true; }
+        else if (ctrl && !shift && e.Key == Key.B) { Shell.ToggleRegion(PanelPlacement.Left); SyncViewMenuChecks(); e.Handled = true; }
+        else if (ctrl && (Keyboard.Modifiers & ModifierKeys.Alt) != 0 && (e.Key == Key.J || e.SystemKey == Key.J)) { Shell.ToggleRegion(PanelPlacement.Top); SyncViewMenuChecks(); e.Handled = true; }
+        else if (ctrl && !shift && e.Key == Key.J) { Shell.ToggleRegion(PanelPlacement.Bottom); SyncViewMenuChecks(); e.Handled = true; }
         else base.OnKeyDown(e);
     }
 

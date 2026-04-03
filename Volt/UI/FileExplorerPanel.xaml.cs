@@ -54,14 +54,13 @@ public partial class FileExplorerPanel : UserControl, IPanel
         _openFolderPath = path;
         var folderName = Path.GetFileName(path);
         if (string.IsNullOrEmpty(folderName)) folderName = path; // root drives like "C:\"
-        SetTitle("Explorer (" + folderName + ")");
+        SetTitle("Explorer");
         var root = new FileTreeItem(path, true);
         root.TreeChanged += OnTreeChanged;
         root.IsExpanded = true;
-        // Show children directly — the root folder name is in the panel title
         _folderRoot = root;
-        _currentRootItems = root.Children;
-        ExplorerTree.SetRootItems(root.Children);
+        _currentRootItems = new ObservableCollection<FileTreeItem> { root };
+        ExplorerTree.SetRootItems(_currentRootItems);
     }
 
     public void CloseFolder()
@@ -174,7 +173,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
         if (_currentRootItems != null)
             CollectExpandedPaths(_currentRootItems, expandedPaths);
 
-        SetTitle("Explorer (" + project.Name + ")");
+        SetTitle("Explorer");
 
         var items = new ObservableCollection<FileTreeItem>();
 

@@ -214,6 +214,13 @@
                          ItemContainerStyle="{StaticResource MenuItemCheckableStyle}">
                     <MenuItem x:Name="MenuWordWrap" Header="_Word Wrap" IsCheckable="True" Click="OnToggleWordWrap"/>
                 </MenuItem>
+                <MenuItem Header="_View" Style="{StaticResource TopLevelMenuItem}"
+                         ItemContainerStyle="{StaticResource MenuItemCheckableStyle}">
+                    <MenuItem x:Name="MenuViewLeft" Header="_Left Panel" IsCheckable="True" InputGestureText="Ctrl+B" Click="OnToggleLeftPanel"/>
+                    <MenuItem x:Name="MenuViewRight" Header="_Right Panel" IsCheckable="True" InputGestureText="Ctrl+Alt+B" Click="OnToggleRightPanel"/>
+                    <MenuItem x:Name="MenuViewTop" Header="_Top Panel" IsCheckable="True" InputGestureText="Ctrl+Alt+J" Click="OnToggleTopPanel"/>
+                    <MenuItem x:Name="MenuViewBottom" Header="_Bottom Panel" IsCheckable="True" InputGestureText="Ctrl+J" Click="OnToggleBottomPanel"/>
+                </MenuItem>
                 <MenuItem Header="_Project" Style="{StaticResource TopLevelMenuItem}"
                          ItemContainerStyle="{StaticResource MenuItemDropdownStyle}">
                     <MenuItem Header="_New Project" Click="OnNewProject"/>
