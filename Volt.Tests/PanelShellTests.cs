@@ -10,6 +10,7 @@ public class PanelShellTests
         public string PanelId => id;
         public string Title => title;
         public UIElement Content { get; } = new System.Windows.Controls.Border();
+        public event Action? TitleChanged;
     }
 
     [StaFact]
