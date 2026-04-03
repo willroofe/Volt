@@ -119,10 +119,31 @@
             <Setter Property="OverridesDefaultStyle" Value="True"/>
             <Setter Property="IsTabStop" Value="False"/>
             <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTextFgMuted}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RepeatButton">
-                        <Border Background="{DynamicResource ThemeScrollBg}" Height="0" Width="0"/>
+                        <Border x:Name="Bd" Background="{DynamicResource ThemeScrollBg}" CornerRadius="3">
+                            <TextBlock Text="{TemplateBinding Content}"
+                                       FontFamily="{TemplateBinding FontFamily}"
+                                       FontSize="{TemplateBinding FontSize}"
+                                       Foreground="{TemplateBinding Foreground}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background"
+                                        Value="{DynamicResource ThemeScrollThumb}"/>
+                                <Setter Property="Foreground"
+                                        Value="{DynamicResource ThemeTextFg}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background"
+                                        Value="{DynamicResource ThemeScrollThumbHover}"/>
+                                <Setter Property="Foreground"
+                                        Value="{DynamicResource ThemeTextFg}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -131,8 +152,16 @@
         <!-- Vertical ScrollBar -->
         <ControlTemplate x:Key="VerticalScrollBar" TargetType="ScrollBar">
             <Grid>
-                <Border Background="{DynamicResource ThemeScrollBg}"/>
-                <Track x:Name="PART_Track" IsDirectionReversed="True">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Border Grid.RowSpan="3" Background="{DynamicResource ThemeScrollBg}"/>
+                <RepeatButton Grid.Row="0" Style="{StaticResource ScrollBarArrowButton}"
+                              Height="14" Command="ScrollBar.LineUpCommand"
+                              Content="&#xE70E;" FontFamily="Segoe MDL2 Assets" FontSize="8"/>
+                <Track Grid.Row="1" x:Name="PART_Track" IsDirectionReversed="True">
                     <Track.DecreaseRepeatButton>
                         <RepeatButton Style="{StaticResource ScrollBarTrackButton}"
                                       Command="ScrollBar.PageUpCommand"/>
@@ -146,14 +175,25 @@
                                       Command="ScrollBar.PageDownCommand"/>
                     </Track.IncreaseRepeatButton>
                 </Track>
+                <RepeatButton Grid.Row="2" Style="{StaticResource ScrollBarArrowButton}"
+                              Height="14" Command="ScrollBar.LineDownCommand"
+                              Content="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="8"/>
             </Grid>
         </ControlTemplate>
 
         <!-- Horizontal ScrollBar -->
         <ControlTemplate x:Key="HorizontalScrollBar" TargetType="ScrollBar">
             <Grid>
-                <Border Background="{DynamicResource ThemeScrollBg}"/>
-                <Track x:Name="PART_Track">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.ColumnSpan="3" Background="{DynamicResource ThemeScrollBg}"/>
+                <RepeatButton Grid.Column="0" Style="{StaticResource ScrollBarArrowButton}"
+                              Width="14" Command="ScrollBar.LineLeftCommand"
+                              Content="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="8"/>
+                <Track Grid.Column="1" x:Name="PART_Track">
                     <Track.DecreaseRepeatButton>
                         <RepeatButton Style="{StaticResource ScrollBarTrackButton}"
                                       Command="ScrollBar.PageLeftCommand"/>
@@ -167,6 +207,9 @@
                                       Command="ScrollBar.PageRightCommand"/>
                     </Track.IncreaseRepeatButton>
                 </Track>
+                <RepeatButton Grid.Column="2" Style="{StaticResource ScrollBarArrowButton}"
+                              Width="14" Command="ScrollBar.LineRightCommand"
+                              Content="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="8"/>
             </Grid>
         </ControlTemplate>
 

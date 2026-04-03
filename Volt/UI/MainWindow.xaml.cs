@@ -341,7 +341,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            BorderThickness = new Thickness(0);
+            BorderThickness = new Thickness(0, 0, 1, 1);
         }
 
         MaxRestoreButton.Content = WindowState == WindowState.Maximized ? "\uE923" : "\uE922";

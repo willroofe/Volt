@@ -5,6 +5,8 @@
         Title="Volt" Height="600" Width="900"
         Icon="/Resources/Volt.ico"
         Background="{DynamicResource ThemeChromeBrush}"
+        BorderBrush="{DynamicResource ThemeChromeBrush}"
+        BorderThickness="0,0,1,1"
         WindowStartupLocation="CenterScreen">
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="32" ResizeBorderThickness="6"
