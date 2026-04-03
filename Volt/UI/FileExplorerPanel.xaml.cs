@@ -18,6 +18,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
 
     private string? _openFolderPath;
     private ProjectManager? _projectManager;
+    private FileTreeItem? _folderRoot; // kept alive for watcher cleanup
     private ObservableCollection<FileTreeItem>? _currentRootItems;
     private HashSet<string>? _pendingExpandPaths;
 
@@ -51,13 +52,14 @@ public partial class FileExplorerPanel : UserControl, IPanel
         if (!Directory.Exists(path)) return;
         StopAllWatchers();
         _openFolderPath = path;
-        SetTitle(Path.GetFileName(path));
+        SetTitle("Explorer (" + Path.GetFileName(path) + ")");
         var root = new FileTreeItem(path, true);
         root.TreeChanged += OnTreeChanged;
         root.IsExpanded = true;
-        var items = new ObservableCollection<FileTreeItem> { root };
-        _currentRootItems = items;
-        ExplorerTree.SetRootItems(items);
+        // Show children directly — the root folder name is in the panel title
+        _folderRoot = root;
+        _currentRootItems = root.Children;
+        ExplorerTree.SetRootItems(root.Children);
     }
 
     public void CloseFolder()
@@ -73,7 +75,6 @@ public partial class FileExplorerPanel : UserControl, IPanel
     public void OpenProject(Project project)
     {
         _openFolderPath = null;
-        SetTitle("Explorer");
         RebuildProjectTree(project);
     }
 
@@ -110,10 +111,12 @@ public partial class FileExplorerPanel : UserControl, IPanel
             _pendingExpandPaths = null;
             return;
         }
-        // Immediately scan the already-built tree (handles project roots whose
-        // children are added synchronously in RebuildProjectTree).
+        // Expand matching root-level items first (they used to be children of a
+        // root node that was always expanded, but now they ARE the root items).
+        // Then recurse into any that were just expanded.
         if (_currentRootItems != null)
         {
+            ExpandMatchingChildren(_currentRootItems);
             TryExpandPendingInTree(_currentRootItems);
             ExplorerTree.RefreshFlatList();
         }
@@ -169,7 +172,9 @@ public partial class FileExplorerPanel : UserControl, IPanel
         if (_currentRootItems != null)
             CollectExpandedPaths(_currentRootItems, expandedPaths);
 
-        var projectRoot = FileTreeItem.CreateProjectRoot(project.Name);
+        SetTitle("Explorer (" + project.Name + ")");
+
+        var items = new ObservableCollection<FileTreeItem>();
 
         // Add virtual folders with their assigned real folders
         foreach (var vf in project.VirtualFolders)
@@ -191,10 +196,10 @@ public partial class FileExplorerPanel : UserControl, IPanel
             }
             if (expandedPaths.Contains("vf:" + vf))
                 vfItem.IsExpanded = true;
-            projectRoot.Children.Add(vfItem);
+            items.Add(vfItem);
         }
 
-        // Add unassigned real folders under the project root
+        // Add unassigned real folders directly at the top level
         var unassigned = project.Folders
             .Where(f => f.VirtualParent == null)
             .ToList();
@@ -206,12 +211,10 @@ public partial class FileExplorerPanel : UserControl, IPanel
                 dirItem.TreeChanged += OnTreeChanged;
                 if (expandedPaths.Contains(folder.Path))
                     dirItem.IsExpanded = true;
-                projectRoot.Children.Add(dirItem);
+                items.Add(dirItem);
             }
         }
 
-        projectRoot.IsExpanded = true;
-        var items = new ObservableCollection<FileTreeItem> { projectRoot };
         _currentRootItems = items;
         ExplorerTree.SetRootItems(items);
     }
@@ -255,13 +258,6 @@ public partial class FileExplorerPanel : UserControl, IPanel
 
         switch (item.Kind)
         {
-            case FileTreeItemKind.ProjectRoot:
-                menu.Items.Add(ContextMenuHelper.Item("Add Folder...", () => AddFolderRequested?.Invoke(null)));
-                menu.Items.Add(ContextMenuHelper.Item("New Virtual Folder", () => NewVirtualFolderRequested?.Invoke()));
-                menu.Items.Add(ContextMenuHelper.Separator());
-                menu.Items.Add(ContextMenuHelper.Item("Close Project", () => CloseProjectRequested?.Invoke()));
-                break;
-
             case FileTreeItemKind.VirtualFolder:
                 var targetVf = item.Name;
                 menu.Items.Add(ContextMenuHelper.Item("Add Folder...", () => AddFolderRequested?.Invoke(targetVf)));
@@ -311,6 +307,8 @@ public partial class FileExplorerPanel : UserControl, IPanel
 
     private void StopAllWatchers()
     {
+        _folderRoot?.StopWatchingRecursive();
+        _folderRoot = null;
         if (_currentRootItems == null) return;
         foreach (var root in _currentRootItems)
             root.StopWatchingRecursive();
