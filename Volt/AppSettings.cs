@@ -33,6 +33,7 @@ public class ExplorerSettings
     public double PanelWidth { get; set; } = 250;
     public bool PanelVisible { get; set; } = false;
     public string? OpenFolderPath { get; set; }
+    public List<string> ExpandedPaths { get; set; } = [];
 }
 
 public class EditorSettings
