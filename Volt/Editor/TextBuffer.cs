@@ -13,8 +13,12 @@ public class TextBuffer
     private bool _charCountDirty = true;
     private string _lineEnding = "\r\n";
     private bool _isDirty;
+    private long _editGeneration;
 
     public int Count => _lines.Count;
+
+    /// <summary>Incremented on every mutation. Used for cache invalidation.</summary>
+    public long EditGeneration => _editGeneration;
 
     public string this[int index]
     {
@@ -98,6 +102,7 @@ public class TextBuffer
     public void NotifyLineChanging(int lineIndex)
     {
         _charCountDirty = true;
+        _editGeneration++;
         if (!_maxLineLengthDirty && lineIndex < _lines.Count
             && _lines[lineIndex].Length >= _maxLineLength)
             _maxLineLengthDirty = true;
@@ -107,19 +112,19 @@ public class TextBuffer
     public void InsertLine(int index, string line)
     {
         _lines.Insert(index, line);
-        _maxLineLengthDirty = true; _charCountDirty = true;
+        _maxLineLengthDirty = true; _charCountDirty = true; _editGeneration++;
     }
 
     public void RemoveAt(int index)
     {
         _lines.RemoveAt(index);
-        _maxLineLengthDirty = true; _charCountDirty = true;
+        _maxLineLengthDirty = true; _charCountDirty = true; _editGeneration++;
     }
 
     public void RemoveRange(int index, int count)
     {
         _lines.RemoveRange(index, count);
-        _maxLineLengthDirty = true; _charCountDirty = true;
+        _maxLineLengthDirty = true; _charCountDirty = true; _editGeneration++;
     }
 
     /// <summary>Get a copy of a range of lines (for undo snapshots).</summary>
@@ -151,6 +156,7 @@ public class TextBuffer
             _lines.RemoveRange(start, removeCount);
         _lines.InsertRange(start, newLines);
         if (_lines.Count == 0) _lines.Add("");
+        _editGeneration++;
 
         if (_maxLineLengthDirty || removingMax)
         {
@@ -191,7 +197,7 @@ public class TextBuffer
     {
         _lines[line] = string.Concat(_lines[line], _lines[line + 1]);
         _lines.RemoveAt(line + 1);
-        _maxLineLengthDirty = true; _charCountDirty = true;
+        _maxLineLengthDirty = true; _charCountDirty = true; _editGeneration++;
     }
 
     /// <summary>Truncate a line at the given column, returning the removed tail.</summary>

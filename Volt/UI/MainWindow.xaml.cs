@@ -215,11 +215,7 @@ public partial class MainWindow : Window
         }
 
         if (wasLarge)
-        {
-            GC.Collect(2, GCCollectionMode.Forced, true, true);
-            GC.WaitForPendingFinalizers();
-            GC.Collect(2, GCCollectionMode.Forced, true, true);
-        }
+            GC.Collect(2, GCCollectionMode.Optimized, false, false);
     }
 
     private Border CreateTabHeader(TabInfo tab) =>

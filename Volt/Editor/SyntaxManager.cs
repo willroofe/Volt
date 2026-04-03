@@ -22,6 +22,7 @@ public class SyntaxManager
 
     private readonly List<SyntaxDefinition> _grammars = [];
     private Dictionary<string, SyntaxDefinition> _extensionMap = new(StringComparer.OrdinalIgnoreCase);
+    private bool[] _claimedBuf = [];
 
     private bool _initialized;
 
@@ -60,7 +61,11 @@ public class SyntaxManager
         result = TryTokenizeHeredocContinuation(line, grammar, inState, ref outState);
         if (result != null) return result;
 
-        var claimed = new bool[line.Length];
+        if (_claimedBuf.Length < line.Length)
+            _claimedBuf = new bool[Math.Max(line.Length, 256)];
+        else
+            Array.Clear(_claimedBuf, 0, line.Length);
+        var claimed = _claimedBuf;
         var tokens = new List<SyntaxToken>();
         int ruleStart = 0;
 
@@ -178,9 +183,8 @@ public class SyntaxManager
         List<SyntaxToken> tokens, bool[] claimed)
     {
         // Collect all candidate matches with rule priority.
-        // Uses Match() in a loop advancing by 1 rather than Matches() so that
-        // overlapping matches (e.g. #.*$ at every # position) are all captured
-        // as candidates — the greedy claiming pass then picks the right one.
+        // Each rule finds non-overlapping matches (advancing past each match).
+        // The greedy claiming pass resolves cross-rule overlaps by position then priority.
         var candidates = new List<(int Priority, int Start, int Length, string Scope)>();
         for (int r = 0; r < grammar.Rules.Count; r++)
         {
@@ -195,8 +199,14 @@ public class SyntaxManager
                     var match = rule.CompiledRegex.Match(line, searchFrom);
                     if (!match.Success) break;
                     if (match.Length > 0)
+                    {
                         candidates.Add((r, match.Index, match.Length, rule.Scope));
-                    searchFrom = match.Index + 1;
+                        searchFrom = match.Index + match.Length;
+                    }
+                    else
+                    {
+                        searchFrom = match.Index + 1;
+                    }
                 }
             }
             catch (RegexMatchTimeoutException) { }

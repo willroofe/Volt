@@ -35,16 +35,17 @@ public class FindManager
 
         if (_matches.Count > 0)
         {
-            _currentIndex = 0;
-            for (int i = 0; i < _matches.Count; i++)
+            int lo = 0, hi = _matches.Count - 1;
+            while (lo <= hi)
             {
-                var (ml, mc, _) = _matches[i];
-                if (ml > caretLine || (ml == caretLine && mc >= caretCol))
-                {
-                    _currentIndex = i;
-                    break;
-                }
+                int mid = (lo + hi) / 2;
+                var (ml, mc, _) = _matches[mid];
+                if (ml < caretLine || (ml == caretLine && mc < caretCol))
+                    lo = mid + 1;
+                else
+                    hi = mid - 1;
             }
+            _currentIndex = lo < _matches.Count ? lo : 0;
         }
     }
 
