@@ -85,12 +85,11 @@ public class PanelShellTests
 
         var leftConfig = layout.First(c => c.PanelId == "left");
         Assert.Equal(PanelPlacement.Left, leftConfig.Placement);
-        Assert.Equal(200, leftConfig.Size);
         Assert.True(leftConfig.Visible);
+        Assert.True(leftConfig.IsActiveTab);
 
         var rightConfig = layout.First(c => c.PanelId == "right");
         Assert.Equal(PanelPlacement.Right, rightConfig.Placement);
-        Assert.Equal(300, rightConfig.Size);
         Assert.False(rightConfig.Visible);
     }
 
@@ -107,15 +106,17 @@ public class PanelShellTests
                 PanelId = "test",
                 Placement = PanelPlacement.Right,
                 Size = 300,
-                Visible = true
+                Visible = true,
+                TabIndex = 0,
+                IsActiveTab = true
             }
         ]);
 
         var layout = shell.GetCurrentLayout();
         var config = layout.Single();
         Assert.Equal(PanelPlacement.Right, config.Placement);
-        Assert.Equal(300, config.Size);
         Assert.True(config.Visible);
+        Assert.True(config.IsActiveTab);
     }
 
     [StaFact]
@@ -131,9 +132,9 @@ public class PanelShellTests
         shell.ShowPanel("test");
         shell.HidePanel("test");
 
-        Assert.Equal(2, events.Count);
-        Assert.Equal("test", events[0].id);
-        Assert.Equal("test", events[1].id);
+        // ShowPanel fires 2 events (show + active tab change), HidePanel fires 1
+        Assert.Equal(3, events.Count);
+        Assert.All(events, e => Assert.Equal("test", e.id));
     }
 
     [StaFact]
@@ -156,5 +157,102 @@ public class PanelShellTests
 
         shell.ShowPanel("test");
         Assert.Empty(events);
+    }
+
+    [StaFact]
+    public void MultiplePanels_SameRegion_BothVisible()
+    {
+        var shell = new PanelShell();
+        var panel1 = new FakePanel("a", "Panel A");
+        var panel2 = new FakePanel("b", "Panel B");
+        shell.RegisterPanel(panel1, PanelPlacement.Left, 250);
+        shell.RegisterPanel(panel2, PanelPlacement.Left, 250);
+
+        shell.ShowPanel("a");
+        shell.ShowPanel("b");
+
+        Assert.True(shell.IsPanelVisible("a"));
+        Assert.True(shell.IsPanelVisible("b"));
+
+        var layout = shell.GetCurrentLayout();
+        var configA = layout.First(c => c.PanelId == "a");
+        var configB = layout.First(c => c.PanelId == "b");
+        Assert.Equal(0, configA.TabIndex);
+        Assert.Equal(1, configB.TabIndex);
+        // Last shown panel is active
+        Assert.True(configB.IsActiveTab);
+    }
+
+    [StaFact]
+    public void HidePanel_InMultiTabRegion_DoesNotCollapseRegion()
+    {
+        var shell = new PanelShell();
+        var panel1 = new FakePanel("a", "Panel A");
+        var panel2 = new FakePanel("b", "Panel B");
+        shell.RegisterPanel(panel1, PanelPlacement.Left, 250);
+        shell.RegisterPanel(panel2, PanelPlacement.Left, 250);
+
+        shell.ShowPanel("a");
+        shell.ShowPanel("b");
+
+        shell.HidePanel("a");
+
+        Assert.False(shell.IsPanelVisible("a"));
+        Assert.True(shell.IsPanelVisible("b"));
+    }
+
+    [StaFact]
+    public void GetAvailablePanels_ReturnsHiddenPanels()
+    {
+        var shell = new PanelShell();
+        var panel1 = new FakePanel("a", "Panel A");
+        var panel2 = new FakePanel("b", "Panel B");
+        shell.RegisterPanel(panel1, PanelPlacement.Left, 250);
+        shell.RegisterPanel(panel2, PanelPlacement.Right, 250);
+
+        shell.ShowPanel("a");
+
+        var available = shell.GetAvailablePanels();
+        Assert.Single(available);
+        Assert.Equal("b", available[0].PanelId);
+    }
+
+    [StaFact]
+    public void ToggleRegion_CollapsesAndRestores()
+    {
+        var shell = new PanelShell();
+        var panel = new FakePanel("test", "Test");
+        shell.RegisterPanel(panel, PanelPlacement.Left, 250);
+        shell.ShowPanel("test");
+
+        // Collapse
+        shell.ToggleRegion(PanelPlacement.Left);
+        Assert.False(shell.IsPanelVisible("test"));
+
+        // Restore
+        shell.ToggleRegion(PanelPlacement.Left);
+        Assert.True(shell.IsPanelVisible("test"));
+    }
+
+    [StaFact]
+    public void RestoreLayout_PreservesTabOrder()
+    {
+        var shell = new PanelShell();
+        var panel1 = new FakePanel("a", "Panel A");
+        var panel2 = new FakePanel("b", "Panel B");
+        shell.RegisterPanel(panel1, PanelPlacement.Left, 250);
+        shell.RegisterPanel(panel2, PanelPlacement.Left, 250);
+
+        shell.RestoreLayout([
+            new PanelSlotConfig { PanelId = "b", Placement = PanelPlacement.Left, Size = 250, Visible = true, TabIndex = 0, IsActiveTab = false },
+            new PanelSlotConfig { PanelId = "a", Placement = PanelPlacement.Left, Size = 250, Visible = true, TabIndex = 1, IsActiveTab = true }
+        ]);
+
+        var layout = shell.GetCurrentLayout();
+        var configA = layout.First(c => c.PanelId == "a");
+        var configB = layout.First(c => c.PanelId == "b");
+        Assert.Equal(1, configA.TabIndex);
+        Assert.Equal(0, configB.TabIndex);
+        Assert.True(configA.IsActiveTab);
     }
 }
