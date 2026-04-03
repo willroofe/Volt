@@ -395,10 +395,11 @@ public partial class PanelShell : UserControl
     private void OnRegionCloseRequested(TabRegion region)
     {
         var placement = _regions.First(kv => kv.Value == region).Key;
-        // Hide all panels in this region and collapse it
+        // Hide all panels in this region, remember them for restore, and collapse
         var panelsInRegion = _panels.Values.Where(r => r.Placement == placement && r.IsVisible).ToList();
         foreach (var reg in panelsInRegion)
         {
+            _collapsedByToggle.Add(reg.Panel.PanelId);
             reg.IsVisible = false;
             region.RemovePanel(reg.Panel.PanelId);
             PanelLayoutChanged?.Invoke(reg.Panel.PanelId, reg.Placement, GetRegionSize(placement));
