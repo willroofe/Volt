@@ -253,7 +253,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         var bg = GetBrush(ThemeResourceKeys.ExplorerBg);
         dc.DrawRectangle(bg, null, new Rect(0, 0, ActualWidth, ActualHeight));
 
-        if (_flatRows.Count == 0) return;
+        if (_flatRows.Count == 0 || ActualWidth <= 0 || ActualHeight <= 0) return;
 
         int firstVisible = Math.Max(0, (int)(_verticalOffset / RowHeight));
         int lastVisible = Math.Min(_flatRows.Count - 1,
