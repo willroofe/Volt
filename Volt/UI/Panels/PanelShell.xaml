@@ -4,33 +4,27 @@
              xmlns:local="clr-namespace:Volt">
     <UserControl.Resources>
         <Style x:Key="HorizSplitterStyle" TargetType="GridSplitter">
+            <Setter Property="Panel.ZIndex" Value="1"/>
+            <Setter Property="Background" Value="{DynamicResource ThemeBorderBrush}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="GridSplitter">
-                        <Grid Background="Transparent">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="*"/>
-                                <RowDefinition Height="1"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-                            <Border Grid.Row="1" Background="{DynamicResource ThemeBorderBrush}"/>
-                        </Grid>
+                        <Border Margin="0,-2" Background="Transparent">
+                            <Border Height="1" Background="{TemplateBinding Background}" VerticalAlignment="Center"/>
+                        </Border>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
         <Style x:Key="VertSplitterStyle" TargetType="GridSplitter">
+            <Setter Property="Panel.ZIndex" Value="1"/>
+            <Setter Property="Background" Value="{DynamicResource ThemeBorderBrush}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="GridSplitter">
-                        <Grid Background="Transparent">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="1"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Border Grid.Column="1" Background="{DynamicResource ThemeBorderBrush}"/>
-                        </Grid>
+                        <Border Margin="-2,0" Background="Transparent">
+                            <Border Width="1" Background="{TemplateBinding Background}" HorizontalAlignment="Center"/>
+                        </Border>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
