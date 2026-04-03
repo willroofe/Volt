@@ -361,6 +361,115 @@
             </Setter>
         </Style>
 
+        <!-- Themed separator for menus -->
+        <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">
+            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Separator">
+                        <Border Height="1" Background="{DynamicResource ThemeMenuPopupBorder}"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Themed context menu item style (defined before ContextMenu so it can be referenced) -->
+        <Style x:Key="ThemedContextMenuItem" TargetType="MenuItem">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTextFg}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Grid>
+                            <Border x:Name="Bd" Background="Transparent"
+                                    CornerRadius="4" Margin="4,1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" SharedSizeGroup="Icon"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto" SharedSizeGroup="Shortcut"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ContentPresenter Grid.Column="0" ContentSource="Icon"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"
+                                                      Width="16" Height="16"/>
+                                    <ContentPresenter Grid.Column="1" ContentSource="Header"
+                                                      Margin="6,4,12,4"
+                                                      VerticalAlignment="Center"
+                                                      RecognizesAccessKey="True"/>
+                                    <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}"
+                                               Margin="0,4,8,4"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource ThemeTextFgMuted}"/>
+                                    <!-- Submenu arrow -->
+                                    <TextBlock x:Name="SubArrow" Grid.Column="3"
+                                               Text="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="8"
+                                               VerticalAlignment="Center" Margin="0,0,8,0"
+                                               Foreground="{DynamicResource ThemeTextFgMuted}"
+                                               Visibility="Collapsed"/>
+                                </Grid>
+                            </Border>
+                            <!-- Submenu popup for items with children -->
+                            <Popup x:Name="PART_Popup"
+                                   IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                                   Placement="Right"
+                                   HorizontalOffset="-2"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   PopupAnimation="None">
+                                <Border Background="{DynamicResource ThemeMenuPopupBg}"
+                                        BorderBrush="{DynamicResource ThemeMenuPopupBorder}" BorderThickness="1"
+                                        CornerRadius="3" Margin="0,0,6,6">
+                                    <Border.Effect>
+                                        <DropShadowEffect ShadowDepth="1" Opacity="0.2" BlurRadius="4"/>
+                                    </Border.Effect>
+                                    <StackPanel IsItemsHost="True" Margin="0,3"
+                                                KeyboardNavigation.DirectionalNavigation="Cycle"
+                                                Grid.IsSharedSizeScope="True"/>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeMenuItemHover}"/>
+                            </Trigger>
+                            <Trigger Property="Role" Value="SubmenuHeader">
+                                <Setter TargetName="SubArrow" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Themed ContextMenu (right-click menus) -->
+        <Style TargetType="ContextMenu">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTextFg}"/>
+            <Setter Property="HasDropShadow" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="{DynamicResource ThemeMenuPopupBg}"
+                                BorderBrush="{DynamicResource ThemeMenuPopupBorder}" BorderThickness="1"
+                                CornerRadius="3" Margin="0,0,6,6">
+                            <Border.Effect>
+                                <DropShadowEffect ShadowDepth="1" Opacity="0.2" BlurRadius="4"/>
+                            </Border.Effect>
+                            <StackPanel IsItemsHost="True" Margin="0,3"
+                                        KeyboardNavigation.DirectionalNavigation="Cycle"
+                                        Grid.IsSharedSizeScope="True"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- ScrollViewer with themed corner -->
         <ControlTemplate x:Key="ThemedScrollViewer" TargetType="ScrollViewer">
             <Grid>

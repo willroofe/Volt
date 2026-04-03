@@ -226,15 +226,15 @@ public partial class FileExplorerPanel : UserControl
             return;
         }
 
-        var menu = new ContextMenu();
+        var menu = ContextMenuHelper.Create();
         var project = _projectManager.CurrentProject;
 
         if (item == null)
         {
-            menu.Items.Add(CreateMenuItem("Add Folder...", () => AddFolderRequested?.Invoke(null)));
-            menu.Items.Add(CreateMenuItem("New Virtual Folder", () => NewVirtualFolderRequested?.Invoke()));
-            menu.Items.Add(new Separator());
-            menu.Items.Add(CreateMenuItem("Close Project", () => CloseProjectRequested?.Invoke()));
+            menu.Items.Add(ContextMenuHelper.Item("Add Folder...", () => AddFolderRequested?.Invoke(null)));
+            menu.Items.Add(ContextMenuHelper.Item("New Virtual Folder", () => NewVirtualFolderRequested?.Invoke()));
+            menu.Items.Add(ContextMenuHelper.Separator());
+            menu.Items.Add(ContextMenuHelper.Item("Close Project", () => CloseProjectRequested?.Invoke()));
             ExplorerTree.ContextMenu = menu;
             menu.IsOpen = true;
             return;
@@ -243,35 +243,35 @@ public partial class FileExplorerPanel : UserControl
         switch (item.Kind)
         {
             case FileTreeItemKind.ProjectRoot:
-                menu.Items.Add(CreateMenuItem("Add Folder...", () => AddFolderRequested?.Invoke(null)));
-                menu.Items.Add(CreateMenuItem("New Virtual Folder", () => NewVirtualFolderRequested?.Invoke()));
-                menu.Items.Add(new Separator());
-                menu.Items.Add(CreateMenuItem("Close Project", () => CloseProjectRequested?.Invoke()));
+                menu.Items.Add(ContextMenuHelper.Item("Add Folder...", () => AddFolderRequested?.Invoke(null)));
+                menu.Items.Add(ContextMenuHelper.Item("New Virtual Folder", () => NewVirtualFolderRequested?.Invoke()));
+                menu.Items.Add(ContextMenuHelper.Separator());
+                menu.Items.Add(ContextMenuHelper.Item("Close Project", () => CloseProjectRequested?.Invoke()));
                 break;
 
             case FileTreeItemKind.VirtualFolder:
                 var targetVf = item.Name;
-                menu.Items.Add(CreateMenuItem("Add Folder...", () => AddFolderRequested?.Invoke(targetVf)));
-                menu.Items.Add(CreateMenuItem("Rename", () => RenameVirtualFolderRequested?.Invoke(item.Name)));
-                menu.Items.Add(CreateMenuItem("Remove Virtual Folder", () => RemoveVirtualFolderRequested?.Invoke(item.Name)));
+                menu.Items.Add(ContextMenuHelper.Item("Add Folder...", () => AddFolderRequested?.Invoke(targetVf)));
+                menu.Items.Add(ContextMenuHelper.Item("Rename", () => RenameVirtualFolderRequested?.Invoke(item.Name)));
+                menu.Items.Add(ContextMenuHelper.Item("Remove Virtual Folder", () => RemoveVirtualFolderRequested?.Invoke(item.Name)));
                 break;
 
             case FileTreeItemKind.Directory when IsTopLevelProjectFolder(item):
                 if (project.VirtualFolders.Count > 0)
                 {
-                    var moveMenu = new MenuItem { Header = "Move to Virtual Folder" };
-                    moveMenu.Items.Add(CreateMenuItem("(Project Root)",
+                    var moveMenu = ContextMenuHelper.Submenu("Move to Virtual Folder");
+                    moveMenu.Items.Add(ContextMenuHelper.Item("(Project Root)",
                         () => MoveToVirtualFolderRequested?.Invoke(item.FullPath, null)));
-                    moveMenu.Items.Add(new Separator());
+                    moveMenu.Items.Add(ContextMenuHelper.Separator());
                     foreach (var vf in project.VirtualFolders)
                     {
                         var vfName = vf;
-                        moveMenu.Items.Add(CreateMenuItem(vfName,
+                        moveMenu.Items.Add(ContextMenuHelper.Item(vfName,
                             () => MoveToVirtualFolderRequested?.Invoke(item.FullPath, vfName)));
                     }
                     menu.Items.Add(moveMenu);
                 }
-                menu.Items.Add(CreateMenuItem("Remove from Project", () => RemoveFolderRequested?.Invoke(item.FullPath)));
+                menu.Items.Add(ContextMenuHelper.Item("Remove from Project", () => RemoveFolderRequested?.Invoke(item.FullPath)));
                 break;
 
             default:
@@ -289,12 +289,6 @@ public partial class FileExplorerPanel : UserControl
             string.Equals(f.Path, item.FullPath, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static MenuItem CreateMenuItem(string header, Action onClick)
-    {
-        var mi = new MenuItem { Header = header };
-        mi.Click += (_, _) => onClick();
-        return mi;
-    }
 
     private void OnTreeChanged(FileTreeItem item)
     {
