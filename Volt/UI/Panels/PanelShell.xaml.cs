@@ -7,6 +7,8 @@ namespace Volt;
 public partial class PanelShell : UserControl
 {
     private readonly Dictionary<string, PanelRegistration> _panels = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<PanelPlacement, TabRegion> _regions = [];
+    private readonly Dictionary<PanelPlacement, double> _regionSizes = [];
     private string? _draggingPanelId;
     private PanelPlacement? _highlightedZone;
 
@@ -28,6 +30,20 @@ public partial class PanelShell : UserControl
     public PanelShell()
     {
         InitializeComponent();
+
+        // Create persistent TabRegions for each placement
+        foreach (PanelPlacement p in Enum.GetValues<PanelPlacement>())
+        {
+            var region = new TabRegion();
+            region.AddPanelRequested += OnAddPanelRequested;
+            region.PanelClosed += OnTabPanelClosed;
+            region.PanelDragStarted += OnPanelDragStarted;
+            region.ActiveTabChanged += OnActiveTabChanged;
+            _regions[p] = region;
+            _regionSizes[p] = GetMinSize(p);
+            GetContentPresenter(p).Content = region;
+        }
+
         LeftSplitter.DragCompleted += OnSplitterDragCompleted;
         RightSplitter.DragCompleted += OnSplitterDragCompleted;
         TopSplitter.DragCompleted += OnSplitterDragCompleted;
@@ -37,10 +53,9 @@ public partial class PanelShell : UserControl
     public void RegisterPanel(IPanel panel, PanelPlacement placement, double defaultSize)
     {
         var container = new PanelContainer(panel);
-        container.DragStarted += OnPanelDragStarted;
         var reg = new PanelRegistration(panel, placement, defaultSize, container);
         _panels[panel.PanelId] = reg;
-        PlacePanel(reg);
+        _regionSizes[placement] = Math.Max(_regionSizes[placement], defaultSize);
     }
 
     public void ShowPanel(string panelId)
@@ -48,9 +63,12 @@ public partial class PanelShell : UserControl
         if (!_panels.TryGetValue(panelId, out var reg)) return;
         if (reg.IsVisible) return;
         reg.IsVisible = true;
-        ApplyRegionSize(reg.Placement, reg.Size);
-        ShowSplitter(reg.Placement);
-        PanelLayoutChanged?.Invoke(panelId, reg.Placement, reg.Size);
+
+        var region = _regions[reg.Placement];
+        region.AddPanel(reg.Container);
+
+        ShowRegion(reg.Placement);
+        PanelLayoutChanged?.Invoke(panelId, reg.Placement, GetRegionSize(reg.Placement));
     }
 
     public void HidePanel(string panelId)
@@ -58,9 +76,14 @@ public partial class PanelShell : UserControl
         if (!_panels.TryGetValue(panelId, out var reg)) return;
         if (!reg.IsVisible) return;
         reg.IsVisible = false;
-        ApplyRegionSize(reg.Placement, 0);
-        HideSplitter(reg.Placement);
-        PanelLayoutChanged?.Invoke(panelId, reg.Placement, reg.Size);
+
+        var region = _regions[reg.Placement];
+        region.RemovePanel(panelId);
+
+        if (region.IsEmpty)
+            CollapseRegion(reg.Placement);
+
+        PanelLayoutChanged?.Invoke(panelId, reg.Placement, GetRegionSize(reg.Placement));
     }
 
     public bool IsPanelVisible(string panelId)
@@ -76,6 +99,38 @@ public partial class PanelShell : UserControl
             ShowPanel(panelId);
     }
 
+    public void ToggleRegion(PanelPlacement placement)
+    {
+        if (IsRegionVisible(placement))
+        {
+            // Collapse: hide all panels in this region but remember their placement
+            var panelsInRegion = _panels.Values.Where(r => r.Placement == placement && r.IsVisible).ToList();
+            foreach (var reg in panelsInRegion)
+            {
+                reg.IsVisible = false;
+                _regions[placement].RemovePanel(reg.Panel.PanelId);
+            }
+            CollapseRegion(placement);
+            foreach (var reg in panelsInRegion)
+                PanelLayoutChanged?.Invoke(reg.Panel.PanelId, reg.Placement, GetRegionSize(placement));
+        }
+        else
+        {
+            // Restore: show panels that were assigned to this region, or show empty "+" state
+            var panelsInRegion = _panels.Values.Where(r => r.Placement == placement && !r.IsVisible).ToList();
+            if (panelsInRegion.Count > 0)
+            {
+                foreach (var reg in panelsInRegion)
+                    ShowPanel(reg.Panel.PanelId);
+            }
+            else
+            {
+                // Show empty region with just the "+" button
+                ShowRegion(placement);
+            }
+        }
+    }
+
     public void MovePanel(string panelId, PanelPlacement newPlacement)
     {
         if (!_panels.TryGetValue(panelId, out var reg)) return;
@@ -84,32 +139,35 @@ public partial class PanelShell : UserControl
         bool wasVisible = reg.IsVisible;
         if (wasVisible) HidePanel(panelId);
 
-        ClearRegionContent(reg.Placement);
         reg.Placement = newPlacement;
-        PlacePanel(reg);
 
         if (wasVisible) ShowPanel(panelId);
     }
 
     public void RestoreLayout(IReadOnlyList<PanelSlotConfig> configs)
     {
-        foreach (var config in configs)
+        // Group by placement and sort by TabIndex to restore tab order
+        var sorted = configs.OrderBy(c => c.Placement).ThenBy(c => c.TabIndex).ToList();
+
+        foreach (var config in sorted)
         {
             if (!_panels.TryGetValue(config.PanelId, out var reg)) continue;
 
-            if (reg.Placement != config.Placement)
-            {
-                ClearRegionContent(reg.Placement);
-                reg.Placement = config.Placement;
-                PlacePanel(reg);
-            }
-
-            reg.Size = Math.Max(config.Size, GetMinSize(config.Placement));
+            // Update placement if changed
+            reg.Placement = config.Placement;
+            _regionSizes[config.Placement] = Math.Max(config.Size, GetMinSize(config.Placement));
 
             if (config.Visible)
                 ShowPanel(config.PanelId);
             else
                 HidePanel(config.PanelId);
+        }
+
+        // Restore active tabs
+        foreach (var config in sorted.Where(c => c.IsActiveTab && c.Visible))
+        {
+            if (!_panels.TryGetValue(config.PanelId, out var reg)) continue;
+            _regions[reg.Placement].SetActiveTab(config.PanelId);
         }
     }
 
@@ -118,27 +176,56 @@ public partial class PanelShell : UserControl
         var result = new List<PanelSlotConfig>();
         foreach (var reg in _panels.Values)
         {
+            var region = _regions[reg.Placement];
             result.Add(new PanelSlotConfig
             {
                 PanelId = reg.Panel.PanelId,
                 Placement = reg.Placement,
-                Size = reg.Size,
-                Visible = reg.IsVisible
+                Size = GetRegionSize(reg.Placement),
+                Visible = reg.IsVisible,
+                TabIndex = region.GetTabIndex(reg.Panel.PanelId),
+                IsActiveTab = region.IsActiveTab(reg.Panel.PanelId)
             });
         }
         return result;
     }
 
-    private void PlacePanel(PanelRegistration reg)
+    public IReadOnlyList<IPanel> GetAvailablePanels()
     {
-        var presenter = GetContentPresenter(reg.Placement);
-        presenter.Content = reg.Container;
+        return _panels.Values
+            .Where(r => !r.IsVisible)
+            .Select(r => r.Panel)
+            .ToList();
     }
 
-    private void ClearRegionContent(PanelPlacement placement)
+    private bool IsRegionVisible(PanelPlacement placement)
     {
-        var presenter = GetContentPresenter(placement);
-        presenter.Content = null;
+        return placement switch
+        {
+            PanelPlacement.Left => LeftCol.Width.Value > 0,
+            PanelPlacement.Right => RightCol.Width.Value > 0,
+            PanelPlacement.Top => TopRow.Height.Value > 0,
+            PanelPlacement.Bottom => BottomRow.Height.Value > 0,
+            _ => false
+        };
+    }
+
+    private void ShowRegion(PanelPlacement placement)
+    {
+        if (IsRegionVisible(placement)) return;
+        ApplyRegionSize(placement, _regionSizes[placement]);
+        ShowSplitter(placement);
+    }
+
+    private void CollapseRegion(PanelPlacement placement)
+    {
+        ApplyRegionSize(placement, 0);
+        HideSplitter(placement);
+    }
+
+    private double GetRegionSize(PanelPlacement placement)
+    {
+        return _regionSizes[placement];
     }
 
     private ContentPresenter GetContentPresenter(PanelPlacement placement) => placement switch
@@ -231,26 +318,67 @@ public partial class PanelShell : UserControl
         _ => 600
     };
 
+    // --- Event handlers ---
+
+    private void OnAddPanelRequested(TabRegion region)
+    {
+        var available = GetAvailablePanels();
+        if (available.Count == 0) return;
+
+        var placement = _regions.First(kv => kv.Value == region).Key;
+        var menu = ContextMenuHelper.Create();
+        foreach (var panel in available)
+        {
+            var id = panel.PanelId;
+            menu.Items.Add(ContextMenuHelper.Item(panel.Title, () =>
+            {
+                if (_panels.TryGetValue(id, out var reg))
+                {
+                    reg.Placement = placement;
+                    ShowPanel(id);
+                }
+            }));
+        }
+        region.ContextMenu = menu;
+        menu.IsOpen = true;
+    }
+
+    private void OnTabPanelClosed(string panelId)
+    {
+        HidePanel(panelId);
+    }
+
+    private void OnActiveTabChanged(string panelId)
+    {
+        if (_panels.TryGetValue(panelId, out var reg))
+            PanelLayoutChanged?.Invoke(panelId, reg.Placement, GetRegionSize(reg.Placement));
+    }
+
     private void OnSplitterDragCompleted(object? sender, DragCompletedEventArgs e)
     {
-        foreach (var reg in _panels.Values)
+        foreach (PanelPlacement p in Enum.GetValues<PanelPlacement>())
         {
-            if (!reg.IsVisible) continue;
-            if (GetSplitter(reg.Placement) != sender) continue;
+            if (GetSplitter(p) != sender) continue;
+            if (!IsRegionVisible(p)) continue;
 
-            double newSize = reg.Placement switch
+            double newSize = p switch
             {
                 PanelPlacement.Left => LeftCol.ActualWidth,
                 PanelPlacement.Right => RightCol.ActualWidth,
                 PanelPlacement.Top => TopRow.ActualHeight,
                 PanelPlacement.Bottom => BottomRow.ActualHeight,
-                _ => reg.Size
+                _ => _regionSizes[p]
             };
-            reg.Size = newSize;
-            PanelLayoutChanged?.Invoke(reg.Panel.PanelId, reg.Placement, newSize);
+            _regionSizes[p] = newSize;
+
+            // Fire for each visible panel in this region so settings persist
+            foreach (var reg in _panels.Values.Where(r => r.Placement == p && r.IsVisible))
+                PanelLayoutChanged?.Invoke(reg.Panel.PanelId, p, newSize);
             break;
         }
     }
+
+    // --- Drag-to-dock ---
 
     private Border GetDropOverlay(PanelPlacement placement) => placement switch
     {
@@ -269,11 +397,14 @@ public partial class PanelShell : UserControl
         _draggingPanelId = panelId;
         _highlightedZone = null;
 
-        // Show overlays (except the panel's current edge)
+        // Show overlays (except the panel's current edge, unless the region has other tabs)
         foreach (PanelPlacement p in Enum.GetValues<PanelPlacement>())
         {
             var overlay = GetDropOverlay(p);
-            if (p == reg.Placement)
+            bool isSourceRegion = p == reg.Placement;
+            bool sourceHasOtherTabs = isSourceRegion && _regions[p].TabCount > 1;
+
+            if (isSourceRegion && !sourceHasOtherTabs)
             {
                 overlay.Visibility = Visibility.Collapsed;
             }
@@ -284,7 +415,6 @@ public partial class PanelShell : UserControl
             }
         }
 
-        // Size overlays to 1/4 of center zone
         var centerSize = CenterPresenter.RenderSize;
         DropLeft.Width = centerSize.Width / 4;
         DropRight.Width = centerSize.Width / 4;
@@ -304,31 +434,27 @@ public partial class PanelShell : UserControl
         var size = CenterPresenter.RenderSize;
 
         PanelPlacement? zone = null;
-        double edgeX = size.Width / 4;
-        double edgeY = size.Height / 4;
 
-        // Exclude current placement during search so the next-closest edge wins
         var currentPlacement = _panels.TryGetValue(_draggingPanelId, out var reg)
             ? reg.Placement : (PanelPlacement?)null;
+        bool sourceHasOtherTabs = currentPlacement.HasValue && _regions[currentPlacement.Value].TabCount > 1;
 
         if (size.Width > 0 && size.Height > 0 &&
             pos.X >= 0 && pos.X <= size.Width && pos.Y >= 0 && pos.Y <= size.Height)
         {
-            // Proportional distance to each edge (0 = at edge, 1 = at opposite edge)
             double pLeft = pos.X / size.Width;
             double pRight = 1 - pLeft;
             double pTop = pos.Y / size.Height;
             double pBottom = 1 - pTop;
 
-            // Threshold: within the edge zone (1/4 of dimension)
             const double threshold = 0.25;
 
-            // Find the closest edge proportionally, skipping the panel's current side
             double minProp = double.MaxValue;
-            if (currentPlacement != PanelPlacement.Left && pLeft < threshold && pLeft < minProp) { minProp = pLeft; zone = PanelPlacement.Left; }
-            if (currentPlacement != PanelPlacement.Right && pRight < threshold && pRight < minProp) { minProp = pRight; zone = PanelPlacement.Right; }
-            if (currentPlacement != PanelPlacement.Top && pTop < threshold && pTop < minProp) { minProp = pTop; zone = PanelPlacement.Top; }
-            if (currentPlacement != PanelPlacement.Bottom && pBottom < threshold && pBottom < minProp) { zone = PanelPlacement.Bottom; }
+            bool skipCurrent = currentPlacement.HasValue && !sourceHasOtherTabs;
+            if (!(skipCurrent && currentPlacement == PanelPlacement.Left) && pLeft < threshold && pLeft < minProp) { minProp = pLeft; zone = PanelPlacement.Left; }
+            if (!(skipCurrent && currentPlacement == PanelPlacement.Right) && pRight < threshold && pRight < minProp) { minProp = pRight; zone = PanelPlacement.Right; }
+            if (!(skipCurrent && currentPlacement == PanelPlacement.Top) && pTop < threshold && pTop < minProp) { minProp = pTop; zone = PanelPlacement.Top; }
+            if (!(skipCurrent && currentPlacement == PanelPlacement.Bottom) && pBottom < threshold && pBottom < minProp) { zone = PanelPlacement.Bottom; }
         }
 
         if (zone != _highlightedZone)
@@ -399,7 +525,7 @@ public partial class PanelShell : UserControl
         public IPanel Panel { get; } = panel;
         public PanelContainer Container { get; } = container;
         public PanelPlacement Placement { get; set; } = placement;
-        public double Size { get; set; } = size;
+        public double DefaultSize { get; } = size;
         public bool IsVisible { get; set; }
     }
 }
