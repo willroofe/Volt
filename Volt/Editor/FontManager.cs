@@ -51,11 +51,19 @@ public class FontManager
 
     public string EditorFontWeight
     {
-        get => _fontWeightConverter.ConvertToString(_fontWeight)!;
+        get => _fontWeightConverter.ConvertToString(_fontWeight) ?? "Normal";
         set
         {
-            var fw = (FontWeight)_fontWeightConverter.ConvertFromString(value)!;
-            Apply(_monoTypeface.FontFamily.Source, _fontSize, fw);
+            try
+            {
+                var fw = (FontWeight)_fontWeightConverter.ConvertFromString(value)!;
+                Apply(_monoTypeface.FontFamily.Source, _fontSize, fw);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Invalid font weight '{value}': {ex.Message}");
+                Apply(_monoTypeface.FontFamily.Source, _fontSize, FontWeights.Normal);
+            }
         }
     }
 

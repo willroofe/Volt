@@ -12,9 +12,7 @@ public class ThemeManager
     private ColorTheme _colorTheme = new();
     private List<ColorTheme>? _themeCache;
 
-    private readonly string _themesDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Volt", "Themes");
+    private readonly string _themesDir = AppPaths.ThemesDir;
 
     public string CurrentThemeName => _colorTheme.Name;
 
@@ -23,13 +21,13 @@ public class ThemeManager
     public Brush EditorFg { get; private set; } = Brushes.Black;
     public Brush GutterFg { get; private set; } = Brushes.Gray;
     public Brush CaretBrush { get; private set; } = Brushes.Black;
-    public Brush SelectionBrush { get; private set; } = null!;
-    public Brush CurrentLineBrush { get; private set; } = null!;
+    public Brush SelectionBrush { get; private set; } = Brushes.LightBlue;
+    public Brush CurrentLineBrush { get; private set; } = Brushes.Transparent;
     public Brush ActiveLineNumberFg { get; private set; } = Brushes.DarkGray;
-    public Brush MatchingBracketBrush { get; private set; } = null!;
-    public Pen MatchingBracketPen { get; private set; } = null!;
-    public Brush FindMatchBrush { get; private set; } = null!;
-    public Brush FindMatchCurrentBrush { get; private set; } = null!;
+    public Brush MatchingBracketBrush { get; private set; } = Brushes.Transparent;
+    public Pen MatchingBracketPen { get; private set; } = new Pen(Brushes.Gray, 1);
+    public Brush FindMatchBrush { get; private set; } = Brushes.Yellow;
+    public Brush FindMatchCurrentBrush { get; private set; } = Brushes.Orange;
 
     // Syntax highlight scope → brush
     private readonly Dictionary<string, Brush> _scopeBrushes = new();
@@ -158,7 +156,13 @@ public class ThemeManager
         {
             EmbeddedResourceHelper.ExtractAll("Volt.Resources.Themes.", _themesDir);
         }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
+        catch (IOException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to extract default themes: {ex.Message}");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to extract default themes: {ex.Message}");
+        }
     }
 }

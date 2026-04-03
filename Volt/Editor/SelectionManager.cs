@@ -59,7 +59,7 @@ public class SelectionManager
         for (int i = sl + 1; i < el; i++)
             parts.Add(buffer[i]);
         parts.Add(buffer[el][..ec]);
-        return string.Join(Environment.NewLine, parts);
+        return string.Join(buffer.LineEnding, parts);
     }
 
     /// <summary>

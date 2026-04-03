@@ -57,9 +57,7 @@ public class SessionTab
 
 public class SessionSettings
 {
-    public static readonly string SessionDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Volt", "Session");
+    public static readonly string SessionDir = AppPaths.SessionDir;
 
     public List<SessionTab> Tabs { get; set; } = [];
     public int ActiveTabIndex { get; set; }
@@ -103,10 +101,9 @@ public class SessionSettings
 
 public class AppSettings
 {
-    private static readonly string SettingsPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Volt", "settings.json");
+    private static readonly string SettingsPath = AppPaths.SettingsPath;
 
+    public int SettingsVersion { get; set; } = 1;
     public ApplicationSettings Application { get; set; } = new();
     public EditorSettings Editor { get; set; } = new();
     public double? WindowLeft { get; set; }
@@ -152,6 +149,14 @@ public class AppSettings
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Failed to load settings: {ex.Message}");
+            // Preserve the corrupted file for debugging
+            try
+            {
+                var backupPath = SettingsPath + ".bak";
+                File.Copy(SettingsPath, backupPath, overwrite: true);
+                System.Diagnostics.Debug.WriteLine($"Corrupted settings backed up to {backupPath}");
+            }
+            catch { /* best effort */ }
             return new AppSettings();
         }
     }

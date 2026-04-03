@@ -16,9 +16,7 @@ public class SyntaxManager
 {
     private const string PerlRegexModifiers = "msixpodualngcer";
     public readonly LineState DefaultState = new(null);
-    private readonly string GrammarsDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Volt", "Grammars");
+    private readonly string GrammarsDir = AppPaths.GrammarsDir;
 
     private readonly List<SyntaxDefinition> _grammars = [];
     private Dictionary<string, SyntaxDefinition> _extensionMap = new(StringComparer.OrdinalIgnoreCase);
@@ -209,7 +207,10 @@ public class SyntaxManager
                     }
                 }
             }
-            catch (RegexMatchTimeoutException) { }
+            catch (RegexMatchTimeoutException)
+            {
+                System.Diagnostics.Debug.WriteLine($"Regex timeout in grammar rule {r} (scope '{rule.Scope}')");
+            }
         }
 
         candidates.Sort((a, b) => a.Start != b.Start ? a.Start.CompareTo(b.Start) : a.Priority.CompareTo(b.Priority));
