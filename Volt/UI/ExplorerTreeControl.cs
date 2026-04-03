@@ -12,7 +12,7 @@ namespace Volt;
 public class ExplorerTreeControl : FrameworkElement, IScrollInfo
 {
     private const double RowHeight = 24;
-    private const double IndentWidth = 20;
+    private const double IndentWidth = 10;
     private const double ArrowZoneWidth = 20;
     private const double IconZoneWidth = 16;
     private const double IconGap = 4;
@@ -23,6 +23,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
     private const string ChevronRight = "\uE76C";
     private const string ChevronDown = "\uE70D";
     private const string FolderIcon = "\uED41";
+    private const string FolderOpenIcon = "\uED43";
     private const string FileIcon = "\uE8A5";
 
     private static readonly Typeface NormalTypeface = new("Segoe UI");
@@ -47,7 +48,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
 
     // Cached FormattedText for fixed icon glyphs (invalidated on theme/DPI change)
     private FormattedText? _chevronRightMuted, _chevronRightText, _chevronDownText;
-    private FormattedText? _fileIconText, _folderIconText;
+    private FormattedText? _fileIconText, _folderIconText, _folderOpenIconText;
     private double _cachedDpi;
     private Brush? _cachedTextBrush, _cachedMutedBrush;
 
@@ -96,7 +97,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
     private void InvalidateGlyphCache()
     {
         _chevronRightMuted = _chevronRightText = _chevronDownText = null;
-        _fileIconText = _folderIconText = null;
+        _fileIconText = _folderIconText = _folderOpenIconText = null;
         _cachedTextBrush = _cachedMutedBrush = null;
     }
 
@@ -116,6 +117,8 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         _fileIconText = new FormattedText(FileIcon, CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight, IconTypeface, 12, mutedBrush, dpi);
         _folderIconText = new FormattedText(FolderIcon, CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight, IconTypeface, 12, textBrush, dpi);
+        _folderOpenIconText = new FormattedText(FolderOpenIcon, CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight, IconTypeface, 12, textBrush, dpi);
     }
 
@@ -304,7 +307,9 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             // Icon (directories, virtual folders, and files — not project root)
             if (row.Item.Kind != FileTreeItemKind.ProjectRoot)
             {
-                var iconText = row.Item.Kind == FileTreeItemKind.File ? _fileIconText! : _folderIconText!;
+                var iconText = row.Item.Kind == FileTreeItemKind.File
+                    ? _fileIconText!
+                    : row.Item.IsExpanded ? _folderOpenIconText! : _folderIconText!;
                 double iconX = x + (IconZoneWidth - iconText.Width) / 2;
                 double iconY = y + (RowHeight - iconText.Height) / 2;
                 dc.DrawText(iconText, new Point(iconX, iconY));

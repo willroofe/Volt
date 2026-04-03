@@ -56,7 +56,8 @@ public class FileTreeItem : INotifyPropertyChanged
     public FileTreeItem(string fullPath, bool isDirectory)
     {
         FullPath = fullPath;
-        Name = Path.GetFileName(fullPath);
+        var name = Path.GetFileName(fullPath);
+        Name = string.IsNullOrEmpty(name) ? fullPath : name;
         IsDirectory = isDirectory;
         Kind = isDirectory ? FileTreeItemKind.Directory : FileTreeItemKind.File;
 

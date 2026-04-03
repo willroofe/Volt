@@ -242,7 +242,7 @@ public partial class PanelShell : UserControl
             .ToList();
     }
 
-    private bool IsRegionVisible(PanelPlacement placement)
+    public bool IsRegionVisible(PanelPlacement placement)
     {
         return placement switch
         {
