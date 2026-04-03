@@ -128,7 +128,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         _chevronDownText = new FormattedText(ChevronDown, CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight, IconTypeface, 8, textBrush, dpi);
         _fileIconText = new FormattedText(FileIcon, CultureInfo.CurrentCulture,
-            FlowDirection.LeftToRight, IconTypeface, 12, mutedBrush, dpi);
+            FlowDirection.LeftToRight, IconTypeface, 12, textBrush, dpi);
         _folderIconText = new FormattedText(FolderIcon, CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight, IconTypeface, 12, textBrush, dpi);
         _folderOpenIconText = new FormattedText(FolderOpenIcon, CultureInfo.CurrentCulture,
