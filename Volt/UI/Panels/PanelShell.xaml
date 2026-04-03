@@ -38,6 +38,24 @@
         <ContentPresenter x:Name="CenterPresenter" Grid.Row="2" Grid.Column="2"
                           Content="{Binding CenterContent, RelativeSource={RelativeSource AncestorType=local:PanelShell}}"/>
 
+        <!-- Drop zone overlays (center cell) -->
+        <Border x:Name="DropLeft" Grid.Row="2" Grid.Column="2"
+                Width="40" HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                Background="Transparent" IsHitTestVisible="False"
+                Visibility="Collapsed"/>
+        <Border x:Name="DropRight" Grid.Row="2" Grid.Column="2"
+                Width="40" HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                Background="Transparent" IsHitTestVisible="False"
+                Visibility="Collapsed"/>
+        <Border x:Name="DropTop" Grid.Row="2" Grid.Column="2"
+                Height="40" HorizontalAlignment="Stretch" VerticalAlignment="Top"
+                Background="Transparent" IsHitTestVisible="False"
+                Visibility="Collapsed"/>
+        <Border x:Name="DropBottom" Grid.Row="2" Grid.Column="2"
+                Height="40" HorizontalAlignment="Stretch" VerticalAlignment="Bottom"
+                Background="Transparent" IsHitTestVisible="False"
+                Visibility="Collapsed"/>
+
         <!-- Right region -->
         <GridSplitter x:Name="RightSplitter" Grid.Row="2" Grid.Column="3"
                       Width="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
