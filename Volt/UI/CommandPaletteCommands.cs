@@ -6,8 +6,7 @@ namespace Volt;
 internal record ExplorerActions(
     Action ToggleExplorer,
     Action OpenFolder,
-    Action CloseFolder,
-    Action RefreshLayout);
+    Action CloseFolder);
 
 /// <summary>Project-related actions for the command palette.</summary>
 internal record ProjectActions(
@@ -142,17 +141,6 @@ internal static class CommandPaletteCommands
             new("Explorer: Open Folder...", Action: explorer.OpenFolder),
 
             new("Explorer: Close Folder", Action: explorer.CloseFolder),
-
-            new("Explorer: Panel Side", CurrentValue: () => settings.Editor.Explorer.PanelSide, GetOptions: () =>
-            {
-                var original = settings.Editor.Explorer.PanelSide;
-                return AppSettings.PanelSideOptions.Select(side => new PaletteOption(
-                    side,
-                    ApplyPreview: () => { settings.Editor.Explorer.PanelSide = side; explorer.RefreshLayout(); },
-                    Commit: () => { settings.Editor.Explorer.PanelSide = side; explorer.RefreshLayout(); saveSettings(); },
-                    Revert: () => { settings.Editor.Explorer.PanelSide = original; explorer.RefreshLayout(); }
-                )).ToList();
-            }),
 
             new("Project: New Project", Action: project.New),
 

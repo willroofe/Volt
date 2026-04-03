@@ -11,7 +11,7 @@ public partial class PanelShell : UserControl
     public static readonly DependencyProperty CenterContentProperty =
         DependencyProperty.Register(nameof(CenterContent), typeof(UIElement), typeof(PanelShell));
 
-    public new UIElement? CenterContent
+    public UIElement? CenterContent
     {
         get => (UIElement?)GetValue(CenterContentProperty);
         set => SetValue(CenterContentProperty, value);
