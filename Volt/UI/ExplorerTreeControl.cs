@@ -46,7 +46,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
     private string? _pendingTooltipText;
 
     // Cached FormattedText for fixed icon glyphs (invalidated on theme/DPI change)
-    private FormattedText? _chevronRightMuted, _chevronDownText;
+    private FormattedText? _chevronRightMuted, _chevronRightText, _chevronDownText;
     private FormattedText? _fileIconText, _folderIconText;
     private double _cachedDpi;
     private Brush? _cachedTextBrush, _cachedMutedBrush;
@@ -95,7 +95,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
 
     private void InvalidateGlyphCache()
     {
-        _chevronRightMuted = _chevronDownText = null;
+        _chevronRightMuted = _chevronRightText = _chevronDownText = null;
         _fileIconText = _folderIconText = null;
         _cachedTextBrush = _cachedMutedBrush = null;
     }
@@ -109,6 +109,8 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         _cachedDpi = dpi;
         _chevronRightMuted = new FormattedText(ChevronRight, CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight, IconTypeface, 8, mutedBrush, dpi);
+        _chevronRightText = new FormattedText(ChevronRight, CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight, IconTypeface, 8, textBrush, dpi);
         _chevronDownText = new FormattedText(ChevronDown, CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight, IconTypeface, 8, textBrush, dpi);
         _fileIconText = new FormattedText(FileIcon, CultureInfo.CurrentCulture,
@@ -287,10 +289,12 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
 
             double x = indent;
 
-            // Arrow chevron (muted when collapsed, normal text color when expanded)
+            // Arrow chevron (muted when collapsed, normal text color when expanded or highlighted)
+            bool isHighlighted = i == _selectedRowIndex || i == _hoverRowIndex;
             if (HasChildren(row.Item))
             {
-                var arrowText = row.Item.IsExpanded ? _chevronDownText! : _chevronRightMuted!;
+                var arrowText = row.Item.IsExpanded ? _chevronDownText!
+                    : isHighlighted ? _chevronRightText! : _chevronRightMuted!;
                 double arrowX = x + (ArrowZoneWidth - arrowText.Width) / 2;
                 double arrowY = y + (RowHeight - arrowText.Height) / 2;
                 dc.DrawText(arrowText, new Point(arrowX, arrowY));
