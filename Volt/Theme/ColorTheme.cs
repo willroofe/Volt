@@ -65,6 +65,9 @@ public class ColorTheme
     [JsonPropertyName("chrome")]
     public ChromeColors Chrome { get; set; } = new();
 
+    [JsonIgnore]
+    private readonly Dictionary<string, SolidColorBrush> _brushCache = new();
+
     public static SolidColorBrush ParseBrush(string hex)
     {
         try
@@ -90,10 +93,17 @@ public class ColorTheme
         return pen;
     }
 
+    /// <summary>
+    /// Returns a cached frozen brush for the given scope, or null if the scope is undefined.
+    /// Brushes are parsed once and reused for the lifetime of this theme instance.
+    /// </summary>
     public SolidColorBrush? GetScopeBrush(string scope)
     {
+        if (_brushCache.TryGetValue(scope, out var cached)) return cached;
         if (!Scopes.TryGetValue(scope, out var hex)) return null;
-        return ParseBrush(hex);
+        var brush = ParseBrush(hex);
+        _brushCache[scope] = brush;
+        return brush;
     }
 
     public static ColorTheme? LoadFromFile(string path)

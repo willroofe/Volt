@@ -7,9 +7,11 @@ namespace Volt;
 
 public partial class FindBar : UserControl
 {
-    // Sync with MainWindow.xaml: TitleBar Height(32) + separator(1) + TabStrip Height(33) + separator(1)
+    // IMPORTANT: These margins must stay in sync with MainWindow.xaml layout heights.
+    // Top: TitleBar Height(32) + separator(1) + TabStrip Height(33) + separator(1) = 67
+    // Bottom: StatusBar Height(24) + separator(1) + extra padding(19) = 44
+    // If you change TitleBar, TabStrip, or StatusBar heights in MainWindow.xaml, update these.
     private const double FindBarTopMargin = 67;
-    // Sync with MainWindow.xaml: StatusBar Height(24) + separator(1) + extra padding
     private const double FindBarBottomMargin = 44;
 
     private bool _matchCase;
@@ -95,9 +97,9 @@ public partial class FindBar : UserControl
     {
         _matchCase = !_matchCase;
         _matchCaseBtn.SetResourceReference(ForegroundProperty,
-            _matchCase ? "ThemeTextFg" : "ThemeTextFgMuted");
+            _matchCase ? ThemeResourceKeys.TextFg : ThemeResourceKeys.TextFgMuted);
         _matchCaseBtn.SetResourceReference(BackgroundProperty,
-            _matchCase ? "ThemeMenuItemHover" : "ThemeMenuPopupBg");
+            _matchCase ? ThemeResourceKeys.MenuItemHover : ThemeResourceKeys.MenuPopupBg);
         UpdateSearch();
     }
 

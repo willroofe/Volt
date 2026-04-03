@@ -73,13 +73,11 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
 
         Loaded += (_, _) =>
         {
-            var tm = ((App)Application.Current).ThemeManager;
-            tm.ThemeChanged += OnThemeChanged;
+            App.Current.ThemeManager.ThemeChanged += OnThemeChanged;
         };
         Unloaded += (_, _) =>
         {
-            var tm = ((App)Application.Current).ThemeManager;
-            tm.ThemeChanged -= OnThemeChanged;
+            App.Current.ThemeManager.ThemeChanged -= OnThemeChanged;
         };
     }
 
@@ -210,10 +208,13 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
     }
 
     // --- Rendering ---
+    // Note: Uses FormattedText rather than GlyphRun here intentionally.
+    // The explorer has a modest number of visible rows (typically <50), so
+    // FormattedText is acceptable and simpler — unlike the editor's hot path.
 
     protected override void OnRender(DrawingContext dc)
     {
-        var bg = GetBrush("ThemeExplorerBg");
+        var bg = GetBrush(ThemeResourceKeys.ExplorerBg);
         dc.DrawRectangle(bg, null, new Rect(0, 0, ActualWidth, ActualHeight));
 
         if (_flatRows.Count == 0) return;
@@ -222,11 +223,11 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         int lastVisible = Math.Min(_flatRows.Count - 1,
             firstVisible + (int)Math.Ceiling(_viewport.Height / RowHeight));
 
-        var hoverBrush = GetBrush("ThemeExplorerItemHover");
-        var selectedBrush = GetBrush("ThemeExplorerItemSelected");
-        var textBrush = GetBrush("ThemeTextFg");
-        var mutedBrush = GetBrush("ThemeTextFgMuted");
-        var headerFgBrush = GetBrush("ThemeExplorerHeaderFg");
+        var hoverBrush = GetBrush(ThemeResourceKeys.ExplorerItemHover);
+        var selectedBrush = GetBrush(ThemeResourceKeys.ExplorerItemSelected);
+        var textBrush = GetBrush(ThemeResourceKeys.TextFg);
+        var mutedBrush = GetBrush(ThemeResourceKeys.TextFgMuted);
+        var headerFgBrush = GetBrush(ThemeResourceKeys.ExplorerHeaderFg);
         var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
 
         for (int i = firstVisible; i <= lastVisible; i++)

@@ -16,13 +16,9 @@ public partial class MainWindow : Window
     private TabInfo? _activeTab;
     private AppSettings _settings;
     private readonly ProjectManager _projectManager = new();
+    private readonly SessionManager _sessionManager = new();
 
-    // Tab drag-to-reorder state
-    private TabInfo? _dragTab;
-    private Point _dragStartPos;
-    private bool _isTabDragging;
-    private int _dragTargetIndex = -1;
-    private System.Windows.Controls.Primitives.Popup? _dragGhost;
+    private readonly TabHeaderFactory _tabHeaderFactory = new();
 
     private EditorControl Editor => _activeTab!.Editor;
 
@@ -44,6 +40,10 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _settings = App.Current.Settings;
+
+        _tabHeaderFactory.TabActivated += tab => ActivateTab(tab);
+        _tabHeaderFactory.TabClosed += tab => CloseTab(tab);
+        _tabHeaderFactory.TabReordered += CommitTabReorder;
 
         // Restore session or create initial tab
         RestoreSession();
@@ -160,7 +160,7 @@ public partial class MainWindow : Window
 
     private void UpdateTabOverflowBrushes()
     {
-        var color = (Application.Current.Resources["ThemeTabBarBg"] as SolidColorBrush)?.Color ?? Colors.Black;
+        var color = (Application.Current.Resources[ThemeResourceKeys.TabBarBg] as SolidColorBrush)?.Color ?? Colors.Black;
         var transparent = Color.FromArgb(0, color.R, color.G, color.B);
 
         var leftBrush = new LinearGradientBrush();
@@ -222,194 +222,8 @@ public partial class MainWindow : Window
         }
     }
 
-    private Border CreateTabHeader(TabInfo tab)
-    {
-        var textBlock = new TextBlock
-        {
-            Text = tab.DisplayName,
-            FontFamily = new FontFamily("Segoe UI"),
-            FontSize = 12,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(10, 0, 6, 0),
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = 150
-        };
-        textBlock.SetResourceReference(TextBlock.ForegroundProperty, "ThemeTextFg");
-
-        var closeBtn = new Button { Style = (Style)FindResource("TabCloseButton") };
-        closeBtn.Click += (_, _) => CloseTab(tab);
-
-        var panel = new DockPanel { VerticalAlignment = VerticalAlignment.Center };
-        DockPanel.SetDock(closeBtn, Dock.Right);
-        panel.Children.Add(closeBtn);
-        panel.Children.Add(textBlock);
-
-        var header = new Border
-        {
-            Child = panel,
-            Height = 33,
-            MinWidth = 60,
-            Cursor = Cursors.Hand,
-            BorderThickness = new Thickness(0, 0, 1, 0)
-        };
-        header.SetResourceReference(Border.BorderBrushProperty, "ThemeTabBorder");
-
-        // Click to activate + drag to reorder
-        header.MouseLeftButtonDown += (_, e) =>
-        {
-            ActivateTab(tab);
-            _dragTab = tab;
-            _dragStartPos = e.GetPosition(TabStrip);
-            _isTabDragging = false;
-            _dragTargetIndex = -1;
-            header.CaptureMouse();
-            e.Handled = true;
-        };
-
-        header.MouseMove += (_, e) =>
-        {
-            if (_dragTab != tab || e.LeftButton != MouseButtonState.Pressed) return;
-            var pos = e.GetPosition(TabStrip);
-            if (!_isTabDragging)
-            {
-                if (Math.Abs(pos.X - _dragStartPos.X) < SystemParameters.MinimumHorizontalDragDistance)
-                    return;
-                _isTabDragging = true;
-                ShowDragGhost(tab);
-                header.Opacity = 0.4;
-            }
-            UpdateDragGhost(e);
-            UpdateDropIndicator(pos.X, _tabs.IndexOf(tab));
-        };
-
-        header.MouseLeftButtonUp += (_, e) =>
-        {
-            if (_dragTab == tab)
-            {
-                header.ReleaseMouseCapture();
-                if (_isTabDragging)
-                {
-                    header.Opacity = 1.0;
-                    HideDragGhost();
-                    TabDropIndicator.Visibility = Visibility.Collapsed;
-                    if (_dragTargetIndex >= 0)
-                        CommitTabReorder(tab, _dragTargetIndex);
-                }
-                _dragTab = null;
-                _isTabDragging = false;
-                _dragTargetIndex = -1;
-            }
-        };
-
-        // Middle-click to close tab
-        header.MouseDown += (_, e) =>
-        {
-            if (e.ChangedButton == MouseButton.Middle)
-            {
-                CloseTab(tab);
-                e.Handled = true;
-            }
-        };
-
-        return header;
-    }
-
-    private void ShowDragGhost(TabInfo tab)
-    {
-        var text = new TextBlock
-        {
-            Text = tab.DisplayName,
-            FontFamily = new FontFamily("Segoe UI"),
-            FontSize = 12,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(10, 0, 10, 0)
-        };
-        text.SetResourceReference(TextBlock.ForegroundProperty, "ThemeTextFg");
-
-        var border = new Border
-        {
-            Child = text,
-            Height = 30,
-            MinWidth = 60,
-            CornerRadius = new CornerRadius(4),
-            Opacity = 0.85
-        };
-        border.SetResourceReference(Border.BackgroundProperty, "ThemeTabActive");
-        border.SetResourceReference(Border.BorderBrushProperty, "ThemeTabBorder");
-        border.BorderThickness = new Thickness(1);
-
-        _dragGhost = new System.Windows.Controls.Primitives.Popup
-        {
-            Child = border,
-            AllowsTransparency = true,
-            Placement = System.Windows.Controls.Primitives.PlacementMode.AbsolutePoint,
-            IsHitTestVisible = false,
-            IsOpen = true
-        };
-    }
-
-    private void UpdateDragGhost(MouseEventArgs e)
-    {
-        if (_dragGhost == null) return;
-        var screenPos = PointToScreen(e.GetPosition(this));
-        // PointToScreen returns physical pixels; Popup offsets use DIPs — convert back
-        var source = PresentationSource.FromVisual(this);
-        double dpiScale = source?.CompositionTarget?.TransformFromDevice.M11 ?? 1.0;
-        _dragGhost.HorizontalOffset = screenPos.X * dpiScale + 12;
-        _dragGhost.VerticalOffset = screenPos.Y * dpiScale + 4;
-    }
-
-    private void HideDragGhost()
-    {
-        if (_dragGhost != null)
-        {
-            _dragGhost.IsOpen = false;
-            _dragGhost = null;
-        }
-    }
-
-    private void UpdateDropIndicator(double mouseX, int dragSourceIdx)
-    {
-        // Calculate the insertion index and the X position for the indicator line
-        double offset = 0;
-        int insertIdx = -1;
-        double indicatorX = 0;
-
-        for (int i = 0; i < TabStrip.Children.Count; i++)
-        {
-            if (TabStrip.Children[i] is FrameworkElement el)
-            {
-                double width = el.ActualWidth;
-                double midpoint = offset + width / 2;
-                if (mouseX < midpoint)
-                {
-                    insertIdx = i;
-                    indicatorX = offset;
-                    break;
-                }
-                offset += width;
-            }
-        }
-
-        if (insertIdx < 0)
-        {
-            // Past the last tab — insert at end
-            insertIdx = TabStrip.Children.Count;
-            indicatorX = offset;
-        }
-
-        // If dropping at the same position or adjacent (no actual move), hide indicator
-        if (insertIdx == dragSourceIdx || insertIdx == dragSourceIdx + 1)
-        {
-            TabDropIndicator.Visibility = Visibility.Collapsed;
-            _dragTargetIndex = -1;
-            return;
-        }
-
-        _dragTargetIndex = insertIdx > dragSourceIdx ? insertIdx - 1 : insertIdx;
-        TabDropIndicator.Visibility = Visibility.Visible;
-        TabDropIndicator.Margin = new Thickness(indicatorX - 1, 0, 0, 0);
-    }
+    private Border CreateTabHeader(TabInfo tab) =>
+        _tabHeaderFactory.CreateHeader(tab, TabStrip, TabDropIndicator);
 
     private void CommitTabReorder(TabInfo tab, int targetIdx)
     {
@@ -450,7 +264,7 @@ public partial class MainWindow : Window
             if (tab.HeaderElement != null)
             {
                 tab.HeaderElement.SetResourceReference(Border.BackgroundProperty,
-                    isActive ? "ThemeTabActive" : "ThemeTabInactive");
+                    isActive ? ThemeResourceKeys.TabActive : ThemeResourceKeys.TabInactive);
             }
         }
     }
@@ -694,78 +508,63 @@ public partial class MainWindow : Window
             return;
         }
 
-        var session = _settings.Session;
-        if (session.Tabs.Count > 0)
+        var restored = _sessionManager.RestoreSession(_settings.Session);
+
+        if (restored.Tabs.Count > 0)
         {
             TabInfo? activeTab = null;
-            int tabIndex = 0;
-            foreach (var st in session.Tabs)
-            {
-                // Skip file-backed tabs whose file no longer exists
-                if (st.FilePath != null && !st.IsDirty && !File.Exists(st.FilePath))
-                    continue;
 
+            for (int i = 0; i < restored.Tabs.Count; i++)
+            {
+                var rt = restored.Tabs[i];
                 var tab = CreateTab();
 
-                if (st.FilePath != null && File.Exists(st.FilePath))
+                if (rt.FilePath != null)
                 {
-                    tab.FilePath = st.FilePath;
-                    tab.FileEncoding = FileHelper.DetectEncoding(st.FilePath);
+                    tab.FilePath = rt.FilePath;
+                    tab.FileEncoding = FileHelper.DetectEncoding(rt.FilePath);
 
-                    if (st.IsDirty)
+                    if (rt.IsDirty)
                     {
-                        // Load the on-disk version first, then overlay saved dirty content
-                        var savedContent = SessionSettings.LoadTabContent(tabIndex);
-                        tab.Editor.SetContent(savedContent ?? FileHelper.ReadAllText(st.FilePath, tab.FileEncoding));
+                        tab.Editor.SetContent(rt.SavedContent ?? FileHelper.ReadAllText(rt.FilePath, tab.FileEncoding));
                         tab.Editor.MarkDirty();
                     }
                     else
                     {
-                        tab.Editor.SetContent(FileHelper.ReadAllText(st.FilePath, tab.FileEncoding));
+                        tab.Editor.SetContent(FileHelper.ReadAllText(rt.FilePath, tab.FileEncoding));
                     }
 
-                    tab.LastKnownFileSize = new FileInfo(st.FilePath).Length;
-                    tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(st.FilePath, tab.LastKnownFileSize);
+                    tab.LastKnownFileSize = new FileInfo(rt.FilePath).Length;
+                    tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(rt.FilePath, tab.LastKnownFileSize);
                     tab.StartWatching();
-                }
-                else if (st.FilePath == null)
-                {
-                    // Untitled tab — restore saved content if available
-                    var savedContent = SessionSettings.LoadTabContent(tabIndex);
-                    if (savedContent != null)
-                    {
-                        tab.Editor.SetContent(savedContent);
-                        tab.Editor.MarkDirty();
-                    }
                 }
                 else
                 {
-                    // File no longer exists but was dirty — restore content as untitled
-                    var savedContent = SessionSettings.LoadTabContent(tabIndex);
-                    if (savedContent == null) { tabIndex++; continue; }
-                    tab.FilePath = null;
-                    tab.Editor.SetContent(savedContent);
-                    tab.Editor.MarkDirty();
+                    // Untitled tab — restore saved content if available
+                    if (rt.SavedContent != null)
+                    {
+                        tab.Editor.SetContent(rt.SavedContent);
+                        tab.Editor.MarkDirty();
+                    }
                 }
 
                 UpdateTabHeader(tab);
 
                 // Defer caret/scroll restore until after layout so the editor has valid extents
-                var savedTab = st;
+                var restoredTab = rt;
                 RoutedEventHandler? onLoaded = null;
                 onLoaded = (_, _) =>
                 {
                     tab.Editor.Loaded -= onLoaded;
-                    tab.Editor.SetCaretPosition(savedTab.CaretLine, savedTab.CaretCol);
-                    tab.Editor.SetVerticalOffset(savedTab.ScrollVertical);
-                    tab.Editor.SetHorizontalOffset(savedTab.ScrollHorizontal);
+                    tab.Editor.SetCaretPosition(restoredTab.CaretLine, restoredTab.CaretCol);
+                    tab.Editor.SetVerticalOffset(restoredTab.ScrollVertical);
+                    tab.Editor.SetHorizontalOffset(restoredTab.ScrollHorizontal);
                     tab.Editor.InvalidateVisual();
                 };
                 tab.Editor.Loaded += onLoaded;
 
-                if (tabIndex == session.ActiveTabIndex)
+                if (i == restored.ActiveTabIndex)
                     activeTab = tab;
-                tabIndex++;
             }
 
             if (_tabs.Count == 0)
@@ -791,43 +590,7 @@ public partial class MainWindow : Window
     private void SaveSession()
     {
         SessionSettings.ClearSessionDir();
-
-        var sessionTabs = new List<SessionTab>();
-        int activeIdx = 0;
-        foreach (var t in _tabs)
-        {
-            bool dirty = t.Editor.IsDirty;
-            bool untitled = t.FilePath == null;
-
-            // Skip empty untitled tabs
-            if (untitled && !dirty && string.IsNullOrEmpty(t.Editor.GetContent()))
-                continue;
-
-            if (t == _activeTab)
-                activeIdx = sessionTabs.Count;
-
-            int idx = sessionTabs.Count;
-
-            // Save content for dirty or untitled tabs
-            if (dirty || untitled)
-                _settings.Session.SaveTabContent(idx, t.Editor.GetContent());
-
-            sessionTabs.Add(new SessionTab
-            {
-                FilePath = t.FilePath,
-                IsDirty = dirty,
-                CaretLine = t.Editor.CaretLine,
-                CaretCol = t.Editor.CaretCol,
-                ScrollVertical = t.Editor.VerticalOffset,
-                ScrollHorizontal = t.Editor.HorizontalOffset,
-            });
-        }
-
-        _settings.Session = new SessionSettings
-        {
-            ActiveTabIndex = activeIdx,
-            Tabs = sessionTabs
-        };
+        _settings.Session = _sessionManager.SaveSession(_tabs, _activeTab);
     }
 
     private void RestoreWindowPosition()
@@ -1291,12 +1054,13 @@ public partial class MainWindow : Window
         if (_activeTab == null) return;
         var commands = CommandPaletteCommands.Build(new CommandPaletteContext(
             _tabs, _settings, ThemeManager, Editor, FindBarControl, () => _settings.Save(),
-            ToggleExplorer, OpenFolderInExplorer, CloseFolderInExplorer,
-            () => { if (_settings.Editor.Explorer.PanelVisible) SetExplorerVisible(true); },
-            () => OnNewProject(this, new RoutedEventArgs()),
-            () => OnOpenProject(this, new RoutedEventArgs()),
-            () => OnSaveProject(this, new RoutedEventArgs()),
-            CloseCurrentProject,
+            new ExplorerActions(ToggleExplorer, OpenFolderInExplorer, CloseFolderInExplorer,
+                () => { if (_settings.Editor.Explorer.PanelVisible) SetExplorerVisible(true); }),
+            new ProjectActions(
+                () => OnNewProject(this, new RoutedEventArgs()),
+                () => OnOpenProject(this, new RoutedEventArgs()),
+                () => OnSaveProject(this, new RoutedEventArgs()),
+                CloseCurrentProject),
             () => OnToggleWordWrap(this, new RoutedEventArgs())));
         CmdPalette.SetCommands(commands);
         CmdPalette.Open();
@@ -1578,165 +1342,6 @@ public partial class MainWindow : Window
 
     private static string? PromptForInput(string title, string prompt, string defaultValue = "")
     {
-        var window = new Window
-        {
-            Title = title,
-            Width = 380,
-            Height = 190,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            ResizeMode = ResizeMode.NoResize,
-            WindowStyle = WindowStyle.None,
-            AllowsTransparency = true,
-            Background = Brushes.Transparent,
-            ShowInTaskbar = false,
-            Owner = Application.Current.MainWindow
-        };
-
-        // Use WindowChrome for draggable title bar
-        var chrome = new System.Windows.Shell.WindowChrome
-        {
-            CaptionHeight = 32,
-            ResizeBorderThickness = new Thickness(0),
-            GlassFrameThickness = new Thickness(-1),
-            UseAeroCaptionButtons = false
-        };
-        System.Windows.Shell.WindowChrome.SetWindowChrome(window, chrome);
-
-        // Outer layout matching ThemedMessageBox structure
-        var root = new DockPanel();
-        root.SetResourceReference(DockPanel.BackgroundProperty, "ThemeContentBg");
-
-        // Title bar
-        var titleBar = new Grid { Height = 32 };
-        titleBar.SetResourceReference(Grid.BackgroundProperty, "ThemeChromeBrush");
-        DockPanel.SetDock(titleBar, Dock.Top);
-        titleBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        titleBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var titleText = new TextBlock
-        {
-            Text = title,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(12, 0, 0, 0),
-            FontFamily = new FontFamily("Segoe UI"),
-            FontSize = 12,
-            IsHitTestVisible = false
-        };
-        titleText.SetResourceReference(TextBlock.ForegroundProperty, "ThemeTextFg");
-        Grid.SetColumn(titleText, 0);
-        titleBar.Children.Add(titleText);
-
-        var closeBtn = new Button
-        {
-            Content = "\uE8BB",
-            Style = (Style)Application.Current.FindResource("CloseButton")
-        };
-        closeBtn.Click += (_, _) => { window.DialogResult = false; };
-        Grid.SetColumn(closeBtn, 1);
-        titleBar.Children.Add(closeBtn);
-        root.Children.Add(titleBar);
-
-        // Separator
-        var sep = new Border { Height = 1 };
-        sep.SetResourceReference(Border.BackgroundProperty, "ThemeBorderBrush");
-        DockPanel.SetDock(sep, Dock.Top);
-        root.Children.Add(sep);
-
-        // Content area
-        var content = new Grid { Margin = new Thickness(24, 20, 24, 20) };
-        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-        var promptText = new TextBlock
-        {
-            Text = prompt,
-            FontFamily = new FontFamily("Segoe UI"),
-            FontSize = 13,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 8)
-        };
-        promptText.SetResourceReference(TextBlock.ForegroundProperty, "ThemeTextFg");
-        Grid.SetRow(promptText, 0);
-        content.Children.Add(promptText);
-
-        var textBox = new TextBox
-        {
-            Text = defaultValue,
-            FontFamily = new FontFamily("Segoe UI"),
-            FontSize = 13,
-            Padding = new Thickness(4, 3, 4, 3)
-        };
-        textBox.SetResourceReference(TextBox.BackgroundProperty, "ThemeContentBg");
-        textBox.SetResourceReference(TextBox.ForegroundProperty, "ThemeTextFg");
-        textBox.SetResourceReference(TextBox.BorderBrushProperty, "ThemeMenuPopupBorder");
-        textBox.SetResourceReference(TextBox.CaretBrushProperty, "ThemeTextFg");
-        textBox.SelectAll();
-        Grid.SetRow(textBox, 1);
-        content.Children.Add(textBox);
-
-        var btnPanel = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 16, 0, 0)
-        };
-        Grid.SetRow(btnPanel, 2);
-
-        // Helper to create themed buttons matching ThemedMessageBox's DialogButton style
-        Button MakeButton(string text, bool isDefault, bool isCancel)
-        {
-            var btn = new Button
-            {
-                Content = text,
-                MinWidth = 80,
-                Margin = new Thickness(4, 0, 0, 0),
-                Padding = new Thickness(12, 6, 12, 6),
-                FontFamily = new FontFamily("Segoe UI"),
-                FontSize = 13,
-                Cursor = System.Windows.Input.Cursors.Hand,
-                IsDefault = isDefault,
-                IsCancel = isCancel
-            };
-            btn.SetResourceReference(Button.ForegroundProperty, "ThemeButtonFg");
-
-            // Build a simple template matching DialogButton style
-            var template = new ControlTemplate(typeof(Button));
-            var borderFactory = new FrameworkElementFactory(typeof(Border), "Bd");
-            borderFactory.SetResourceReference(Border.BackgroundProperty, "ThemeContentBg");
-            borderFactory.SetResourceReference(Border.BorderBrushProperty, "ThemeMenuPopupBorder");
-            borderFactory.SetValue(Border.BorderThicknessProperty, new Thickness(1));
-            borderFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
-            borderFactory.SetValue(Border.PaddingProperty, new Thickness(12, 6, 12, 6));
-            borderFactory.SetValue(Border.SnapsToDevicePixelsProperty, true);
-            var cpFactory = new FrameworkElementFactory(typeof(ContentPresenter));
-            cpFactory.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-            cpFactory.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
-            borderFactory.AppendChild(cpFactory);
-            template.VisualTree = borderFactory;
-
-            var hoverTrigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-            hoverTrigger.Setters.Add(new Setter(Border.BackgroundProperty,
-                new DynamicResourceExtension("ThemeButtonHover"), "Bd"));
-            template.Triggers.Add(hoverTrigger);
-
-            btn.Template = template;
-            return btn;
-        }
-
-        var okBtn = MakeButton("OK", isDefault: true, isCancel: false);
-        okBtn.Click += (_, _) => { window.DialogResult = true; };
-        btnPanel.Children.Add(okBtn);
-
-        var cancelBtn = MakeButton("Cancel", isDefault: false, isCancel: true);
-        btnPanel.Children.Add(cancelBtn);
-
-        content.Children.Add(btnPanel);
-        root.Children.Add(content);
-
-        window.Content = root;
-        textBox.Focus();
-
-        return window.ShowDialog() == true ? textBox.Text : null;
+        return ThemedInputBox.Show(Application.Current.MainWindow, title, prompt, defaultValue);
     }
 }
