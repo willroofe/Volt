@@ -23,7 +23,7 @@ public class PanelContainer : DockPanel
         // Header bar
         var header = new Border
         {
-            Height = 33,
+            Height = 34,
             BorderThickness = new Thickness(0, 0, 0, 1),
             Cursor = Cursors.SizeAll
         };
