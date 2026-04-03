@@ -284,6 +284,13 @@ public partial class PanelShell : UserControl
             }
         }
 
+        // Size overlays to 1/4 of center zone
+        var centerSize = CenterPresenter.RenderSize;
+        DropLeft.Width = centerSize.Width / 4;
+        DropRight.Width = centerSize.Width / 4;
+        DropTop.Height = centerSize.Height / 4;
+        DropBottom.Height = centerSize.Height / 4;
+
         CaptureMouse();
         Cursor = System.Windows.Input.Cursors.SizeAll;
     }
@@ -297,20 +304,32 @@ public partial class PanelShell : UserControl
         var size = CenterPresenter.RenderSize;
 
         PanelPlacement? zone = null;
-        const double edgeDepth = 40;
+        double edgeX = size.Width / 4;
+        double edgeY = size.Height / 4;
+
+        // Exclude current placement during search so the next-closest edge wins
+        var currentPlacement = _panels.TryGetValue(_draggingPanelId, out var reg)
+            ? reg.Placement : (PanelPlacement?)null;
 
         if (size.Width > 0 && size.Height > 0 &&
             pos.X >= 0 && pos.X <= size.Width && pos.Y >= 0 && pos.Y <= size.Height)
         {
-            if (pos.X < edgeDepth) zone = PanelPlacement.Left;
-            else if (pos.X > size.Width - edgeDepth) zone = PanelPlacement.Right;
-            else if (pos.Y < edgeDepth) zone = PanelPlacement.Top;
-            else if (pos.Y > size.Height - edgeDepth) zone = PanelPlacement.Bottom;
-        }
+            // Proportional distance to each edge (0 = at edge, 1 = at opposite edge)
+            double pLeft = pos.X / size.Width;
+            double pRight = 1 - pLeft;
+            double pTop = pos.Y / size.Height;
+            double pBottom = 1 - pTop;
 
-        // Exclude current placement
-        if (_panels.TryGetValue(_draggingPanelId, out var reg) && zone == reg.Placement)
-            zone = null;
+            // Threshold: within the edge zone (1/4 of dimension)
+            const double threshold = 0.25;
+
+            // Find the closest edge proportionally, skipping the panel's current side
+            double minProp = double.MaxValue;
+            if (currentPlacement != PanelPlacement.Left && pLeft < threshold && pLeft < minProp) { minProp = pLeft; zone = PanelPlacement.Left; }
+            if (currentPlacement != PanelPlacement.Right && pRight < threshold && pRight < minProp) { minProp = pRight; zone = PanelPlacement.Right; }
+            if (currentPlacement != PanelPlacement.Top && pTop < threshold && pTop < minProp) { minProp = pTop; zone = PanelPlacement.Top; }
+            if (currentPlacement != PanelPlacement.Bottom && pBottom < threshold && pBottom < minProp) { zone = PanelPlacement.Bottom; }
+        }
 
         if (zone != _highlightedZone)
         {
