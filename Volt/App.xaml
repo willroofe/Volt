@@ -32,6 +32,8 @@
         <SolidColorBrush x:Key="ThemeExplorerHeaderFg" Color="#888888"/>
         <SolidColorBrush x:Key="ThemeExplorerItemHover" Color="#E0E0E0"/>
         <SolidColorBrush x:Key="ThemeExplorerItemSelected" Color="#D0D0D0"/>
+        <SolidColorBrush x:Key="ThemeExplorerDropTarget" Color="#B8D4E8"/>
+        <SolidColorBrush x:Key="ThemeInputSelection" Color="#80339900"/>
 
         <!-- Theme-invariant overlay for modal dimming (like close-button red #E81123) -->
         <SolidColorBrush x:Key="ThemeOverlayBg" Color="#80000000"/>
@@ -347,6 +349,7 @@
 
         <!-- Rounded text box (replace input in FindBar) -->
         <Style x:Key="RoundedTextBox" TargetType="TextBox">
+            <Setter Property="SelectionBrush" Value="{DynamicResource ThemeInputSelection}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TextBox">

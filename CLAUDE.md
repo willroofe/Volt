@@ -37,7 +37,7 @@ dotnet run -c Release --project Volt.Benchmarks -- --list flat            # list
 
 - **Editor/** — `EditorControl.cs`, `TextBuffer.cs`, `UndoManager.cs`, `SelectionManager.cs`, `FontManager.cs`, `FindManager.cs`, `BracketMatcher.cs`, `SyntaxManager.cs`, `SyntaxDefinition.cs`
 - **Theme/** — `ThemeManager.cs`, `ColorTheme.cs`
-- **UI/** — `MainWindow.xaml/.cs`, `CommandPalette.xaml/.cs`, `FindBar.xaml/.cs`, `SettingsWindow.xaml/.cs` (uses `SettingsSnapshot` record), `TabInfo.cs`, `DwmHelper.cs`, `FileHelper.cs`, `CommandPaletteCommands.cs`, `FileExplorerPanel.xaml/.cs`, `ExplorerTreeControl.cs`, `FileTreeItem.cs`, `ThemedMessageBox.xaml/.cs`, `Project.cs`, `ProjectManager.cs`, `ContextMenuHelper.cs`
+- **UI/** — `MainWindow.xaml/.cs`, `CommandPalette.xaml/.cs`, `FindBar.xaml/.cs`, `SettingsWindow.xaml/.cs` (uses `SettingsSnapshot` record), `TabInfo.cs`, `TabHeaderFactory.cs`, `DwmHelper.cs`, `FileHelper.cs`, `CommandPaletteCommands.cs`, `FileExplorerPanel.xaml/.cs`, `ExplorerTreeControl.cs`, `FileTreeItem.cs`, `ThemedMessageBox.xaml/.cs`, `ThemedInputBox.xaml/.cs`, `Workspace.cs`, `WorkspaceManager.cs`, `SessionManager.cs`, `ContextMenuHelper.cs`
 - **UI/Panels/** — `IPanel.cs` (interface + `PanelPlacement` enum), `PanelSlotConfig.cs` (layout persistence), `PanelShell.xaml/.cs` (panel layout coordinator), `TabRegion.xaml/.cs` (tabbed region control), `PanelContainer.cs` (thin panel wrapper)
 - **Resources/** — `Themes/` (default-dark.json, default-light.json, gruvbox-dark.json), `Grammars/` (perl.json) — embedded resources extracted to `%AppData%/Volt/` on first run
 - **Root** — `App.xaml/.cs`, `AppSettings.cs`, `AssemblyInfo.cs`
@@ -59,21 +59,26 @@ The core of the application (~2,000 lines) — a custom `FrameworkElement` imple
 
 ### Title Bar & Menus
 
-Custom title bar with four top-level menus using the `TopLevelMenuItem` style:
+Custom title bar with five top-level menus using the `TopLevelMenuItem` style:
 - **Volt** (app menu) — logo + "Volt" text as header, contains Settings and Exit
-- **File** — Save, Save As, Open, Open Folder
+- **File** — Save, Save As, Open File, Open Folder, Add Folder to Workspace
 - **Edit** — Word Wrap (checkable, with `IsChecked` trigger for checkmark glyph in custom template)
-- **Project** — New/Open/Save/Close Project
+- **View** — Toggle visibility for Left/Right/Top/Bottom panel regions (checkable items synced via `SyncViewMenuChecks()`)
+- **Workspace** — New/Open/Close Workspace
 
-All menus share the same `TopLevelMenuItem` custom `ControlTemplate` and the same `ItemContainerStyle` for dropdown items (custom template with icon/header/shortcut columns, hover highlight trigger). The Edit menu's `ItemContainerStyle` additionally includes an `IsChecked` trigger for checkmark visibility.
+All menus share the same `TopLevelMenuItem` custom `ControlTemplate` and the same `ItemContainerStyle` for dropdown items (custom template with icon/header/shortcut columns, hover highlight trigger). The Edit and View menus use `MenuItemCheckableStyle` with an `IsChecked` trigger for checkmark visibility.
 
-### File Explorer & Projects
+### File Explorer & Workspaces
 
-**FileExplorerPanel** (`UI/FileExplorerPanel.xaml/.cs`) — side panel for browsing folder contents, toggleable via command palette or settings.
+**FileExplorerPanel** (`UI/FileExplorerPanel.xaml/.cs`) — side panel for browsing folder contents, toggleable via command palette or settings. Supports two modes: single-folder (lightweight, no workspace file) and multi-root workspace (multiple folders as peer top-level nodes).
 
 **ExplorerTreeControl** (`UI/ExplorerTreeControl.cs`) — custom-rendered tree control for the file explorer, with expand/collapse, selection, tooltips for truncated names.
 
-**Project** (`UI/Project.cs`) — JSON-serializable project model with folders, virtual folders, and session state. **ProjectManager** (`UI/ProjectManager.cs`) — project lifecycle management (new, open, save, close).
+**Workspace** (`UI/Workspace.cs`) — JSON-serializable workspace model (`.volt-workspace` files) with a list of folder paths and session state (tabs, expanded paths). **WorkspaceManager** (`UI/WorkspaceManager.cs`) — workspace lifecycle management (new, open, save, close, add/remove folder).
+
+**Unsaved workspaces**: "Add Folder to Workspace" with a folder open auto-creates an unsaved workspace (no file on disk). Unsaved workspaces persist across app restarts via `AppSettings.UnsavedWorkspaceFolders`. Closing an unsaved workspace prompts to save or discard. Saved workspaces auto-save when folders are added/removed.
+
+**Session persistence**: `SessionManager` (`UI/SessionManager.cs`) handles per-folder tab sessions (`AppSettings.FolderSessions`). Workspace sessions are stored in the `.volt-workspace` file itself. Global sessions (no folder/workspace) use `AppSettings.Session`.
 
 ### Panel System
 
@@ -131,7 +136,7 @@ Unified JSON-based theming — one theme file controls everything (editor, chrom
 
 ### MainWindow (`UI/MainWindow.xaml` + `.cs`)
 
-UI shell (~1,400 lines) with tab management, file I/O, settings, project management, and keyboard shortcuts. Layout is delegated to `PanelShell` — MainWindow registers panels and uses `Shell.ShowPanel`/`Shell.HidePanel` instead of manual grid manipulation. Delegates to:
+UI shell (~1,500 lines) with tab management, file I/O, settings, workspace management, and keyboard shortcuts. Layout is delegated to `PanelShell` — MainWindow registers panels and uses `Shell.ShowPanel`/`Shell.HidePanel` instead of manual grid manipulation. Delegates to:
 - **FileHelper** (`UI/FileHelper.cs`) — `AtomicWriteText`, `DetectEncoding`, file type name lookup
 - **CommandPaletteCommands** (`UI/CommandPaletteCommands.cs`) — builds command list with preview/commit/revert lambdas; toggle commands (block caret, word wrap, explorer) use `Toggle:` parameter; option commands (theme, font, tab size) use `CurrentValue:`/`GetOptions:` with preview/commit/revert lambdas
 - **DwmHelper** (`UI/DwmHelper.cs`) — DWM window attribute management

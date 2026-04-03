@@ -148,6 +148,8 @@ public class ThemeManager
         res[ThemeResourceKeys.ExplorerHeaderFg] = ColorTheme.ParseBrush(c.ExplorerHeaderForeground);
         res[ThemeResourceKeys.ExplorerItemHover] = ColorTheme.ParseBrush(c.ExplorerItemHover);
         res[ThemeResourceKeys.ExplorerItemSelected] = ColorTheme.ParseBrush(c.ExplorerItemSelected);
+        res[ThemeResourceKeys.ExplorerDropTarget] = ColorTheme.ParseBrush(c.ExplorerDropTarget);
+        res[ThemeResourceKeys.InputSelection] = ColorTheme.ParseBrush(c.InputSelection);
     }
 
     private void EnsureDefaultThemes()

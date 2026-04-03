@@ -33,4 +33,6 @@ internal static class ThemeResourceKeys
     public const string ExplorerHeaderFg = "ThemeExplorerHeaderFg";
     public const string ExplorerItemHover = "ThemeExplorerItemHover";
     public const string ExplorerItemSelected = "ThemeExplorerItemSelected";
+    public const string ExplorerDropTarget = "ThemeExplorerDropTarget";
+    public const string InputSelection = "ThemeInputSelection";
 }
