@@ -10,7 +10,9 @@ public class PanelShellTests
         public string PanelId => id;
         public string Title => title;
         public UIElement Content { get; } = new System.Windows.Controls.Border();
+#pragma warning disable CS0067
         public event Action? TitleChanged;
+#pragma warning restore CS0067
     }
 
     [StaFact]
