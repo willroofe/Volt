@@ -384,11 +384,14 @@ public partial class MainWindow : Window
     {
         if (_settings.Editor.PanelLayouts.Count > 0)
             Shell.RestoreLayout(_settings.Editor.PanelLayouts);
+        if (_settings.Editor.OpenRegions.Count > 0)
+            Shell.RestoreOpenRegions(_settings.Editor.OpenRegions);
     }
 
     private void OnPanelLayoutChanged(string panelId, PanelPlacement placement, double size)
     {
         _settings.Editor.PanelLayouts = Shell.GetCurrentLayout();
+        _settings.Editor.OpenRegions = Shell.GetOpenRegions();
         _settings.Save();
     }
 
@@ -652,6 +655,7 @@ public partial class MainWindow : Window
         _settings.WindowMaximized = WindowState == WindowState.Maximized;
         _settings.Editor.Explorer.ExpandedPaths = ExplorerPanel.GetExpandedPaths();
         _settings.Editor.PanelLayouts = Shell.GetCurrentLayout();
+        _settings.Editor.OpenRegions = Shell.GetOpenRegions();
         _settings.Save();
 
         foreach (var tab in _tabs)

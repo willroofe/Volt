@@ -112,8 +112,15 @@ public partial class PanelShell : UserControl
                 _regions[placement].RemovePanel(reg.Panel.PanelId);
             }
             CollapseRegion(placement);
-            foreach (var reg in panelsInRegion)
-                PanelLayoutChanged?.Invoke(reg.Panel.PanelId, reg.Placement, GetRegionSize(placement));
+            if (panelsInRegion.Count > 0)
+            {
+                foreach (var reg in panelsInRegion)
+                    PanelLayoutChanged?.Invoke(reg.Panel.PanelId, reg.Placement, GetRegionSize(placement));
+            }
+            else
+            {
+                PanelLayoutChanged?.Invoke("", placement, GetRegionSize(placement));
+            }
         }
         else
         {
@@ -133,6 +140,7 @@ public partial class PanelShell : UserControl
             {
                 // Show empty region with just the "+" button
                 ShowRegion(placement);
+                PanelLayoutChanged?.Invoke("", placement, GetRegionSize(placement));
             }
         }
     }
@@ -189,6 +197,16 @@ public partial class PanelShell : UserControl
         }
     }
 
+    public void RestoreOpenRegions(IReadOnlyList<RegionState> openRegions)
+    {
+        foreach (var state in openRegions)
+        {
+            _regionSizes[state.Placement] = Math.Max(state.Size, GetMinSize(state.Placement));
+            if (!IsRegionVisible(state.Placement))
+                ShowRegion(state.Placement);
+        }
+    }
+
     public List<PanelSlotConfig> GetCurrentLayout()
     {
         var result = new List<PanelSlotConfig>();
@@ -206,6 +224,14 @@ public partial class PanelShell : UserControl
             });
         }
         return result;
+    }
+
+    public List<RegionState> GetOpenRegions()
+    {
+        return Enum.GetValues<PanelPlacement>()
+            .Where(IsRegionVisible)
+            .Select(p => new RegionState { Placement = p, Size = _regionSizes[p] })
+            .ToList();
     }
 
     public IReadOnlyList<IPanel> GetAvailablePanels()
@@ -378,6 +404,8 @@ public partial class PanelShell : UserControl
             PanelLayoutChanged?.Invoke(reg.Panel.PanelId, reg.Placement, GetRegionSize(placement));
         }
         CollapseRegion(placement);
+        if (panelsInRegion.Count == 0)
+            PanelLayoutChanged?.Invoke("", placement, GetRegionSize(placement));
     }
 
     private void OnActiveTabChanged(string panelId)
@@ -404,8 +432,17 @@ public partial class PanelShell : UserControl
             _regionSizes[p] = newSize;
 
             // Fire for each visible panel in this region so settings persist
-            foreach (var reg in _panels.Values.Where(r => r.Placement == p && r.IsVisible))
-                PanelLayoutChanged?.Invoke(reg.Panel.PanelId, p, newSize);
+            var visiblePanels = _panels.Values.Where(r => r.Placement == p && r.IsVisible).ToList();
+            if (visiblePanels.Count > 0)
+            {
+                foreach (var reg in visiblePanels)
+                    PanelLayoutChanged?.Invoke(reg.Panel.PanelId, p, newSize);
+            }
+            else
+            {
+                // Empty region resized — still need to persist
+                PanelLayoutChanged?.Invoke("", p, newSize);
+            }
             break;
         }
     }
