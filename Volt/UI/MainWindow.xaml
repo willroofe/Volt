@@ -291,7 +291,8 @@
                     BorderBrush="{DynamicResource ThemeTabBorder}" BorderThickness="0,0,0,1"
                     IsHitTestVisible="False" Visibility="Collapsed"/>
 
-            <DockPanel x:Name="EditorArea" Grid.Column="2">
+            <Grid x:Name="EditorColumnGrid" Grid.Column="2">
+            <DockPanel x:Name="EditorArea">
                 <!-- Tab bar -->
                 <Border DockPanel.Dock="Top" Background="{DynamicResource ThemeTabBarBg}"
                         BorderBrush="{DynamicResource ThemeTabBorder}" BorderThickness="0,0,0,1">
@@ -355,11 +356,12 @@
                 </Border>
                 <Border x:Name="EditorHost"/>
             </DockPanel>
+
+            <!-- Find bar overlay (scoped to editor panel) -->
+            <local:FindBar x:Name="FindBarControl" />
+            </Grid>
         </Grid>
     </DockPanel>
-
-    <!-- Find bar overlay -->
-    <local:FindBar x:Name="FindBarControl" />
 
     <!-- Command palette overlay -->
     <local:CommandPalette x:Name="CmdPalette" />

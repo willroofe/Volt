@@ -3,22 +3,22 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Visibility="Collapsed">
     <Border x:Name="_panel"
-            CornerRadius="4"
+            CornerRadius="6"
             BorderThickness="1"
-            Width="480"
-            HorizontalAlignment="Center"
+            MaxWidth="480"
+            HorizontalAlignment="Stretch"
             VerticalAlignment="Bottom"
             Margin="0,0,0,8"
-            Background="{DynamicResource ThemeMenuPopupBg}"
-            BorderBrush="{DynamicResource ThemeMenuPopupBorder}">
+            Background="{DynamicResource ThemeTabBarBg}"
+            BorderBrush="{DynamicResource ThemeBorderBrush}">
         <Border.Effect>
-            <DropShadowEffect BlurRadius="10" Opacity="0.3" ShadowDepth="0"/>
+            <DropShadowEffect BlurRadius="20" Opacity="0.6" ShadowDepth="4" Direction="270"/>
         </Border.Effect>
-        <StackPanel Orientation="Vertical">
+        <StackPanel Orientation="Vertical" Grid.IsSharedSizeScope="True">
             <!-- Find row -->
-            <Grid x:Name="_findRow" Margin="8,6,8,6">
+            <Grid x:Name="_findRow" Margin="10,8,10,8">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="ToggleCol"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
@@ -102,15 +102,19 @@
             </Grid>
 
             <!-- Replace row -->
-            <Grid x:Name="_replaceRow" Margin="42,2,8,6" Visibility="Collapsed">
+            <Grid x:Name="_replaceRow" Margin="10,2,10,8" Visibility="Collapsed">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="ToggleCol"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
+                <!-- Spacer matching the toggle button column -->
+                <Border Grid.Column="0" Margin="0,0,6,0"/>
+
                 <TextBox x:Name="_replaceInput"
-                         Grid.Column="0"
+                         Grid.Column="1"
                          Style="{StaticResource RoundedTextBox}"
                          BorderThickness="0"
                          FontFamily="Segoe UI" FontSize="13"
@@ -120,14 +124,14 @@
                          Foreground="{DynamicResource ThemeTextFg}"
                          CaretBrush="{DynamicResource ThemeTextFg}"/>
 
-                <Button Grid.Column="1"
+                <Button Grid.Column="2"
                         Style="{StaticResource FindBarTextButton}"
                         ToolTip="Replace current match"
                         Click="OnReplaceClick">
                     <TextBlock Text="Replace" FontFamily="Segoe UI" FontSize="12"/>
                 </Button>
 
-                <Button Grid.Column="2"
+                <Button Grid.Column="3"
                         Style="{StaticResource FindBarTextButton}"
                         ToolTip="Replace all matches"
                         Click="OnReplaceAllClick">
