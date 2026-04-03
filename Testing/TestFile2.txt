@@ -1,8 +1,0 @@
-This is a test file.
-This came from Notepad!
-This came from TextEdit!
-Back to Notepad!
-Testing mid-edit warning. Again.
-Another line appears!
-Test
-Test
