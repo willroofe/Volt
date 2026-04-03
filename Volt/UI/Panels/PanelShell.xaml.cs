@@ -12,6 +12,7 @@ public partial class PanelShell : UserControl
     private readonly HashSet<string> _collapsedByToggle = new(StringComparer.OrdinalIgnoreCase);
     private string? _draggingPanelId;
     private PanelPlacement? _highlightedZone;
+    private PanelPlacement? _highlightedTabRegion;
 
     public static readonly DependencyProperty CenterContentProperty =
         DependencyProperty.Register(nameof(CenterContent), typeof(UIElement), typeof(PanelShell));
@@ -40,6 +41,7 @@ public partial class PanelShell : UserControl
             region.PanelClosed += OnTabPanelClosed;
             region.PanelDragStarted += OnPanelDragStarted;
             region.ActiveTabChanged += OnActiveTabChanged;
+            region.RegionCloseRequested += OnRegionCloseRequested;
             _regions[p] = region;
             _regionSizes[p] = GetMinSize(p);
             GetContentPresenter(p).Content = region;
@@ -80,9 +82,6 @@ public partial class PanelShell : UserControl
 
         var region = _regions[reg.Placement];
         region.RemovePanel(panelId);
-
-        if (region.IsEmpty)
-            CollapseRegion(reg.Placement);
 
         PanelLayoutChanged?.Invoke(panelId, reg.Placement, GetRegionSize(reg.Placement));
     }
@@ -138,13 +137,25 @@ public partial class PanelShell : UserControl
         }
     }
 
-    public void MovePanel(string panelId, PanelPlacement newPlacement)
+    public void MovePanel(string panelId, PanelPlacement newPlacement, bool keepSourceRegionVisible = false)
     {
         if (!_panels.TryGetValue(panelId, out var reg)) return;
         if (reg.Placement == newPlacement) return;
 
         bool wasVisible = reg.IsVisible;
-        if (wasVisible) HidePanel(panelId);
+        var oldPlacement = reg.Placement;
+
+        if (wasVisible)
+        {
+            // Remove from source region without collapsing it yet
+            reg.IsVisible = false;
+            _regions[oldPlacement].RemovePanel(panelId);
+            PanelLayoutChanged?.Invoke(panelId, oldPlacement, GetRegionSize(oldPlacement));
+
+            // Collapse source region only if empty and not asked to keep visible
+            if (_regions[oldPlacement].IsEmpty && !keepSourceRegionVisible)
+                CollapseRegion(oldPlacement);
+        }
 
         reg.Placement = newPlacement;
 
@@ -355,6 +366,20 @@ public partial class PanelShell : UserControl
         HidePanel(panelId);
     }
 
+    private void OnRegionCloseRequested(TabRegion region)
+    {
+        var placement = _regions.First(kv => kv.Value == region).Key;
+        // Hide all panels in this region and collapse it
+        var panelsInRegion = _panels.Values.Where(r => r.Placement == placement && r.IsVisible).ToList();
+        foreach (var reg in panelsInRegion)
+        {
+            reg.IsVisible = false;
+            region.RemovePanel(reg.Panel.PanelId);
+            PanelLayoutChanged?.Invoke(reg.Panel.PanelId, reg.Placement, GetRegionSize(placement));
+        }
+        CollapseRegion(placement);
+    }
+
     private void OnActiveTabChanged(string panelId)
     {
         if (_panels.TryGetValue(panelId, out var reg))
@@ -479,6 +504,36 @@ public partial class PanelShell : UserControl
                 GetDropOverlay(zone.Value).Background = highlight;
             }
         }
+
+        // Also check if mouse is over a visible TabRegion (for dropping onto tab strip)
+        PanelPlacement? tabRegionZone = null;
+        if (zone == null)
+        {
+            foreach (var kv in _regions)
+            {
+                if (!IsRegionVisible(kv.Key)) continue;
+                bool isSource = currentPlacement == kv.Key;
+                if (isSource && !sourceHasOtherTabs) continue;
+
+                var regionPos = e.GetPosition(kv.Value);
+                var regionSize = kv.Value.RenderSize;
+                if (regionPos.X >= 0 && regionPos.X <= regionSize.Width &&
+                    regionPos.Y >= 0 && regionPos.Y <= regionSize.Height)
+                {
+                    tabRegionZone = kv.Key;
+                    break;
+                }
+            }
+        }
+
+        if (tabRegionZone != _highlightedTabRegion)
+        {
+            if (_highlightedTabRegion.HasValue)
+                _regions[_highlightedTabRegion.Value].SetDropHighlight(false);
+            _highlightedTabRegion = tabRegionZone;
+            if (tabRegionZone.HasValue)
+                _regions[tabRegionZone.Value].SetDropHighlight(true);
+        }
     }
 
     protected override void OnMouseUp(System.Windows.Input.MouseButtonEventArgs e)
@@ -487,12 +542,12 @@ public partial class PanelShell : UserControl
         if (_draggingPanelId == null) return;
 
         var panelId = _draggingPanelId;
-        var target = _highlightedZone;
+        var target = _highlightedZone ?? _highlightedTabRegion;
 
         EndDrag();
 
         if (target.HasValue)
-            MovePanel(panelId, target.Value);
+            MovePanel(panelId, target.Value, keepSourceRegionVisible: true);
     }
 
     protected override void OnKeyDown(System.Windows.Input.KeyEventArgs e)
@@ -516,6 +571,11 @@ public partial class PanelShell : UserControl
     {
         _draggingPanelId = null;
         _highlightedZone = null;
+        if (_highlightedTabRegion.HasValue)
+        {
+            _regions[_highlightedTabRegion.Value].SetDropHighlight(false);
+            _highlightedTabRegion = null;
+        }
         Cursor = null;
         ReleaseMouseCapture();
 
