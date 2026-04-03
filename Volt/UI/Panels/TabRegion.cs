@@ -26,16 +26,36 @@ public partial class TabRegion : UserControl
     /// <summary>Raised when the active tab changes.</summary>
     public event Action<string>? ActiveTabChanged;
 
+    /// <summary>Raised when the user clicks the region close button.</summary>
+    public event Action<TabRegion>? RegionCloseRequested;
+
     public TabRegion()
     {
         InitializeComponent();
         AddButton.Click += (_, _) => AddPanelRequested?.Invoke(this);
+        CloseRegionButton.Click += (_, _) => RegionCloseRequested?.Invoke(this);
     }
 
     public string? ActivePanelId => _activeTab?.Container.PanelId;
     public int TabCount => _tabs.Count;
     public bool IsEmpty => _tabs.Count == 0;
     public IReadOnlyList<string> PanelIds => _tabs.Select(t => t.Container.PanelId).ToList();
+
+    public void SetDropHighlight(bool highlight)
+    {
+        if (highlight)
+        {
+            var fg = (Brush)Application.Current.Resources["ThemeTextFg"];
+            var brush = fg.Clone();
+            brush.Opacity = 0.2;
+            brush.Freeze();
+            HeaderBorder.Background = brush;
+        }
+        else
+        {
+            HeaderBorder.SetResourceReference(Border.BackgroundProperty, "ThemeExplorerHeaderBg");
+        }
+    }
 
     public void AddPanel(PanelContainer container)
     {
@@ -115,15 +135,54 @@ public partial class TabRegion : UserControl
             FontSize = 11,
             FontWeight = FontWeights.SemiBold,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(10, 0, 10, 0),
+            Margin = new Thickness(10, 0, 4, 0),
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth = 120
         };
         textBlock.SetResourceReference(TextBlock.ForegroundProperty, "ThemeExplorerHeaderFg");
 
+        var closeBtn = new Button
+        {
+            Content = "\uE8BB",
+            FontFamily = new FontFamily("Segoe MDL2 Assets"),
+            FontSize = 8,
+            Width = 20,
+            Height = 20,
+            Background = System.Windows.Media.Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Focusable = false,
+            Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0)
+        };
+        closeBtn.SetResourceReference(Button.ForegroundProperty, "ThemeButtonFg");
+        closeBtn.Click += (_, _) => PanelClosed?.Invoke(container.PanelId);
+
+        // Apply the same hover template as the "+" button
+        var closeBtnTemplate = new System.Windows.Controls.ControlTemplate(typeof(Button));
+        var bdFactory = new System.Windows.FrameworkElementFactory(typeof(Border));
+        bdFactory.SetValue(Border.BackgroundProperty, System.Windows.Media.Brushes.Transparent);
+        bdFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
+        bdFactory.Name = "Bd";
+        var cpFactory = new System.Windows.FrameworkElementFactory(typeof(ContentPresenter));
+        cpFactory.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        cpFactory.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+        bdFactory.AppendChild(cpFactory);
+        closeBtnTemplate.VisualTree = bdFactory;
+        var hoverTrigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hoverTrigger.Setters.Add(new Setter(Border.BackgroundProperty,
+            new System.Windows.DynamicResourceExtension("ThemeButtonHover"), "Bd"));
+        closeBtnTemplate.Triggers.Add(hoverTrigger);
+        closeBtn.Template = closeBtnTemplate;
+
+        var tabPanel = new DockPanel { VerticalAlignment = VerticalAlignment.Center };
+        DockPanel.SetDock(closeBtn, Dock.Right);
+        tabPanel.Children.Add(closeBtn);
+        tabPanel.Children.Add(textBlock);
+
         var header = new Border
         {
-            Child = textBlock,
+            Child = tabPanel,
             Height = 33,
             MinWidth = 40,
             Cursor = Cursors.Hand,
