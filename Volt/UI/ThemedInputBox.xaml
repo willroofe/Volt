@@ -5,9 +5,6 @@
         Width="380" Height="190"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        WindowStyle="None"
-        AllowsTransparency="True"
-        Background="Transparent"
         ShowInTaskbar="False">
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="32" ResizeBorderThickness="0"
@@ -80,10 +77,24 @@
             <TextBox x:Name="InputTextBox" Grid.Row="1"
                      FontFamily="Segoe UI" FontSize="13"
                      Padding="4,3,4,3"
-                     Background="{DynamicResource ThemeContentBg}"
                      Foreground="{DynamicResource ThemeTextFg}"
-                     BorderBrush="{DynamicResource ThemeMenuPopupBorder}"
-                     CaretBrush="{DynamicResource ThemeTextFg}"/>
+                     CaretBrush="{DynamicResource ThemeTextFg}"
+                     SelectionBrush="{DynamicResource ThemeMenuItemHover}">
+                <TextBox.Template>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Bd" Background="{DynamicResource ThemeContentBg}"
+                                BorderBrush="{DynamicResource ThemeMenuPopupBorder}"
+                                BorderThickness="1" CornerRadius="3">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ThemeTextFgMuted}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </TextBox.Template>
+            </TextBox>
 
             <StackPanel Grid.Row="2"
                         Orientation="Horizontal"
