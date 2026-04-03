@@ -660,6 +660,12 @@ public partial class MainWindow : Window
         if (existing != null)
             return existing;
 
+        if (!File.Exists(fullPath))
+        {
+            ThemedMessageBox.Show(this, $"The file no longer exists:\n{fullPath}", "File Not Found");
+            return null;
+        }
+
         if (!CheckFileSize(path)) return null;
 
         // Reuse current tab if untitled and clean
