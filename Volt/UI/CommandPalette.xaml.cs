@@ -286,7 +286,7 @@ public partial class CommandPalette : UserControl
             FontSize = 13,
             Margin = new Thickness(12, 6, 12, 6),
         };
-        tb.SetResourceReference(TextBlock.ForegroundProperty, "ThemeTextFg");
+        tb.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFg);
 
         var item = new ListBoxItem
         {
@@ -295,7 +295,7 @@ public partial class CommandPalette : UserControl
             FocusVisualStyle = null,
             Focusable = false,
         };
-        item.SetResourceReference(ListBoxItem.BackgroundProperty, "ThemeMenuPopupBg");
+        item.SetResourceReference(ListBoxItem.BackgroundProperty, ThemeResourceKeys.MenuPopupBg);
 
         // Mouse click to select
         item.MouseLeftButtonUp += (_, _) =>
@@ -336,12 +336,12 @@ public partial class CommandPalette : UserControl
             var item = (ListBoxItem)_commandList.Items[i];
             if (i == _selectedIndex)
             {
-                item.SetResourceReference(ListBoxItem.BackgroundProperty, "ThemeMenuItemHover");
+                item.SetResourceReference(ListBoxItem.BackgroundProperty, ThemeResourceKeys.MenuItemHover);
                 item.BringIntoView();
             }
             else
             {
-                item.SetResourceReference(ListBoxItem.BackgroundProperty, "ThemeMenuPopupBg");
+                item.SetResourceReference(ListBoxItem.BackgroundProperty, ThemeResourceKeys.MenuPopupBg);
             }
         }
     }

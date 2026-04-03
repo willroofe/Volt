@@ -1,5 +1,4 @@
 using System.IO;
-using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Windows.Media;
 
@@ -22,6 +21,7 @@ public class SyntaxManager
         "Volt", "Grammars");
 
     private readonly List<SyntaxDefinition> _grammars = [];
+    private Dictionary<string, SyntaxDefinition> _extensionMap = new(StringComparer.OrdinalIgnoreCase);
     private SyntaxDefinition? _activeGrammar;
 
     private bool _initialized;
@@ -42,14 +42,7 @@ public class SyntaxManager
         if (string.IsNullOrEmpty(extension)) return;
 
         var ext = extension.ToLowerInvariant();
-        foreach (var grammar in _grammars)
-        {
-            if (grammar.Extensions.Contains(ext))
-            {
-                _activeGrammar = grammar;
-                return;
-            }
-        }
+        _extensionMap.TryGetValue(ext, out _activeGrammar);
     }
 
     public string ActiveLanguageName => _activeGrammar?.Name ?? "Plain Text";
@@ -552,6 +545,7 @@ public class SyntaxManager
     {
         var activeExt = _activeGrammar?.Extensions.FirstOrDefault();
         _grammars.Clear();
+        _extensionMap.Clear();
         LoadGrammars();
         if (activeExt != null) SetLanguageByExtension(activeExt);
     }
@@ -564,27 +558,22 @@ public class SyntaxManager
             var def = SyntaxDefinition.LoadFromFile(file);
             if (def != null) _grammars.Add(def);
         }
+        RebuildExtensionMap();
+    }
+
+    private void RebuildExtensionMap()
+    {
+        _extensionMap = new Dictionary<string, SyntaxDefinition>(StringComparer.OrdinalIgnoreCase);
+        foreach (var grammar in _grammars)
+            foreach (var ext in grammar.Extensions)
+                _extensionMap.TryAdd(ext, grammar);
     }
 
     private void EnsureDefaultGrammars()
     {
         try
         {
-            Directory.CreateDirectory(GrammarsDir);
-
-            // Always overwrite built-in grammars so embedded fixes take effect
-            var asm = Assembly.GetExecutingAssembly();
-            foreach (var name in asm.GetManifestResourceNames())
-            {
-                if (!name.StartsWith("Volt.Resources.Grammars.") || !name.EndsWith(".json"))
-                    continue;
-                var fileName = name["Volt.Resources.Grammars.".Length..];
-                var destPath = Path.Combine(GrammarsDir, fileName);
-                using var stream = asm.GetManifestResourceStream(name);
-                if (stream == null) continue;
-                using var reader = new StreamReader(stream);
-                File.WriteAllText(destPath, reader.ReadToEnd());
-            }
+            EmbeddedResourceHelper.ExtractAll("Volt.Resources.Grammars.", GrammarsDir);
         }
         catch (IOException ex) { System.Diagnostics.Debug.WriteLine($"Failed to extract default grammars: {ex.Message}"); }
         catch (UnauthorizedAccessException ex) { System.Diagnostics.Debug.WriteLine($"Failed to extract default grammars: {ex.Message}"); }

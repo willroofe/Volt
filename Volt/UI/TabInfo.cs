@@ -6,7 +6,7 @@ using System.Windows.Threading;
 
 namespace Volt;
 
-public class TabInfo
+public class TabInfo : IDisposable
 {
     private const int DebounceMsec = 200;
 
@@ -38,11 +38,7 @@ public class TabInfo
 
     public TabInfo(ThemeManager themeManager, SyntaxManager syntaxManager)
     {
-        Editor = new EditorControl
-        {
-            ThemeManager = themeManager,
-            SyntaxManager = syntaxManager
-        };
+        Editor = new EditorControl(themeManager, syntaxManager);
         ScrollHost = new ScrollViewer
         {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Visible,
@@ -103,5 +99,11 @@ public class TabInfo
             _debounceTimer.Stop();
             _debounceTimer.Start();
         });
+    }
+
+    public void Dispose()
+    {
+        StopWatching();
+        GC.SuppressFinalize(this);
     }
 }

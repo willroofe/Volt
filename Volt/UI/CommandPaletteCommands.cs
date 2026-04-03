@@ -2,6 +2,20 @@
 
 namespace Volt;
 
+/// <summary>Explorer-related actions for the command palette.</summary>
+internal record ExplorerActions(
+    Action ToggleExplorer,
+    Action OpenFolder,
+    Action CloseFolder,
+    Action RefreshLayout);
+
+/// <summary>Project-related actions for the command palette.</summary>
+internal record ProjectActions(
+    Action New,
+    Action Open,
+    Action Save,
+    Action Close);
+
 /// <summary>Groups the dependencies needed to build the command palette list.</summary>
 internal record CommandPaletteContext(
     List<TabInfo> Tabs,
@@ -10,14 +24,8 @@ internal record CommandPaletteContext(
     EditorControl ActiveEditor,
     FindBar FindBar,
     Action SaveSettings,
-    Action ToggleExplorer,
-    Action OpenFolder,
-    Action CloseFolder,
-    Action RefreshExplorerLayout,
-    Action NewProject,
-    Action OpenProject,
-    Action SaveProject,
-    Action CloseProject,
+    ExplorerActions Explorer,
+    ProjectActions Project,
     Action ToggleWordWrap);
 
 /// <summary>
@@ -34,14 +42,8 @@ internal static class CommandPaletteCommands
         var activeEditor = ctx.ActiveEditor;
         var findBar = ctx.FindBar;
         var saveSettings = ctx.SaveSettings;
-        var toggleExplorer = ctx.ToggleExplorer;
-        var openFolder = ctx.OpenFolder;
-        var closeFolder = ctx.CloseFolder;
-        var refreshExplorerLayout = ctx.RefreshExplorerLayout;
-        var newProject = ctx.NewProject;
-        var openProject = ctx.OpenProject;
-        var saveProject = ctx.SaveProject;
-        var closeProject = ctx.CloseProject;
+        var explorer = ctx.Explorer;
+        var project = ctx.Project;
         var toggleWordWrap = ctx.ToggleWordWrap;
         return
         [
@@ -135,30 +137,30 @@ internal static class CommandPaletteCommands
                 )).ToList();
             }),
 
-            new("Toggle File Explorer", Action: toggleExplorer),
+            new("Toggle File Explorer", Action: explorer.ToggleExplorer),
 
-            new("Explorer: Open Folder...", Action: openFolder),
+            new("Explorer: Open Folder...", Action: explorer.OpenFolder),
 
-            new("Explorer: Close Folder", Action: closeFolder),
+            new("Explorer: Close Folder", Action: explorer.CloseFolder),
 
             new("Explorer: Panel Side", CurrentValue: () => settings.Editor.Explorer.PanelSide, GetOptions: () =>
             {
                 var original = settings.Editor.Explorer.PanelSide;
                 return AppSettings.PanelSideOptions.Select(side => new PaletteOption(
                     side,
-                    ApplyPreview: () => { settings.Editor.Explorer.PanelSide = side; refreshExplorerLayout(); },
-                    Commit: () => { settings.Editor.Explorer.PanelSide = side; refreshExplorerLayout(); saveSettings(); },
-                    Revert: () => { settings.Editor.Explorer.PanelSide = original; refreshExplorerLayout(); }
+                    ApplyPreview: () => { settings.Editor.Explorer.PanelSide = side; explorer.RefreshLayout(); },
+                    Commit: () => { settings.Editor.Explorer.PanelSide = side; explorer.RefreshLayout(); saveSettings(); },
+                    Revert: () => { settings.Editor.Explorer.PanelSide = original; explorer.RefreshLayout(); }
                 )).ToList();
             }),
 
-            new("Project: New Project", Action: newProject),
+            new("Project: New Project", Action: project.New),
 
-            new("Project: Open Project...", Action: openProject),
+            new("Project: Open Project...", Action: project.Open),
 
-            new("Project: Save Project", Action: saveProject),
+            new("Project: Save Project", Action: project.Save),
 
-            new("Project: Close Project", Action: closeProject),
+            new("Project: Close Project", Action: project.Close),
         ];
     }
 }

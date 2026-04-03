@@ -9,7 +9,13 @@ namespace Volt;
 internal static class FileHelper
 {
     public static readonly string[] SaveFilters =
-        ["Text Files (*.txt)|*.txt", "Perl Files (*.pl)|*.pl", "All Files (*.*)|*.*"];
+    [
+        "Text Files (*.txt)|*.txt",
+        "Perl Files (*.pl)|*.pl",
+        "JSON Files (*.json)|*.json",
+        "Markdown Files (*.md)|*.md",
+        "All Files (*.*)|*.*"
+    ];
 
     private static readonly Dictionary<string, string> FileTypeNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -111,20 +117,8 @@ internal static class FileHelper
     /// </summary>
     public static byte[] ReadTailVerifyBytes(string path, long fileSize)
     {
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
-            FileShare.ReadWrite | FileShare.Delete);
         int len = (int)Math.Min(VerifySnippetSize, fileSize);
-        long seekPos = fileSize - len;
-        stream.Seek(seekPos, SeekOrigin.Begin);
-        var buf = new byte[len];
-        int totalRead = 0;
-        while (totalRead < len)
-        {
-            int n = stream.Read(buf, totalRead, len - totalRead);
-            if (n == 0) break;
-            totalRead += n;
-        }
-        return buf.AsSpan(0, totalRead).ToArray();
+        return ReadBytesAt(path, fileSize - len, len);
     }
 
     /// <summary>
@@ -139,17 +133,29 @@ internal static class FileHelper
         if (stream.Length < previousSize) return false;
 
         int len = previousTailBytes.Length;
-        long seekPos = previousSize - len;
-        stream.Seek(seekPos, SeekOrigin.Begin);
-        var buf = new byte[len];
+        var buf = ReadBytesAt(stream, previousSize - len, len);
+        return buf.AsSpan().SequenceEqual(previousTailBytes);
+    }
+
+    private static byte[] ReadBytesAt(string path, long offset, int count)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+        return ReadBytesAt(stream, offset, count);
+    }
+
+    private static byte[] ReadBytesAt(FileStream stream, long offset, int count)
+    {
+        stream.Seek(offset, SeekOrigin.Begin);
+        var buf = new byte[count];
         int totalRead = 0;
-        while (totalRead < len)
+        while (totalRead < count)
         {
-            int n = stream.Read(buf, totalRead, len - totalRead);
+            int n = stream.Read(buf, totalRead, count - totalRead);
             if (n == 0) break;
             totalRead += n;
         }
-        return buf.AsSpan(0, totalRead).SequenceEqual(previousTailBytes);
+        return buf.AsSpan(0, totalRead).ToArray();
     }
 
     public static Encoding DetectEncoding(string path)

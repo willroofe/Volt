@@ -1,6 +1,5 @@
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Windows;
 using System.Windows.Media;
 
@@ -124,54 +123,42 @@ public class ThemeManager
     {
         var res = Application.Current.Resources;
         var c = _colorTheme.Chrome;
-        res["ThemeChromeBrush"] = ColorTheme.ParseBrush(c.TitleBar);
-        res["ThemeBorderBrush"] = ColorTheme.ParseBrush(c.Border);
-        res["ThemeContentBg"] = ColorTheme.ParseBrush(c.ContentBackground);
-        res["ThemeTextFg"] = ColorTheme.ParseBrush(c.TextForeground);
-        res["ThemeTextFgStrong"] = ColorTheme.ParseBrush(c.TextForegroundStrong);
-        res["ThemeTextFgMuted"] = ColorTheme.ParseBrush(c.TextForegroundMuted);
-        res["ThemeButtonFg"] = ColorTheme.ParseBrush(c.ButtonForeground);
-        res["ThemeButtonHover"] = ColorTheme.ParseBrush(c.ButtonHover);
-        res["ThemeMenuPopupBg"] = ColorTheme.ParseBrush(c.MenuPopupBackground);
-        res["ThemeMenuPopupBorder"] = ColorTheme.ParseBrush(c.MenuPopupBorder);
-        res["ThemeMenuItemHover"] = ColorTheme.ParseBrush(c.MenuItemHover);
-        res["ThemeNavBg"] = ColorTheme.ParseBrush(c.NavBackground);
-        res["ThemeNavActive"] = ColorTheme.ParseBrush(c.NavActive);
-        res["ThemeNavHover"] = ColorTheme.ParseBrush(c.NavHover);
-        res["ThemeScrollBg"] = ColorTheme.ParseBrush(c.ScrollBackground);
-        res["ThemeScrollThumb"] = ColorTheme.ParseBrush(c.ScrollThumb);
-        res["ThemeScrollThumbHover"] = ColorTheme.ParseBrush(c.ScrollThumbHover);
-        res["ThemeTabBarBg"] = ColorTheme.ParseBrush(c.TabBarBackground);
-        res["ThemeTabActive"] = ColorTheme.ParseBrush(c.TabActive);
-        res["ThemeTabInactive"] = ColorTheme.ParseBrush(c.TabInactive);
-        res["ThemeTabHover"] = ColorTheme.ParseBrush(c.TabHover);
-        res["ThemeTabBorder"] = ColorTheme.ParseBrush(c.TabBorder);
-        res["ThemeExplorerBg"] = ColorTheme.ParseBrush(c.ExplorerBackground);
-        res["ThemeExplorerHeaderBg"] = ColorTheme.ParseBrush(c.ExplorerHeaderBackground);
-        res["ThemeExplorerHeaderFg"] = ColorTheme.ParseBrush(c.ExplorerHeaderForeground);
-        res["ThemeExplorerItemHover"] = ColorTheme.ParseBrush(c.ExplorerItemHover);
-        res["ThemeExplorerItemSelected"] = ColorTheme.ParseBrush(c.ExplorerItemSelected);
+        res[ThemeResourceKeys.ChromeBrush] = ColorTheme.ParseBrush(c.TitleBar);
+        res[ThemeResourceKeys.BorderBrush] = ColorTheme.ParseBrush(c.Border);
+        res[ThemeResourceKeys.ContentBg] = ColorTheme.ParseBrush(c.ContentBackground);
+        res[ThemeResourceKeys.TextFg] = ColorTheme.ParseBrush(c.TextForeground);
+        res[ThemeResourceKeys.TextFgStrong] = ColorTheme.ParseBrush(c.TextForegroundStrong);
+        res[ThemeResourceKeys.TextFgMuted] = ColorTheme.ParseBrush(c.TextForegroundMuted);
+        res[ThemeResourceKeys.ButtonFg] = ColorTheme.ParseBrush(c.ButtonForeground);
+        res[ThemeResourceKeys.ButtonHover] = ColorTheme.ParseBrush(c.ButtonHover);
+        res[ThemeResourceKeys.MenuPopupBg] = ColorTheme.ParseBrush(c.MenuPopupBackground);
+        res[ThemeResourceKeys.MenuPopupBorder] = ColorTheme.ParseBrush(c.MenuPopupBorder);
+        res[ThemeResourceKeys.MenuItemHover] = ColorTheme.ParseBrush(c.MenuItemHover);
+        res[ThemeResourceKeys.NavBg] = ColorTheme.ParseBrush(c.NavBackground);
+        res[ThemeResourceKeys.NavActive] = ColorTheme.ParseBrush(c.NavActive);
+        res[ThemeResourceKeys.NavHover] = ColorTheme.ParseBrush(c.NavHover);
+        res[ThemeResourceKeys.ScrollBg] = ColorTheme.ParseBrush(c.ScrollBackground);
+        res[ThemeResourceKeys.ScrollThumb] = ColorTheme.ParseBrush(c.ScrollThumb);
+        res[ThemeResourceKeys.ScrollThumbHover] = ColorTheme.ParseBrush(c.ScrollThumbHover);
+        res[ThemeResourceKeys.TabBarBg] = ColorTheme.ParseBrush(c.TabBarBackground);
+        res[ThemeResourceKeys.TabActive] = ColorTheme.ParseBrush(c.TabActive);
+        res[ThemeResourceKeys.TabInactive] = ColorTheme.ParseBrush(c.TabInactive);
+        res[ThemeResourceKeys.TabHover] = ColorTheme.ParseBrush(c.TabHover);
+        res[ThemeResourceKeys.TabBorder] = ColorTheme.ParseBrush(c.TabBorder);
+        res[ThemeResourceKeys.ExplorerBg] = ColorTheme.ParseBrush(c.ExplorerBackground);
+        res[ThemeResourceKeys.ExplorerHeaderBg] = ColorTheme.ParseBrush(c.ExplorerHeaderBackground);
+        res[ThemeResourceKeys.ExplorerHeaderFg] = ColorTheme.ParseBrush(c.ExplorerHeaderForeground);
+        res[ThemeResourceKeys.ExplorerItemHover] = ColorTheme.ParseBrush(c.ExplorerItemHover);
+        res[ThemeResourceKeys.ExplorerItemSelected] = ColorTheme.ParseBrush(c.ExplorerItemSelected);
     }
 
     private void EnsureDefaultThemes()
     {
         try
         {
-            Directory.CreateDirectory(_themesDir);
-            WriteEmbeddedResource("Volt.Resources.Themes.default-dark.json", Path.Combine(_themesDir, "default-dark.json"));
-            WriteEmbeddedResource("Volt.Resources.Themes.default-light.json", Path.Combine(_themesDir, "default-light.json"));
-            WriteEmbeddedResource("Volt.Resources.Themes.gruvbox-dark.json", Path.Combine(_themesDir, "gruvbox-dark.json"));
+            EmbeddedResourceHelper.ExtractAll("Volt.Resources.Themes.", _themesDir);
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
-    }
-
-    private static void WriteEmbeddedResource(string resourceName, string targetPath)
-    {
-        // Always overwrite built-in themes so embedded fixes take effect
-        using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName);
-        if (stream == null) return;
-        using var reader = new StreamReader(stream);
-        File.WriteAllText(targetPath, reader.ReadToEnd());
     }
 }
