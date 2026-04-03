@@ -25,7 +25,7 @@
             </Border.Effect>
             <StackPanel>
                 <!-- Input area -->
-                <Border Background="{DynamicResource ThemeContentBg}">
+                <Border Background="{DynamicResource ThemeContentBg}" CornerRadius="6,6,0,0">
                     <DockPanel Margin="10,8,10,8">
                         <TextBlock x:Name="_filterPrefix"
                                    DockPanel.Dock="Left"
