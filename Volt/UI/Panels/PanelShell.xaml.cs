@@ -7,6 +7,8 @@ namespace Volt;
 public partial class PanelShell : UserControl
 {
     private readonly Dictionary<string, PanelRegistration> _panels = new(StringComparer.OrdinalIgnoreCase);
+    private string? _draggingPanelId;
+    private PanelPlacement? _highlightedZone;
 
     public static readonly DependencyProperty CenterContentProperty =
         DependencyProperty.Register(nameof(CenterContent), typeof(UIElement), typeof(PanelShell));
@@ -34,7 +36,9 @@ public partial class PanelShell : UserControl
 
     public void RegisterPanel(IPanel panel, PanelPlacement placement, double defaultSize)
     {
-        var reg = new PanelRegistration(panel, placement, defaultSize);
+        var container = new PanelContainer(panel);
+        container.DragStarted += OnPanelDragStarted;
+        var reg = new PanelRegistration(panel, placement, defaultSize, container);
         _panels[panel.PanelId] = reg;
         PlacePanel(reg);
     }
@@ -128,7 +132,7 @@ public partial class PanelShell : UserControl
     private void PlacePanel(PanelRegistration reg)
     {
         var presenter = GetContentPresenter(reg.Placement);
-        presenter.Content = reg.Panel.Content;
+        presenter.Content = reg.Container;
     }
 
     private void ClearRegionContent(PanelPlacement placement)
@@ -248,9 +252,133 @@ public partial class PanelShell : UserControl
         }
     }
 
-    private class PanelRegistration(IPanel panel, PanelPlacement placement, double size)
+    private Border GetDropOverlay(PanelPlacement placement) => placement switch
+    {
+        PanelPlacement.Left => DropLeft,
+        PanelPlacement.Right => DropRight,
+        PanelPlacement.Top => DropTop,
+        PanelPlacement.Bottom => DropBottom,
+        _ => throw new ArgumentOutOfRangeException(nameof(placement))
+    };
+
+    private void OnPanelDragStarted(string panelId)
+    {
+        if (!_panels.TryGetValue(panelId, out var reg)) return;
+        if (!reg.IsVisible) return;
+
+        _draggingPanelId = panelId;
+        _highlightedZone = null;
+
+        // Show overlays (except the panel's current edge)
+        foreach (PanelPlacement p in Enum.GetValues<PanelPlacement>())
+        {
+            var overlay = GetDropOverlay(p);
+            if (p == reg.Placement)
+            {
+                overlay.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                overlay.Background = System.Windows.Media.Brushes.Transparent;
+                overlay.Visibility = Visibility.Visible;
+            }
+        }
+
+        CaptureMouse();
+        Cursor = System.Windows.Input.Cursors.SizeAll;
+    }
+
+    protected override void OnMouseMove(System.Windows.Input.MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        if (_draggingPanelId == null) return;
+
+        var pos = e.GetPosition(CenterPresenter);
+        var size = CenterPresenter.RenderSize;
+
+        PanelPlacement? zone = null;
+        const double edgeDepth = 40;
+
+        if (size.Width > 0 && size.Height > 0 &&
+            pos.X >= 0 && pos.X <= size.Width && pos.Y >= 0 && pos.Y <= size.Height)
+        {
+            if (pos.X < edgeDepth) zone = PanelPlacement.Left;
+            else if (pos.X > size.Width - edgeDepth) zone = PanelPlacement.Right;
+            else if (pos.Y < edgeDepth) zone = PanelPlacement.Top;
+            else if (pos.Y > size.Height - edgeDepth) zone = PanelPlacement.Bottom;
+        }
+
+        // Exclude current placement
+        if (_panels.TryGetValue(_draggingPanelId, out var reg) && zone == reg.Placement)
+            zone = null;
+
+        if (zone != _highlightedZone)
+        {
+            if (_highlightedZone.HasValue)
+                GetDropOverlay(_highlightedZone.Value).Background = System.Windows.Media.Brushes.Transparent;
+
+            _highlightedZone = zone;
+            if (zone.HasValue)
+            {
+                var fg = (System.Windows.Media.Brush)Application.Current.Resources["ThemeTextFg"];
+                var highlight = fg.Clone();
+                highlight.Opacity = 0.2;
+                highlight.Freeze();
+                GetDropOverlay(zone.Value).Background = highlight;
+            }
+        }
+    }
+
+    protected override void OnMouseUp(System.Windows.Input.MouseButtonEventArgs e)
+    {
+        base.OnMouseUp(e);
+        if (_draggingPanelId == null) return;
+
+        var panelId = _draggingPanelId;
+        var target = _highlightedZone;
+
+        EndDrag();
+
+        if (target.HasValue)
+            MovePanel(panelId, target.Value);
+    }
+
+    protected override void OnKeyDown(System.Windows.Input.KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (_draggingPanelId != null && e.Key == System.Windows.Input.Key.Escape)
+        {
+            EndDrag();
+            e.Handled = true;
+        }
+    }
+
+    protected override void OnLostMouseCapture(System.Windows.Input.MouseEventArgs e)
+    {
+        base.OnLostMouseCapture(e);
+        if (_draggingPanelId != null)
+            EndDrag();
+    }
+
+    private void EndDrag()
+    {
+        _draggingPanelId = null;
+        _highlightedZone = null;
+        Cursor = null;
+        ReleaseMouseCapture();
+
+        foreach (PanelPlacement p in Enum.GetValues<PanelPlacement>())
+        {
+            var overlay = GetDropOverlay(p);
+            overlay.Background = System.Windows.Media.Brushes.Transparent;
+            overlay.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private class PanelRegistration(IPanel panel, PanelPlacement placement, double size, PanelContainer container)
     {
         public IPanel Panel { get; } = panel;
+        public PanelContainer Container { get; } = container;
         public PanelPlacement Placement { get; set; } = placement;
         public double Size { get; set; } = size;
         public bool IsVisible { get; set; }
