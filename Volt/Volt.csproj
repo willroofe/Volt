@@ -24,4 +24,8 @@
         <Resource Include="Resources\Volt.ico" />
     </ItemGroup>
 
+    <ItemGroup>
+        <InternalsVisibleTo Include="Volt.Tests" />
+    </ItemGroup>
+
 </Project>

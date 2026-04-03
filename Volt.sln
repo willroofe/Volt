@@ -4,6 +4,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Volt", "Volt\Volt.csproj", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Volt.Benchmarks", "Volt.Benchmarks\Volt.Benchmarks.csproj", "{6E7A48C7-D61B-4DA6-9F37-5D0762E6F49D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Volt.Tests", "Volt.Tests\Volt.Tests.csproj", "{77ED0328-FDFC-4D8E-8308-2A5AB453E699}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -38,6 +40,18 @@ Global
 		{6E7A48C7-D61B-4DA6-9F37-5D0762E6F49D}.Release|x64.Build.0 = Release|Any CPU
 		{6E7A48C7-D61B-4DA6-9F37-5D0762E6F49D}.Release|x86.ActiveCfg = Release|Any CPU
 		{6E7A48C7-D61B-4DA6-9F37-5D0762E6F49D}.Release|x86.Build.0 = Release|Any CPU
+		{77ED0328-FDFC-4D8E-8308-2A5AB453E699}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{77ED0328-FDFC-4D8E-8308-2A5AB453E699}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{77ED0328-FDFC-4D8E-8308-2A5AB453E699}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{77ED0328-FDFC-4D8E-8308-2A5AB453E699}.Debug|x64.Build.0 = Debug|Any CPU
+		{77ED0328-FDFC-4D8E-8308-2A5AB453E699}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{77ED0328-FDFC-4D8E-8308-2A5AB453E699}.Debug|x86.Build.0 = Debug|Any CPU
+		{77ED0328-FDFC-4D8E-8308-2A5AB453E699}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{77ED0328-FDFC-4D8E-8308-2A5AB453E699}.Release|Any CPU.Build.0 = Release|Any CPU
+		{77ED0328-FDFC-4D8E-8308-2A5AB453E699}.Release|x64.ActiveCfg = Release|Any CPU
+		{77ED0328-FDFC-4D8E-8308-2A5AB453E699}.Release|x64.Build.0 = Release|Any CPU
+		{77ED0328-FDFC-4D8E-8308-2A5AB453E699}.Release|x86.ActiveCfg = Release|Any CPU
+		{77ED0328-FDFC-4D8E-8308-2A5AB453E699}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
