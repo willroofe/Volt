@@ -5,7 +5,8 @@ namespace Volt;
 public record SettingsSnapshot(
     int TabSize, bool BlockCaret, int CaretBlinkMs,
     string FontFamily, double FontSize, string FontWeight,
-    double LineHeight, string ColorTheme, string FindBarPosition);
+    double LineHeight, string ColorTheme, string FindBarPosition,
+    bool FindSeedWithSelection);
 
 public partial class SettingsWindow : Window
 {
@@ -18,6 +19,7 @@ public partial class SettingsWindow : Window
     public string ColorThemeName { get; private set; }
     public double SelectedLineHeight { get; private set; }
     public string FindBarPosition { get; private set; }
+    public bool FindSeedWithSelection { get; private set; }
 
     private enum SettingsSection { Theme, Font, Caret, Find, Explorer }
 
@@ -46,6 +48,8 @@ public partial class SettingsWindow : Window
         CaretStyleBox.SelectedIndex = snapshot.BlockCaret ? 1 : 0;
         CaretBlinkSlider.Value = snapshot.CaretBlinkMs;
         FindBarPosBox.SelectedIndex = snapshot.FindBarPosition == "Top" ? 0 : 1;
+        FindSeedWithSelection = snapshot.FindSeedWithSelection;
+        FindSeedSelBox.SelectedIndex = snapshot.FindSeedWithSelection ? 0 : 1;
 
         // Populate font family dropdown
         _fontNames = FontManager.GetMonospaceFonts();
@@ -112,6 +116,7 @@ public partial class SettingsWindow : Window
         SelectedLineHeight = AppSettings.LineHeightOptions[Math.Max(0, LineHeightBox.SelectedIndex)];
         ColorThemeName = _themeNames[Math.Max(0, ColorThemeBox.SelectedIndex)];
         FindBarPosition = FindBarPosBox.SelectedIndex == 0 ? "Top" : "Bottom";
+        FindSeedWithSelection = FindSeedSelBox.SelectedIndex == 0;
     }
 
     private void OnApply(object sender, RoutedEventArgs e)

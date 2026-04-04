@@ -363,6 +363,7 @@ public partial class MainWindow
         foreach (var tab in _tabs)
             ApplySettingsToEditor(tab.Editor);
         FindBarControl.SetPosition(_settings.Editor.Find.BarPosition);
+        FindBarControl.SeedWithSelection = _settings.Editor.Find.SeedWithSelection;
         MenuWordWrap.IsChecked = _settings.Editor.WordWrap;
     }
 
@@ -1165,7 +1166,8 @@ public partial class MainWindow
         var snapshot = new SettingsSnapshot(
             editor.TabSize, _settings.Editor.Caret.BlockCaret, _settings.Editor.Caret.BlinkMs,
             editor.FontFamilyName, editor.EditorFontSize, editor.EditorFontWeight,
-            editor.LineHeightMultiplier, _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition);
+            editor.LineHeightMultiplier, _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition,
+            _settings.Editor.Find.SeedWithSelection);
         var dlg = new SettingsWindow(ThemeManager, snapshot) { Owner = this };
         dlg.Applied += (_, _) => ApplySettingsFromDialog(dlg);
         if (dlg.ShowDialog() == true)
@@ -1183,6 +1185,7 @@ public partial class MainWindow
         _settings.Editor.Font.LineHeight = dlg.SelectedLineHeight;
         _settings.Application.ColorTheme = dlg.ColorThemeName;
         _settings.Editor.Find.BarPosition = dlg.FindBarPosition;
+        _settings.Editor.Find.SeedWithSelection = dlg.FindSeedWithSelection;
         _settings.Save();
         ApplySettings();
         ThemeManager.Apply(dlg.ColorThemeName);
