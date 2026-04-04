@@ -14,4 +14,5 @@ public class RegionState
 {
     public PanelPlacement Placement { get; set; }
     public double Size { get; set; }
+    public bool Visible { get; set; }
 }

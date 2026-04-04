@@ -78,10 +78,19 @@ public partial class PanelShell : UserControl
     {
         if (!_panels.TryGetValue(panelId, out var reg)) return;
         if (!reg.IsVisible) return;
+
+        // Capture actual region size BEFORE any visual changes
+        SyncRegionSizes();
+
         reg.IsVisible = false;
 
         var region = _regions[reg.Placement];
         region.RemovePanel(panelId);
+
+        // Auto-collapse the region if no visible panels remain
+        bool anyVisible = _panels.Values.Any(r => r.Placement == reg.Placement && r.IsVisible);
+        if (!anyVisible)
+            CollapseRegion(reg.Placement);
 
         PanelLayoutChanged?.Invoke(panelId, reg.Placement, GetRegionSize(reg.Placement));
     }
@@ -161,7 +170,6 @@ public partial class PanelShell : UserControl
         foreach (var config in sorted)
         {
             if (!_panels.TryGetValue(config.PanelId, out var reg)) continue;
-
             // Update placement if changed
             reg.Placement = config.Placement;
             _regionSizes[config.Placement] = Math.Max(config.Size, GetMinSize(config.Placement));
@@ -185,13 +193,14 @@ public partial class PanelShell : UserControl
         foreach (var state in openRegions)
         {
             _regionSizes[state.Placement] = Math.Max(state.Size, GetMinSize(state.Placement));
-            if (!IsRegionVisible(state.Placement))
+            if (state.Visible && !IsRegionVisible(state.Placement))
                 ShowRegion(state.Placement);
         }
     }
 
     public List<PanelSlotConfig> GetCurrentLayout()
     {
+        SyncRegionSizes();
         var result = new List<PanelSlotConfig>();
         foreach (var reg in _panels.Values)
         {
@@ -211,9 +220,9 @@ public partial class PanelShell : UserControl
 
     public List<RegionState> GetOpenRegions()
     {
+        SyncRegionSizes();
         return Enum.GetValues<PanelPlacement>()
-            .Where(IsRegionVisible)
-            .Select(p => new RegionState { Placement = p, Size = _regionSizes[p] })
+            .Select(p => new RegionState { Placement = p, Size = _regionSizes[p], Visible = IsRegionVisible(p) })
             .ToList();
     }
 
@@ -253,6 +262,24 @@ public partial class PanelShell : UserControl
     private double GetRegionSize(PanelPlacement placement)
     {
         return _regionSizes[placement];
+    }
+
+    private void SyncRegionSizes()
+    {
+        foreach (PanelPlacement p in Enum.GetValues<PanelPlacement>())
+        {
+            if (!IsRegionVisible(p)) continue;
+            double actual = p switch
+            {
+                PanelPlacement.Left => LeftCol.ActualWidth,
+                PanelPlacement.Right => RightCol.ActualWidth,
+                PanelPlacement.Top => TopRow.ActualHeight,
+                PanelPlacement.Bottom => BottomRow.ActualHeight,
+                _ => 0
+            };
+            if (actual > 0)
+                _regionSizes[p] = actual;
+        }
     }
 
     private ContentPresenter GetContentPresenter(PanelPlacement placement) => placement switch
@@ -352,6 +379,7 @@ public partial class PanelShell : UserControl
 
     private void CollapseRegionPanels(PanelPlacement placement)
     {
+        SyncRegionSizes();
         var panelsInRegion = _panels.Values.Where(r => r.Placement == placement && r.IsVisible).ToList();
         foreach (var reg in panelsInRegion)
         {
