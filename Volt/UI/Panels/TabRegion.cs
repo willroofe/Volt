@@ -148,7 +148,7 @@ public partial class TabRegion : UserControl
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth = 120
         };
-        textBlock.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.ExplorerHeaderFg);
+        textBlock.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFg);
 
         var closeBtn = new Button
         {
