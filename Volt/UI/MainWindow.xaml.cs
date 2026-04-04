@@ -1,5 +1,4 @@
 ﻿using System.IO;
-using System.Linq;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -10,7 +9,7 @@ using Microsoft.Win32;
 
 namespace Volt;
 
-public partial class MainWindow : Window
+public partial class MainWindow
 {
     private readonly List<TabInfo> _tabs = [];
     private TabInfo? _activeTab;
@@ -19,7 +18,7 @@ public partial class MainWindow : Window
     private readonly SessionManager _sessionManager = new();
 
     private readonly TabHeaderFactory _tabHeaderFactory = new();
-    private readonly FileExplorerPanel ExplorerPanel = new();
+    private readonly FileExplorerPanel _explorerPanel = new();
 
     private EditorControl? Editor => _activeTab?.Editor;
 
@@ -61,16 +60,16 @@ public partial class MainWindow : Window
         RestoreWindowPosition();
 
         // Register explorer panel with shell
-        Shell.RegisterPanel(ExplorerPanel, PanelPlacement.Left, 250);
+        Shell.RegisterPanel(_explorerPanel, PanelPlacement.Left, 250);
         RestorePanelLayout();
         SyncViewMenuChecks();
 
-        if (ExplorerPanel.OpenFolderPath == null &&
+        if (_explorerPanel.OpenFolderPath == null &&
             _settings.Editor.Explorer.OpenFolderPath is string folderPath && Directory.Exists(folderPath))
         {
-            ExplorerPanel.OpenFolder(folderPath);
+            _explorerPanel.OpenFolder(folderPath);
             if (_settings.Editor.Explorer.ExpandedPaths.Count > 0)
-                ExplorerPanel.RestoreExpandedPaths(_settings.Editor.Explorer.ExpandedPaths);
+                _explorerPanel.RestoreExpandedPaths(_settings.Editor.Explorer.ExpandedPaths);
         }
 
         CmdPalette.Closed += (_, _) => { if (Editor is { } ed) Keyboard.Focus(ed); };
@@ -80,13 +79,13 @@ public partial class MainWindow : Window
         Closing += OnWindowClosing;
         Activated += (_, _) => CheckAllTabsForExternalChanges();
         ThemeManager.ThemeChanged += (_, _) => { ApplyDwmTheme(); UpdateTabOverflowBrushes(); };
-        ExplorerPanel.FileOpenRequested += OnExplorerFileOpen;
-        ExplorerPanel.SetWorkspaceManager(_workspaceManager);
-        ExplorerPanel.AddFolderRequested += OnWorkspaceAddFolder;
-        ExplorerPanel.RemoveFolderRequested += OnWorkspaceRemoveFolder;
-        ExplorerPanel.CloseWorkspaceRequested += CloseCurrentWorkspace;
-        ExplorerPanel.FileRenamed += OnExplorerFileRenamed;
-        ExplorerPanel.FileDeleted += OnExplorerFileDeleted;
+        _explorerPanel.FileOpenRequested += OnExplorerFileOpen;
+        _explorerPanel.SetWorkspaceManager(_workspaceManager);
+        _explorerPanel.AddFolderRequested += OnWorkspaceAddFolder;
+        _explorerPanel.RemoveFolderRequested += OnWorkspaceRemoveFolder;
+        _explorerPanel.CloseWorkspaceRequested += CloseCurrentWorkspace;
+        _explorerPanel.FileRenamed += OnExplorerFileRenamed;
+        _explorerPanel.FileDeleted += OnExplorerFileDeleted;
         Shell.PanelLayoutChanged += OnPanelLayoutChanged;
         SourceInitialized += (_, _) =>
         {
@@ -141,7 +140,7 @@ public partial class MainWindow : Window
         UpdateCaretPos();
         UpdateAllTabHeaders();
         BringTabIntoView(tab);
-        ExplorerPanel.SelectFile(tab.FilePath);
+        _explorerPanel.SelectFile(tab.FilePath);
 
         Keyboard.Focus(tab.Editor);
     }
@@ -421,16 +420,16 @@ public partial class MainWindow : Window
     private void SwitchToFolder(string newFolderPath)
     {
         // Save current folder's tabs before switching
-        var currentFolder = ExplorerPanel.OpenFolderPath;
+        var currentFolder = _explorerPanel.OpenFolderPath;
         if (currentFolder != null)
         {
             SaveFolderSession(currentFolder);
-            _settings.Editor.Explorer.ExpandedPaths = ExplorerPanel.GetExpandedPaths();
+            _settings.Editor.Explorer.ExpandedPaths = _explorerPanel.GetExpandedPaths();
         }
 
         CloseAllTabs();
 
-        ExplorerPanel.OpenFolder(newFolderPath);
+        _explorerPanel.OpenFolder(newFolderPath);
         _settings.Editor.Explorer.OpenFolderPath = newFolderPath;
         Shell.ShowPanel("file-explorer");
 
@@ -441,12 +440,12 @@ public partial class MainWindow : Window
 
     private void CloseFolderInExplorer()
     {
-        var folderPath = ExplorerPanel.OpenFolderPath;
+        var folderPath = _explorerPanel.OpenFolderPath;
         if (folderPath != null)
             SaveFolderSession(folderPath);
 
         CloseAllTabs();
-        ExplorerPanel.CloseFolder();
+        _explorerPanel.CloseFolder();
         Shell.HidePanel("file-explorer");
         _settings.Editor.Explorer.OpenFolderPath = null;
         _settings.Editor.Explorer.ExpandedPaths.Clear();
@@ -564,7 +563,7 @@ public partial class MainWindow : Window
 
             if (_workspaceManager.CurrentWorkspace!.Folders.Count > 0)
             {
-                ExplorerPanel.OpenWorkspace(_workspaceManager.CurrentWorkspace);
+                _explorerPanel.OpenWorkspace(_workspaceManager.CurrentWorkspace);
                 Shell.ShowPanel("file-explorer");
                 UpdateWorkspaceMenuState(true);
 
@@ -666,7 +665,7 @@ public partial class MainWindow : Window
 
     private void SaveSession()
     {
-        var folderPath = ExplorerPanel.OpenFolderPath;
+        var folderPath = _explorerPanel.OpenFolderPath;
         if (folderPath != null)
         {
             SaveFolderSession(folderPath);
@@ -849,7 +848,7 @@ public partial class MainWindow : Window
         }
 
         _settings.WindowMaximized = WindowState == WindowState.Maximized;
-        _settings.Editor.Explorer.ExpandedPaths = ExplorerPanel.GetExpandedPaths();
+        _settings.Editor.Explorer.ExpandedPaths = _explorerPanel.GetExpandedPaths();
         _settings.Editor.PanelLayouts = Shell.GetCurrentLayout();
         _settings.Editor.OpenRegions = Shell.GetOpenRegions();
         _settings.Save();
@@ -857,7 +856,7 @@ public partial class MainWindow : Window
         foreach (var tab in _tabs)
             tab.StopWatching();
 
-        ExplorerPanel.FlushAllStagedDeletes();
+        _explorerPanel.FlushAllStagedDeletes();
     }
 
     private void UpdateCaretPos()
@@ -1292,7 +1291,7 @@ public partial class MainWindow : Window
             if (!PromptCloseUnsavedWorkspace()) return;
             CloseCurrentWorkspace();
         }
-        else if (ExplorerPanel.OpenFolderPath != null)
+        else if (_explorerPanel.OpenFolderPath != null)
             CloseFolderInExplorer();
 
         CloseAllTabs();
@@ -1301,7 +1300,7 @@ public partial class MainWindow : Window
         _workspaceManager.CurrentWorkspace!.FilePath = dlg.FileName;
         _workspaceManager.SaveWorkspace();
 
-        ExplorerPanel.OpenWorkspace(_workspaceManager.CurrentWorkspace);
+        _explorerPanel.OpenWorkspace(_workspaceManager.CurrentWorkspace);
         Shell.ShowPanel("file-explorer");
         UpdateWorkspaceMenuState(true);
 
@@ -1338,13 +1337,13 @@ public partial class MainWindow : Window
         if (_workspaceManager.CurrentWorkspace == null)
         {
             // Auto-create unsaved workspace from current folder (if any) + new folder
-            var currentFolder = ExplorerPanel.OpenFolderPath;
+            var currentFolder = _explorerPanel.OpenFolderPath;
 
             // Save current folder session before switching
             if (currentFolder != null)
             {
                 SaveFolderSession(currentFolder);
-                _settings.Editor.Explorer.ExpandedPaths = ExplorerPanel.GetExpandedPaths();
+                _settings.Editor.Explorer.ExpandedPaths = _explorerPanel.GetExpandedPaths();
             }
 
             _workspaceManager.NewWorkspace("Untitled Workspace");
@@ -1361,7 +1360,7 @@ public partial class MainWindow : Window
         if (_workspaceManager.CurrentWorkspace!.FilePath != null)
             _workspaceManager.SaveWorkspace();
 
-        ExplorerPanel.OpenWorkspace(_workspaceManager.CurrentWorkspace);
+        _explorerPanel.OpenWorkspace(_workspaceManager.CurrentWorkspace);
         Shell.ShowPanel("file-explorer");
         UpdateWorkspaceMenuState(true);
         _settings.Save();
@@ -1384,7 +1383,7 @@ public partial class MainWindow : Window
             if (!PromptCloseUnsavedWorkspace()) return;
             CloseCurrentWorkspace();
         }
-        else if (ExplorerPanel.OpenFolderPath != null)
+        else if (_explorerPanel.OpenFolderPath != null)
             CloseFolderInExplorer();
 
         if (!PromptSaveDirtyTabs()) return;
@@ -1392,9 +1391,9 @@ public partial class MainWindow : Window
 
         var workspace = _workspaceManager.OpenWorkspace(workspacePath);
 
-        ExplorerPanel.OpenWorkspace(workspace);
+        _explorerPanel.OpenWorkspace(workspace);
         if (workspace.Session.ExpandedPaths.Count > 0)
-            ExplorerPanel.RestoreExpandedPaths(workspace.Session.ExpandedPaths);
+            _explorerPanel.RestoreExpandedPaths(workspace.Session.ExpandedPaths);
         Shell.ShowPanel("file-explorer");
         UpdateWorkspaceMenuState(true);
 
@@ -1413,7 +1412,7 @@ public partial class MainWindow : Window
             _workspaceManager.SaveWorkspace();
         _workspaceManager.CloseWorkspace();
 
-        ExplorerPanel.CloseWorkspace();
+        _explorerPanel.CloseWorkspace();
         UpdateWorkspaceMenuState(false);
 
         _settings.LastOpenWorkspacePath = null;
@@ -1518,7 +1517,7 @@ public partial class MainWindow : Window
         {
             Tabs = sessionTabs,
             ActiveTabIndex = activeIdx,
-            ExpandedPaths = ExplorerPanel.GetExpandedPaths()
+            ExpandedPaths = _explorerPanel.GetExpandedPaths()
         };
     }
 
@@ -1588,7 +1587,7 @@ public partial class MainWindow : Window
         _workspaceManager.AddFolder(dlg.SelectedPath);
         if (_workspaceManager.CurrentWorkspace?.FilePath != null)
             _workspaceManager.SaveWorkspace();
-        ExplorerPanel.RefreshWorkspaceTree();
+        _explorerPanel.RefreshWorkspaceTree();
     }
 
     private void OnWorkspaceRemoveFolder(string path)
@@ -1596,6 +1595,6 @@ public partial class MainWindow : Window
         _workspaceManager.RemoveFolder(path);
         if (_workspaceManager.CurrentWorkspace?.FilePath != null)
             _workspaceManager.SaveWorkspace();
-        ExplorerPanel.RefreshWorkspaceTree();
+        _explorerPanel.RefreshWorkspaceTree();
     }
 }
