@@ -569,12 +569,24 @@ public partial class MainWindow
             if (_workspaceManager.CurrentWorkspace!.Folders.Count > 0)
             {
                 _explorerPanel.OpenWorkspace(_workspaceManager.CurrentWorkspace);
+                if (_settings.UnsavedWorkspaceSession is { } ws)
+                {
+                    if (ws.ExpandedPaths.Count > 0)
+                        _explorerPanel.RestoreExpandedPaths(ws.ExpandedPaths);
+                    _workspaceManager.CurrentWorkspace.Session = ws;
+                }
                 Shell.ShowPanel("file-explorer");
                 UpdateWorkspaceMenuState(true);
 
-                // Create a default tab (unsaved workspaces don't persist session to file)
-                CreateTab();
-                ActivateTab(_tabs[0]);
+                if (_settings.UnsavedWorkspaceSession is { Tabs.Count: > 0 })
+                {
+                    RestoreWorkspaceSession(_workspaceManager.CurrentWorkspace);
+                }
+                else
+                {
+                    CreateTab();
+                    ActivateTab(_tabs[0]);
+                }
                 return;
             }
 
@@ -748,6 +760,7 @@ public partial class MainWindow
                 {
                     // Persist unsaved workspace folders and session for restore on next launch
                     _settings.UnsavedWorkspaceFolders = [.. _workspaceManager.CurrentWorkspace.Folders];
+                    _settings.UnsavedWorkspaceSession = _workspaceManager.CurrentWorkspace.Session;
                     _settings.LastOpenWorkspacePath = null;
                 }
             }
@@ -1367,6 +1380,7 @@ public partial class MainWindow
 
         _settings.LastOpenWorkspacePath = null;
         _settings.UnsavedWorkspaceFolders = null;
+        _settings.UnsavedWorkspaceSession = null;
         _settings.Save();
 
         CloseAllTabs();

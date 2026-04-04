@@ -141,6 +141,7 @@ public class AppSettings
     public bool WindowMaximized { get; set; }
     public string? LastOpenWorkspacePath { get; set; }
     public List<string>? UnsavedWorkspaceFolders { get; set; }
+    public WorkspaceSession? UnsavedWorkspaceSession { get; set; }
     public SessionSettings Session { get; set; } = new();
     public Dictionary<string, SessionSettings> FolderSessions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
