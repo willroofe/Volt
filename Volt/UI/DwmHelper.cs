@@ -28,6 +28,7 @@ internal static class DwmHelper
         bool isDark = (0.299 * c.R + 0.587 * c.G + 0.114 * c.B) < 128;
 
         int darkMode = isDark ? 1 : 0;
+        // HRESULT intentionally ignored — cosmetic-only, fails gracefully on older Windows
         DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
 
         var chromeBrush = Application.Current.Resources[ThemeResourceKeys.ChromeBrush] as SolidColorBrush;
@@ -35,6 +36,7 @@ internal static class DwmHelper
         {
             var cc = chromeBrush.Color;
             int captionRef = cc.R | (cc.G << 8) | (cc.B << 16);
+            // HRESULT intentionally ignored — cosmetic-only, fails gracefully on older Windows
             DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, ref captionRef, sizeof(int));
         }
 
@@ -43,6 +45,7 @@ internal static class DwmHelper
         {
             var bc = borderBrush.Color;
             int borderRef = bc.R | (bc.G << 8) | (bc.B << 16);
+            // HRESULT intentionally ignored — cosmetic-only, fails gracefully on older Windows
             DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, ref borderRef, sizeof(int));
         }
     }

@@ -5,17 +5,10 @@ namespace Volt.Tests;
 
 public class SelectionManagerTests
 {
-    private static TextBuffer MakeBuffer(string content)
-    {
-        var buf = new TextBuffer();
-        buf.SetContent(content, tabSize: 4);
-        return buf;
-    }
-
     [Fact]
     public void GetSelectedText_SingleLine()
     {
-        var buf = MakeBuffer("hello world");
+        var buf = TestHelpers.MakeBuffer("hello world");
         var sel = new SelectionManager();
         sel.AnchorLine = 0;
         sel.AnchorCol = 6;
@@ -28,7 +21,7 @@ public class SelectionManagerTests
     [Fact]
     public void GetSelectedText_MultiLine()
     {
-        var buf = MakeBuffer("hello\nbeautiful\nworld");
+        var buf = TestHelpers.MakeBuffer("hello\nbeautiful\nworld");
         var sel = new SelectionManager();
         sel.AnchorLine = 0;
         sel.AnchorCol = 2;
@@ -42,7 +35,7 @@ public class SelectionManagerTests
     [Fact]
     public void GetSelectedText_BackwardSelection()
     {
-        var buf = MakeBuffer("abcdef");
+        var buf = TestHelpers.MakeBuffer("abcdef");
         var sel = new SelectionManager();
         sel.AnchorLine = 0;
         sel.AnchorCol = 5;
@@ -56,7 +49,7 @@ public class SelectionManagerTests
     [Fact]
     public void GetSelectedText_NoSelection_ReturnsEmpty()
     {
-        var buf = MakeBuffer("hello");
+        var buf = TestHelpers.MakeBuffer("hello");
         var sel = new SelectionManager();
 
         var text = sel.GetSelectedText(buf, caretLine: 0, caretCol: 3);
@@ -66,7 +59,7 @@ public class SelectionManagerTests
     [Fact]
     public void DeleteSelection_SingleLine()
     {
-        var buf = MakeBuffer("hello world");
+        var buf = TestHelpers.MakeBuffer("hello world");
         var sel = new SelectionManager();
         sel.AnchorLine = 0;
         sel.AnchorCol = 5;
@@ -83,7 +76,7 @@ public class SelectionManagerTests
     [Fact]
     public void DeleteSelection_MultiLine()
     {
-        var buf = MakeBuffer("aaa\nbbb\nccc");
+        var buf = TestHelpers.MakeBuffer("aaa\nbbb\nccc");
         var sel = new SelectionManager();
         sel.AnchorLine = 0;
         sel.AnchorCol = 1;
@@ -100,7 +93,7 @@ public class SelectionManagerTests
     [Fact]
     public void DeleteSelection_NoSelection_DoesNothing()
     {
-        var buf = MakeBuffer("hello");
+        var buf = TestHelpers.MakeBuffer("hello");
         var sel = new SelectionManager();
 
         var (line, col) = sel.DeleteSelection(buf, caretLine: 0, caretCol: 3);
@@ -113,7 +106,7 @@ public class SelectionManagerTests
     [Fact]
     public void ClampToBuffer_ClampsOutOfRange()
     {
-        var buf = MakeBuffer("short");
+        var buf = TestHelpers.MakeBuffer("short");
         var sel = new SelectionManager();
         sel.AnchorLine = 99;
         sel.AnchorCol = 99;

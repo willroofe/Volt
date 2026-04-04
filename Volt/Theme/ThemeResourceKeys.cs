@@ -35,4 +35,5 @@ internal static class ThemeResourceKeys
     public const string ExplorerItemSelected = "ThemeExplorerItemSelected";
     public const string ExplorerDropTarget = "ThemeExplorerDropTarget";
     public const string InputSelection = "ThemeInputSelection";
+    public const string OverlayBg = "ThemeOverlayBg";
 }

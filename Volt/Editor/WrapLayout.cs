@@ -37,7 +37,8 @@ internal class WrapLayout
 
         int count = buffer.Count;
         if (_wrapLineCount == null || _wrapLineCount.Length < count
-            || _wrapCumulOffset == null || _wrapCumulOffset.Length < count)
+            || _wrapCumulOffset == null || _wrapCumulOffset.Length < count
+            || _wrapLineCount.Length > count * 2) // shrink if oversized
         {
             _wrapLineCount = new int[count];
             _wrapCumulOffset = new int[count];

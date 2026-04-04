@@ -85,15 +85,32 @@ internal class TabHeaderFactory
         {
             if (_dragTab == tab)
             {
+                // Capture state before ReleaseMouseCapture, which fires
+                // LostMouseCapture synchronously and clears drag state.
+                bool wasDragging = _isTabDragging;
+                int targetIndex = _dragTargetIndex;
                 header.ReleaseMouseCapture();
-                if (_isTabDragging)
+                if (wasDragging)
                 {
                     header.Opacity = 1.0;
                     HideDragGhost();
                     dropIndicator.Visibility = Visibility.Collapsed;
-                    if (_dragTargetIndex >= 0)
-                        TabReordered?.Invoke(tab, _dragTargetIndex);
+                    if (targetIndex >= 0)
+                        TabReordered?.Invoke(tab, targetIndex);
                 }
+                _dragTab = null;
+                _isTabDragging = false;
+                _dragTargetIndex = -1;
+            }
+        };
+
+        header.LostMouseCapture += (_, _) =>
+        {
+            if (_dragTab == tab && _isTabDragging)
+            {
+                header.Opacity = 1.0;
+                HideDragGhost();
+                dropIndicator.Visibility = Visibility.Collapsed;
                 _dragTab = null;
                 _isTabDragging = false;
                 _dragTargetIndex = -1;

@@ -27,6 +27,9 @@ internal static class EmbeddedResourceHelper
             using var stream = asm.GetManifestResourceStream(name);
             if (stream == null) continue;
             using var reader = new StreamReader(stream);
+            // File.WriteAllText is acceptable here (non-atomic) because these files
+            // are re-extracted from embedded resources on every app startup, so a
+            // partial write due to a crash is self-healing on next launch.
             File.WriteAllText(destPath, reader.ReadToEnd());
         }
     }

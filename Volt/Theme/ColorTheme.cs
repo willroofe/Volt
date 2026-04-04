@@ -70,8 +70,15 @@ public class ColorTheme
     [JsonIgnore]
     private readonly Dictionary<string, SolidColorBrush> _brushCache = new();
 
-    public static SolidColorBrush ParseBrush(string hex)
+    public static SolidColorBrush ParseBrush(string? hex)
     {
+        if (string.IsNullOrEmpty(hex))
+        {
+            var fallback = new SolidColorBrush(Colors.Magenta);
+            fallback.Freeze();
+            return fallback;
+        }
+
         try
         {
             var color = (Color)ColorConverter.ConvertFromString(hex);

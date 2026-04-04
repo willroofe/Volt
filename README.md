@@ -53,9 +53,12 @@ dotnet run --project Volt/Volt.csproj
 
 ```
 Volt/
-  Editor/       Core editor: EditorControl, TextBuffer, UndoManager, SelectionManager, SyntaxManager
-  Theme/        ThemeManager, ColorTheme model
-  UI/           MainWindow, FindBar, CommandPalette, SettingsWindow
+  Editor/       Core editor: EditorControl, TextBuffer, UndoManager, SelectionManager, 
+                FontManager, FindManager, BracketMatcher, SyntaxManager, WrapLayout
+  Theme/        ThemeManager, ColorTheme, ThemeResourceKeys
+  UI/           MainWindow, FindBar, CommandPalette, SettingsWindow, FileExplorerPanel,
+                ExplorerTreeControl, TabHeaderFactory, SessionManager, WorkspaceManager
+  UI/Panels/    PanelShell, TabRegion, PanelContainer, IPanel
   Resources/    Embedded default themes and grammars (JSON)
 ```
 

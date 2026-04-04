@@ -6,7 +6,7 @@ using System.Windows.Threading;
 
 namespace Volt;
 
-public class TabInfo : IDisposable
+public class TabInfo
 {
     private const int DebounceMsec = 200;
 
@@ -101,9 +101,4 @@ public class TabInfo : IDisposable
         });
     }
 
-    public void Dispose()
-    {
-        StopWatching();
-        GC.SuppressFinalize(this);
-    }
 }

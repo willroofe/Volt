@@ -56,7 +56,7 @@ public partial class PanelShell : UserControl
     public void RegisterPanel(IPanel panel, PanelPlacement placement, double defaultSize)
     {
         var container = new PanelContainer(panel);
-        var reg = new PanelRegistration(panel, placement, defaultSize, container);
+        var reg = new PanelRegistration(panel, placement, container);
         _panels[panel.PanelId] = reg;
         _regionSizes[placement] = Math.Max(_regionSizes[placement], defaultSize);
     }
@@ -103,24 +103,7 @@ public partial class PanelShell : UserControl
     {
         if (IsRegionVisible(placement))
         {
-            // Collapse: hide all panels in this region, remember which ones for restore
-            var panelsInRegion = _panels.Values.Where(r => r.Placement == placement && r.IsVisible).ToList();
-            foreach (var reg in panelsInRegion)
-            {
-                _collapsedByToggle.Add(reg.Panel.PanelId);
-                reg.IsVisible = false;
-                _regions[placement].RemovePanel(reg.Panel.PanelId);
-            }
-            CollapseRegion(placement);
-            if (panelsInRegion.Count > 0)
-            {
-                foreach (var reg in panelsInRegion)
-                    PanelLayoutChanged?.Invoke(reg.Panel.PanelId, reg.Placement, GetRegionSize(placement));
-            }
-            else
-            {
-                PanelLayoutChanged?.Invoke("", placement, GetRegionSize(placement));
-            }
+            CollapseRegionPanels(placement);
         }
         else
         {
@@ -296,22 +279,22 @@ public partial class PanelShell : UserControl
         {
             case PanelPlacement.Left:
                 LeftCol.MinWidth = size > 0 ? GetMinSize(placement) : 0;
-                LeftCol.MaxWidth = size > 0 ? GetMaxSize(placement) : double.PositiveInfinity;
+                LeftCol.MaxWidth = size > 0 ? GetMaxSize(placement) : 0;
                 LeftCol.Width = new GridLength(size);
                 break;
             case PanelPlacement.Right:
                 RightCol.MinWidth = size > 0 ? GetMinSize(placement) : 0;
-                RightCol.MaxWidth = size > 0 ? GetMaxSize(placement) : double.PositiveInfinity;
+                RightCol.MaxWidth = size > 0 ? GetMaxSize(placement) : 0;
                 RightCol.Width = new GridLength(size);
                 break;
             case PanelPlacement.Top:
                 TopRow.MinHeight = size > 0 ? GetMinSize(placement) : 0;
-                TopRow.MaxHeight = size > 0 ? GetMaxSize(placement) : double.PositiveInfinity;
+                TopRow.MaxHeight = size > 0 ? GetMaxSize(placement) : 0;
                 TopRow.Height = new GridLength(size);
                 break;
             case PanelPlacement.Bottom:
                 BottomRow.MinHeight = size > 0 ? GetMinSize(placement) : 0;
-                BottomRow.MaxHeight = size > 0 ? GetMaxSize(placement) : double.PositiveInfinity;
+                BottomRow.MaxHeight = size > 0 ? GetMaxSize(placement) : 0;
                 BottomRow.Height = new GridLength(size);
                 break;
         }
@@ -362,6 +345,26 @@ public partial class PanelShell : UserControl
         _ => 600
     };
 
+    private PanelPlacement GetPlacement(TabRegion region)
+    {
+        return _regions.First(kv => kv.Value == region).Key;
+    }
+
+    private void CollapseRegionPanels(PanelPlacement placement)
+    {
+        var panelsInRegion = _panels.Values.Where(r => r.Placement == placement && r.IsVisible).ToList();
+        foreach (var reg in panelsInRegion)
+        {
+            _collapsedByToggle.Add(reg.Panel.PanelId);
+            reg.IsVisible = false;
+            _regions[placement].RemovePanel(reg.Panel.PanelId);
+            PanelLayoutChanged?.Invoke(reg.Panel.PanelId, reg.Placement, GetRegionSize(placement));
+        }
+        CollapseRegion(placement);
+        if (panelsInRegion.Count == 0)
+            PanelLayoutChanged?.Invoke("", placement, GetRegionSize(placement));
+    }
+
     // --- Event handlers ---
 
     private void OnAddPanelRequested(TabRegion region)
@@ -369,7 +372,7 @@ public partial class PanelShell : UserControl
         var available = GetAvailablePanels();
         if (available.Count == 0) return;
 
-        var placement = _regions.First(kv => kv.Value == region).Key;
+        var placement = GetPlacement(region);
         var menu = ContextMenuHelper.Create();
         foreach (var panel in available)
         {
@@ -394,19 +397,7 @@ public partial class PanelShell : UserControl
 
     private void OnRegionCloseRequested(TabRegion region)
     {
-        var placement = _regions.First(kv => kv.Value == region).Key;
-        // Hide all panels in this region, remember them for restore, and collapse
-        var panelsInRegion = _panels.Values.Where(r => r.Placement == placement && r.IsVisible).ToList();
-        foreach (var reg in panelsInRegion)
-        {
-            _collapsedByToggle.Add(reg.Panel.PanelId);
-            reg.IsVisible = false;
-            region.RemovePanel(reg.Panel.PanelId);
-            PanelLayoutChanged?.Invoke(reg.Panel.PanelId, reg.Placement, GetRegionSize(placement));
-        }
-        CollapseRegion(placement);
-        if (panelsInRegion.Count == 0)
-            PanelLayoutChanged?.Invoke("", placement, GetRegionSize(placement));
+        CollapseRegionPanels(GetPlacement(region));
     }
 
     private void OnActiveTabChanged(string panelId)
@@ -535,7 +526,7 @@ public partial class PanelShell : UserControl
             _highlightedZone = zone;
             if (zone.HasValue)
             {
-                var fg = (System.Windows.Media.Brush)Application.Current.Resources["ThemeTextFg"];
+                var fg = (System.Windows.Media.Brush)Application.Current.Resources[ThemeResourceKeys.TextFg];
                 var highlight = fg.Clone();
                 highlight.Opacity = 0.2;
                 highlight.Freeze();
@@ -625,12 +616,11 @@ public partial class PanelShell : UserControl
         }
     }
 
-    private class PanelRegistration(IPanel panel, PanelPlacement placement, double size, PanelContainer container)
+    private class PanelRegistration(IPanel panel, PanelPlacement placement, PanelContainer container)
     {
         public IPanel Panel { get; } = panel;
         public PanelContainer Container { get; } = container;
         public PanelPlacement Placement { get; set; } = placement;
-        public double DefaultSize { get; } = size;
         public bool IsVisible { get; set; }
     }
 }

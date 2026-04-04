@@ -20,7 +20,7 @@ public class SyntaxManager
 
     private readonly List<SyntaxDefinition> _grammars = [];
     private Dictionary<string, SyntaxDefinition> _extensionMap = new(StringComparer.OrdinalIgnoreCase);
-    private bool[] _claimedBuf = [];
+    [ThreadStatic] private static bool[]? _claimedBuf;
 
     private bool _initialized;
 
@@ -59,7 +59,8 @@ public class SyntaxManager
         result = TryTokenizeHeredocContinuation(line, grammar, inState, ref outState);
         if (result != null) return result;
 
-        if (_claimedBuf.Length < line.Length)
+        _claimedBuf ??= new bool[Math.Max(line.Length, 256)];
+        if (_claimedBuf!.Length < line.Length)
             _claimedBuf = new bool[Math.Max(line.Length, 256)];
         else
             Array.Clear(_claimedBuf, 0, line.Length);
@@ -478,6 +479,11 @@ public class SyntaxManager
 
     private static List<SyntaxToken> ExpandInterpolation(List<SyntaxToken> tokens, string line, InterpolationDef interp)
     {
+        bool hasString = false;
+        foreach (var t in tokens)
+            if (t.Scope == "string" && t.Length >= 2) { hasString = true; break; }
+        if (!hasString) return tokens;
+
         var result = new List<SyntaxToken>(tokens.Count);
         foreach (var token in tokens)
         {

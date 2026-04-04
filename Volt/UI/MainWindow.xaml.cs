@@ -14,14 +14,14 @@ public partial class MainWindow : Window
 {
     private readonly List<TabInfo> _tabs = [];
     private TabInfo? _activeTab;
-    private AppSettings _settings;
+    private readonly AppSettings _settings;
     private readonly WorkspaceManager _workspaceManager = new();
     private readonly SessionManager _sessionManager = new();
 
     private readonly TabHeaderFactory _tabHeaderFactory = new();
     private readonly FileExplorerPanel ExplorerPanel = new();
 
-    private EditorControl Editor => _activeTab!.Editor;
+    private EditorControl? Editor => _activeTab?.Editor;
 
     private ThemeManager ThemeManager => App.Current.ThemeManager;
     private SyntaxManager SyntaxManager => App.Current.SyntaxManager;
@@ -73,8 +73,8 @@ public partial class MainWindow : Window
                 ExplorerPanel.RestoreExpandedPaths(_settings.Editor.Explorer.ExpandedPaths);
         }
 
-        CmdPalette.Closed += (_, _) => { if (_activeTab != null) Keyboard.Focus(Editor); };
-        FindBarControl.Closed += (_, _) => { if (_activeTab != null) Keyboard.Focus(Editor); };
+        CmdPalette.Closed += (_, _) => { if (Editor is { } ed) Keyboard.Focus(ed); };
+        FindBarControl.Closed += (_, _) => { if (Editor is { } ed) Keyboard.Focus(ed); };
         TabScrollViewer.ScrollChanged += (_, _) => UpdateTabOverflowIndicators();
         StateChanged += OnStateChanged;
         Closing += OnWindowClosing;
@@ -191,7 +191,11 @@ public partial class MainWindow : Window
     private void CloseTab(TabInfo tab)
     {
         if (tab.Editor.IsDirty && !PromptSaveTab(tab)) return;
+        RemoveTab(tab);
+    }
 
+    private void RemoveTab(TabInfo tab)
+    {
         int idx = _tabs.IndexOf(tab);
         _tabs.Remove(tab);
         TabStrip.Children.Remove(tab.HeaderElement);
@@ -393,11 +397,12 @@ public partial class MainWindow : Window
         _settings.Editor.PanelLayouts = Shell.GetCurrentLayout();
         _settings.Editor.OpenRegions = Shell.GetOpenRegions();
         _settings.Save();
+        SyncViewMenuChecks();
     }
 
     private void OpenFolderInExplorer()
     {
-        var dlg = new System.Windows.Forms.FolderBrowserDialog();
+        using var dlg = new System.Windows.Forms.FolderBrowserDialog();
         if (_settings.Editor.Explorer.OpenFolderPath is string prev && Directory.Exists(prev))
             dlg.SelectedPath = prev;
 
@@ -496,34 +501,7 @@ public partial class MainWindow : Window
             ForceCloseTab(tab);
     }
 
-    private void ForceCloseTab(TabInfo tab)
-    {
-        int idx = _tabs.IndexOf(tab);
-        _tabs.Remove(tab);
-        TabStrip.Children.Remove(tab.HeaderElement);
-
-        if (tab == _activeTab)
-        {
-            tab.Editor.DirtyChanged -= OnActiveDirtyChanged;
-            tab.Editor.CaretMoved -= OnActiveCaretMoved;
-            _activeTab = null;
-        }
-
-        tab.FileChangedExternally -= OnFileChangedExternally;
-        tab.StopWatching();
-        tab.Editor.ReleaseResources();
-
-        if (_tabs.Count == 0)
-        {
-            var newTab = CreateTab();
-            ActivateTab(newTab);
-        }
-        else if (_activeTab == null)
-        {
-            int nextIdx = Math.Min(idx, _tabs.Count - 1);
-            ActivateTab(_tabs[nextIdx]);
-        }
-    }
+    private void ForceCloseTab(TabInfo tab) => RemoveTab(tab);
 
     /// <summary>
     /// Opens a file in a tab, reusing an existing tab if already open.
@@ -884,9 +862,9 @@ public partial class MainWindow : Window
 
     private void UpdateCaretPos()
     {
-        if (_activeTab == null) return;
-        CaretPosText.Text = $"Ln {Editor.CaretLine + 1}, Col {Editor.CaretCol + 1}";
-        CharCountText.Text = $"{Editor.CharCount:N0} {(Editor.CharCount == 1 ? "Character" : "Characters")}";
+        if (Editor is not { } editor) return;
+        CaretPosText.Text = $"Ln {editor.CaretLine + 1}, Col {editor.CaretCol + 1}";
+        CharCountText.Text = $"{editor.CharCount:N0} {(editor.CharCount == 1 ? "Character" : "Characters")}";
     }
 
     private string GetEncodingLabel()
@@ -902,12 +880,12 @@ public partial class MainWindow : Window
 
     private void UpdateFileType()
     {
-        if (_activeTab == null) return;
-        var ext = _activeTab.FilePath != null ? Path.GetExtension(_activeTab.FilePath).ToLowerInvariant() : "";
-        Editor.SetGrammar(SyntaxManager.GetDefinition(ext));
+        if (Editor is not { } editor) return;
+        var ext = _activeTab!.FilePath != null ? Path.GetExtension(_activeTab.FilePath).ToLowerInvariant() : "";
+        editor.SetGrammar(SyntaxManager.GetDefinition(ext));
         FileTypeText.Text = FileHelper.GetFileTypeName(ext);
         EncodingText.Text = GetEncodingLabel();
-        LineEndingText.Text = Editor.LineEnding;
+        LineEndingText.Text = editor.LineEnding;
     }
 
     private void UpdateTitle()
@@ -1098,8 +1076,6 @@ public partial class MainWindow : Window
         ActivateTab(tab);
     }
 
-    private void OnNew(object sender, RoutedEventArgs e) => OnNewTab(sender, e);
-
     private void OnOpenFolder(object sender, RoutedEventArgs e) => OpenFolderInExplorer();
 
     private void OnOpen(object sender, RoutedEventArgs e)
@@ -1186,10 +1162,11 @@ public partial class MainWindow : Window
 
     private void OnSettings(object sender, RoutedEventArgs e)
     {
+        if (Editor is not { } editor) return;
         var snapshot = new SettingsSnapshot(
-            Editor.TabSize, _settings.Editor.Caret.BlockCaret, _settings.Editor.Caret.BlinkMs,
-            Editor.FontFamilyName, Editor.EditorFontSize, Editor.EditorFontWeight,
-            Editor.LineHeightMultiplier, _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition);
+            editor.TabSize, _settings.Editor.Caret.BlockCaret, _settings.Editor.Caret.BlinkMs,
+            editor.FontFamilyName, editor.EditorFontSize, editor.EditorFontWeight,
+            editor.LineHeightMultiplier, _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition);
         var dlg = new SettingsWindow(ThemeManager, snapshot) { Owner = this };
         dlg.Applied += (_, _) => ApplySettingsFromDialog(dlg);
         if (dlg.ShowDialog() == true)
@@ -1248,7 +1225,7 @@ public partial class MainWindow : Window
         bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
         bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
 
-        if (ctrl && !shift && e.Key == Key.N) { OnNew(this, new RoutedEventArgs()); e.Handled = true; }
+        if (ctrl && !shift && e.Key == Key.N) { OnNewTab(this, new RoutedEventArgs()); e.Handled = true; }
         else if (ctrl && !shift && e.Key == Key.O) { OnOpen(this, new RoutedEventArgs()); e.Handled = true; }
         else if (ctrl && !shift && e.Key == Key.F) { FindBarControl.Open(); e.Handled = true; }
         else if (ctrl && !shift && e.Key == Key.H) { FindBarControl.ToggleReplace(); e.Handled = true; }
@@ -1269,9 +1246,9 @@ public partial class MainWindow : Window
 
     private void StepFontSize(int direction)
     {
-        if (_activeTab == null) return;
+        if (Editor is not { } editor) return;
         var sizes = AppSettings.FontSizeOptions;
-        int idx = Array.IndexOf(sizes, Editor.EditorFontSize);
+        int idx = Array.IndexOf(sizes, editor.EditorFontSize);
         if (idx < 0) idx = Array.IndexOf(sizes, 14);
         int next = idx + direction;
         if (next < 0 || next >= sizes.Length) return;
@@ -1284,9 +1261,9 @@ public partial class MainWindow : Window
 
     private void OpenCommandPalette()
     {
-        if (_activeTab == null) return;
+        if (Editor is not { } editor) return;
         var commands = CommandPaletteCommands.Build(new CommandPaletteContext(
-            _tabs, _settings, ThemeManager, Editor, FindBarControl, () => _settings.Save(),
+            _tabs, _settings, ThemeManager, editor, FindBarControl, () => _settings.Save(),
             new ExplorerActions(ToggleExplorer, OpenFolderInExplorer, CloseFolderInExplorer),
             new WorkspaceActions(
                 () => OnNewWorkspace(this, new RoutedEventArgs()),
@@ -1355,7 +1332,7 @@ public partial class MainWindow : Window
 
     private void OnAddFolderToWorkspace(object sender, RoutedEventArgs e)
     {
-        var dlg = new System.Windows.Forms.FolderBrowserDialog();
+        using var dlg = new System.Windows.Forms.FolderBrowserDialog();
         if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
 
         if (_workspaceManager.CurrentWorkspace == null)
@@ -1410,7 +1387,7 @@ public partial class MainWindow : Window
         else if (ExplorerPanel.OpenFolderPath != null)
             CloseFolderInExplorer();
 
-        PromptSaveDirtyTabs();
+        if (!PromptSaveDirtyTabs()) return;
         CloseAllTabs();
 
         var workspace = _workspaceManager.OpenWorkspace(workspacePath);
@@ -1499,16 +1476,17 @@ public partial class MainWindow : Window
         _activeTab = null;
     }
 
-    private void PromptSaveDirtyTabs()
+    private bool PromptSaveDirtyTabs()
     {
         foreach (var tab in _tabs.ToList())
         {
             if (tab.Editor.IsDirty)
             {
                 ActivateTab(tab);
-                PromptSaveTab(tab);
+                if (!PromptSaveTab(tab)) return false;
             }
         }
+        return true;
     }
 
     // ── Workspace session capture / restore ──────────────────────────────────
@@ -1604,7 +1582,7 @@ public partial class MainWindow : Window
 
     private void OnWorkspaceAddFolder()
     {
-        var dlg = new System.Windows.Forms.FolderBrowserDialog();
+        using var dlg = new System.Windows.Forms.FolderBrowserDialog();
         if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
 
         _workspaceManager.AddFolder(dlg.SelectedPath);

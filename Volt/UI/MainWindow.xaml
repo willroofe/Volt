@@ -59,10 +59,12 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <Style x:Key="MenuItemDropdownStyle" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+        <Style x:Key="MenuItemBaseStyle" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
             <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Foreground" Value="{DynamicResource ThemeTextFg}"/>
+        </Style>
+        <Style x:Key="MenuItemDropdownStyle" TargetType="MenuItem" BasedOn="{StaticResource MenuItemBaseStyle}">
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="MenuItem">
@@ -97,7 +99,7 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <Style x:Key="MenuItemCheckableStyle" TargetType="MenuItem" BasedOn="{StaticResource MenuItemDropdownStyle}">
+        <Style x:Key="MenuItemCheckableStyle" TargetType="MenuItem" BasedOn="{StaticResource MenuItemBaseStyle}">
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="MenuItem">

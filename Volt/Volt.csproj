@@ -6,6 +6,7 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <UseWPF>true</UseWPF>
+        <!-- Required for FolderBrowserDialog -->
         <UseWindowsForms>true</UseWindowsForms>
         <ApplicationIcon>Resources\Volt.ico</ApplicationIcon>
     </PropertyGroup>

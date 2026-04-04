@@ -12,9 +12,13 @@ public class FindManager
     public int MatchCount => _matches.Count;
     public int CurrentIndex => _currentIndex;
     public IReadOnlyList<(int Line, int Col, int Length)> Matches => _matches;
+    public string LastQuery { get; private set; } = "";
+    public bool LastMatchCase { get; private set; }
 
     public void Search(TextBuffer buffer, string query, bool matchCase, int caretLine, int caretCol)
     {
+        LastQuery = query;
+        LastMatchCase = matchCase;
         _matches.Clear();
         _currentIndex = -1;
 
@@ -84,12 +88,4 @@ public class FindManager
         return (_matches[0].Line, _matches[^1].Line);
     }
 
-    /// <summary>
-    /// Returns the match list for reverse iteration by the caller (used by ReplaceAll).
-    /// Matches are in forward order; the caller iterates in reverse to preserve positions.
-    /// </summary>
-    public IReadOnlyList<(int Line, int Col, int Length)> GetMatchesForReverseIteration()
-    {
-        return _matches;
-    }
 }

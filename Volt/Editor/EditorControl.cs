@@ -1538,14 +1538,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
             return;
         }
 
+        if (shift) return;
+
         var scope = BeginEdit(sl, el);
-        if (!shift)
-        {
-            DeleteSelectionIfPresent();
-            int spacesToInsert = TabSize - (_caretCol % TabSize);
-            _buffer.InsertAt(_caretLine, _caretCol, new string(' ', spacesToInsert));
-            _caretCol += spacesToInsert;
-        }
+        DeleteSelectionIfPresent();
+        int spacesToInsert = TabSize - (_caretCol % TabSize);
+        _buffer.InsertAt(_caretLine, _caretCol, new string(' ', spacesToInsert));
+        _caretCol += spacesToInsert;
         FinishEdit(scope);
     }
 
@@ -1917,6 +1916,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _find.Clear(trimExcess: true);
         _pruneKeys.Clear();
         _pruneKeys.TrimExcess();
+        _lineNumStrings.Clear();
+        _lineNumStrings.TrimExcess();
         return large;
     }
 
@@ -1986,6 +1987,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         var scope = BeginEdit(line, line);
         _buffer.ReplaceAt(line, col, len, replacement);
         EndEdit(scope);
+        _find.Search(_buffer, _find.LastQuery, _find.LastMatchCase, _caretLine, _caretCol);
         _buffer.InvalidateMaxLineLength();
         _gutterVisualDirty = true;
         InvalidateVisual();
@@ -2004,6 +2006,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _buffer.ReplaceAt(line, col, len, replacement);
         }
         EndEdit(scope);
+        ClampCaret();
         _buffer.InvalidateMaxLineLength();
         _tokenCacheDirty = true;
         InvalidateLineStates();
