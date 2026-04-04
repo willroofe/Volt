@@ -7,7 +7,7 @@ public record SettingsSnapshot(
     string FontFamily, double FontSize, string FontWeight,
     double LineHeight, string ColorTheme, string FindBarPosition,
     bool FindSeedWithSelection, bool FixedWidthTabs,
-    bool WordWrap, bool WordWrapAtWords);
+    bool WordWrap, bool WordWrapAtWords, bool WordWrapIndent);
 
 public partial class SettingsWindow : Window
 {
@@ -24,6 +24,7 @@ public partial class SettingsWindow : Window
     public bool FixedWidthTabs { get; private set; }
     public bool WordWrap { get; private set; }
     public bool WordWrapAtWords { get; private set; }
+    public bool WordWrapIndent { get; private set; }
 
     private enum SettingsSection { Theme, Font, Caret, Tabs, Find, Explorer, WordWrap }
 
@@ -60,6 +61,8 @@ public partial class SettingsWindow : Window
         WordWrapBox.SelectedIndex = snapshot.WordWrap ? 0 : 1;
         WordWrapAtWords = snapshot.WordWrapAtWords;
         WordWrapAtWordsBox.SelectedIndex = snapshot.WordWrapAtWords ? 0 : 1;
+        WordWrapIndent = snapshot.WordWrapIndent;
+        WordWrapIndentBox.SelectedIndex = snapshot.WordWrapIndent ? 0 : 1;
 
         // Populate font family dropdown
         _fontNames = FontManager.GetMonospaceFonts();
@@ -136,6 +139,7 @@ public partial class SettingsWindow : Window
         FixedWidthTabs = FixedWidthTabsBox.SelectedIndex == 0;
         WordWrap = WordWrapBox.SelectedIndex == 0;
         WordWrapAtWords = WordWrapAtWordsBox.SelectedIndex == 0;
+        WordWrapIndent = WordWrapIndentBox.SelectedIndex == 0;
     }
 
     private void OnApply(object sender, RoutedEventArgs e)

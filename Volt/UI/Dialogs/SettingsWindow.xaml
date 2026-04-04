@@ -447,6 +447,14 @@
                             <ComboBoxItem Content="On"/>
                             <ComboBoxItem Content="Off"/>
                         </ComboBox>
+
+                        <TextBlock Text="Indent wrapped lines" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="WordWrapIndentBox" Width="100" Height="26"
+                                  HorizontalAlignment="Left" Margin="0,0,0,16"
+                                  VerticalContentAlignment="Center" FontSize="13">
+                            <ComboBoxItem Content="On"/>
+                            <ComboBoxItem Content="Off"/>
+                        </ComboBox>
                     </StackPanel>
                 </ScrollViewer>
 

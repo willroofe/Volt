@@ -64,6 +64,25 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
     }
 
+    private bool _wordWrapIndent = true;
+    public bool WordWrapIndent
+    {
+        get => _wordWrapIndent;
+        set
+        {
+            if (_wordWrapIndent == value) return;
+            _wordWrapIndent = value;
+            if (_wordWrap)
+            {
+                RecalcWrapData();
+                _textVisualDirty = true;
+                _gutterVisualDirty = true;
+                UpdateExtent();
+                InvalidateVisual();
+            }
+        }
+    }
+
     private bool _wordWrap;
     public bool WordWrap
     {
@@ -563,7 +582,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         visualLine = Math.Clamp(visualLine, 0, _wrap.TotalVisualLines - 1);
         var (logLine, wrapIndex) = VisualToLogical(visualLine);
 
-        double tx = pos.X - _gutterWidth - GutterPadding;
+        double indentPx = WrapIndentPx(logLine, wrapIndex);
+        double tx = pos.X - _gutterWidth - GutterPadding - indentPx;
         int colInWrap = (int)Math.Round(tx / _font.CharWidth);
         colInWrap = Math.Max(0, colInWrap);
         int col2 = WrapColStart(logLine, wrapIndex) + colInWrap;
@@ -671,7 +691,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void RecalcWrapData()
     {
         double textAreaWidth = _viewport.Width - _gutterWidth - GutterPadding;
-        _wrap.Recalculate(_wordWrap, _wordWrapAtWords, _buffer, textAreaWidth, _font.CharWidth);
+        _wrap.Recalculate(_wordWrap, _wordWrapAtWords, _wordWrapIndent, _buffer, textAreaWidth, _font.CharWidth);
     }
 
     // ── Wrap coordinate helpers (delegate to WrapLayout) ────────────
@@ -689,6 +709,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private int WrapColStart(int logLine, int wrapIndex) =>
         _wrap.WrapColStart(_wordWrap, logLine, wrapIndex);
+
+    private double WrapIndentPx(int logLine, int wrapIndex) =>
+        _wrap.WrapIndentPx(_wordWrap, logLine, wrapIndex, _font.CharWidth);
 
     private (double x, double y) GetPixelForPosition(int line, int col) =>
         _wrap.GetPixelForPosition(_wordWrap, line, col, _gutterWidth, GutterPadding,
@@ -929,7 +952,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
                         int colInWrap = col - wrapStart;
                         int wrapEnd = wrapIndex + 1 < vCount ? WrapColStart(mLine, wrapIndex + 1) : _buffer[mLine].Length;
                         int charsOnThisLine = Math.Min(remaining, wrapEnd - col);
-                        double mx = _gutterWidth + GutterPadding + colInWrap * _font.CharWidth;
+                        double indentPx = WrapIndentPx(mLine, wrapIndex);
+                        double mx = _gutterWidth + GutterPadding + indentPx + colInWrap * _font.CharWidth;
                         double my = visLine * _font.LineHeight - _offset.Y;
                         dc.DrawRectangle(brush, null,
                             new Rect(mx, my, charsOnThisLine * _font.CharWidth, _font.LineHeight));
@@ -1002,10 +1026,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
             int sB = Math.Min(selEnd, wEnd);
             if (sA >= sB && !(line != el && w == vCount - 1 && selEnd >= wEnd)) continue;
 
+            double indentPx = WrapIndentPx(line, w);
             double y = (_wrap.CumulOffset(line) + w) * _font.LineHeight - _offset.Y;
-            double x1 = _gutterWidth + GutterPadding + (sA - wStart) * _font.CharWidth;
+            double x1 = _gutterWidth + GutterPadding + indentPx + (sA - wStart) * _font.CharWidth;
             double x2 = sB > sA
-                ? _gutterWidth + GutterPadding + (sB - wStart) * _font.CharWidth
+                ? _gutterWidth + GutterPadding + indentPx + (sB - wStart) * _font.CharWidth
                 : x1;
 
             bool extendToEdge = (line > sl || sA > selStart || w > 0) && (line < el || sB < selEnd || w < vCount - 1);
@@ -1059,7 +1084,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     int segStart = WrapColStart(i, w);
                     int segEnd = w + 1 < vCount ? WrapColStart(i, w + 1) : line.Length;
                     double y = (_wrap.CumulOffset(i) + w) * _font.LineHeight;
-                    RenderLineTokens(dc, line, x, y, segStart, segEnd, cached.tokens);
+                    double wx = x + WrapIndentPx(i, w);
+                    RenderLineTokens(dc, line, wx, y, segStart, segEnd, cached.tokens);
                 }
             }
         }
