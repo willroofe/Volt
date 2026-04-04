@@ -1233,18 +1233,18 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         if (hasSel)
         {
-            var cut = ContextMenuHelper.Item("Cut", HandleCut);
+            var cut = ContextMenuHelper.Item("Cut", "\uE8C6", HandleCut);
             cut.InputGestureText = "Ctrl+X";
             menu.Items.Add(cut);
 
-            var copy = ContextMenuHelper.Item("Copy", HandleCopy);
+            var copy = ContextMenuHelper.Item("Copy", "\uE8C8", HandleCopy);
             copy.InputGestureText = "Ctrl+C";
             menu.Items.Add(copy);
         }
 
         if (hasClip)
         {
-            var paste = ContextMenuHelper.Item("Paste", HandlePaste);
+            var paste = ContextMenuHelper.Item("Paste", "\uE77F", HandlePaste);
             paste.InputGestureText = "Ctrl+V";
             menu.Items.Add(paste);
         }
