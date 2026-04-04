@@ -27,6 +27,7 @@ internal record CommandPaletteContext(
     WorkspaceActions Workspace,
     Action ToggleWordWrap,
     Action ToggleWordWrapAtWords,
+    Action ToggleWordWrapIndent,
     Action ToggleFixedWidthTabs);
 
 /// <summary>
@@ -128,6 +129,8 @@ internal static class CommandPaletteCommands
             new("Toggle Word Wrap", Action: toggleWordWrap),
 
             new("Toggle Word Wrap at Word Boundaries", Action: ctx.ToggleWordWrapAtWords),
+
+            new("Toggle Word Wrap Indent", Action: ctx.ToggleWordWrapIndent),
 
             new("Find Bar Position", CurrentValue: () => settings.Editor.Find.BarPosition, GetOptions: () =>
             {

@@ -375,6 +375,7 @@ public partial class MainWindow
     {
         editor.TabSize = _settings.Editor.TabSize;
         editor.WordWrapAtWords = _settings.Editor.WordWrapAtWords;
+        editor.WordWrapIndent = _settings.Editor.WordWrapIndent;
         editor.WordWrap = _settings.Editor.WordWrap;
         editor.BlockCaret = _settings.Editor.Caret.BlockCaret;
         editor.CaretBlinkMs = _settings.Editor.Caret.BlinkMs;
@@ -1095,6 +1096,14 @@ public partial class MainWindow
         _settings.Save();
     }
 
+    private void ToggleWordWrapIndent()
+    {
+        _settings.Editor.WordWrapIndent = !_settings.Editor.WordWrapIndent;
+        foreach (var tab in _tabs)
+            tab.Editor.WordWrapIndent = _settings.Editor.WordWrapIndent;
+        _settings.Save();
+    }
+
     private void OnToggleLeftPanel(object sender, RoutedEventArgs e)
     {
         Shell.ToggleRegion(PanelPlacement.Left);
@@ -1135,7 +1144,7 @@ public partial class MainWindow
             editor.FontFamilyName, editor.EditorFontSize, editor.EditorFontWeight,
             editor.LineHeightMultiplier, _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition,
             _settings.Editor.Find.SeedWithSelection, _settings.Editor.FixedWidthTabs,
-            _settings.Editor.WordWrap, _settings.Editor.WordWrapAtWords);
+            _settings.Editor.WordWrap, _settings.Editor.WordWrapAtWords, _settings.Editor.WordWrapIndent);
         var dlg = new SettingsWindow(ThemeManager, snapshot) { Owner = this };
         dlg.Applied += (_, _) => ApplySettingsFromDialog(dlg);
         if (dlg.ShowDialog() == true)
@@ -1157,6 +1166,7 @@ public partial class MainWindow
         _settings.Editor.FixedWidthTabs = dlg.FixedWidthTabs;
         _settings.Editor.WordWrap = dlg.WordWrap;
         _settings.Editor.WordWrapAtWords = dlg.WordWrapAtWords;
+        _settings.Editor.WordWrapIndent = dlg.WordWrapIndent;
         _settings.Save();
         ApplySettings();
         ThemeManager.Apply(dlg.ColorThemeName);
@@ -1245,6 +1255,7 @@ public partial class MainWindow
                 () => OnAddFolderToWorkspace(this, new RoutedEventArgs())),
             () => OnToggleWordWrap(this, new RoutedEventArgs()),
             ToggleWordWrapAtWords,
+            ToggleWordWrapIndent,
             ToggleFixedWidthTabs));
         CmdPalette.SetCommands(commands);
         CmdPalette.Open();

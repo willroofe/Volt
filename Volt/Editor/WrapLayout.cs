@@ -13,6 +13,7 @@ internal class WrapLayout
     private int[]? _wrapLineCount;      // visual lines per logical line
     private int[]? _wrapCumulOffset;    // cumulative visual line offset
     private int[]? _wrapColStarts;      // starting column for each visual line (word-break mode only)
+    private int[]? _wrapIndent;         // indent chars per logical line (wrap-indent mode only)
     private int _totalVisualLines;
 
     public int CharsPerVisualLine => _charsPerVisualLine;
@@ -26,13 +27,15 @@ internal class WrapLayout
     /// Recalculate wrap data from the buffer. When wrap is off, clears arrays
     /// and sets TotalVisualLines to the buffer line count.
     /// </summary>
-    public void Recalculate(bool wordWrap, bool breakAtWords, TextBuffer buffer, double textAreaWidth, double charWidth)
+    public void Recalculate(bool wordWrap, bool breakAtWords, bool wrapIndent,
+        TextBuffer buffer, double textAreaWidth, double charWidth)
     {
         if (!wordWrap)
         {
             _wrapLineCount = null;
             _wrapCumulOffset = null;
             _wrapColStarts = null;
+            _wrapIndent = null;
             _totalVisualLines = buffer.Count;
             return;
         }
@@ -48,15 +51,63 @@ internal class WrapLayout
             _wrapCumulOffset = new int[count];
         }
 
+        if (wrapIndent)
+        {
+            if (_wrapIndent == null || _wrapIndent.Length < count || _wrapIndent.Length > count * 2)
+                _wrapIndent = new int[count];
+            ComputeIndents(buffer, count);
+        }
+        else
+        {
+            _wrapIndent = null;
+        }
+
         if (breakAtWords)
             RecalcWordBreak(buffer, count);
         else
             RecalcCharBreak(buffer, count);
     }
 
+    private static int MeasureIndent(string line)
+    {
+        int indent = 0;
+        for (int i = 0; i < line.Length; i++)
+        {
+            if (line[i] == ' ' || line[i] == '\t')
+                indent++;
+            else
+                break;
+        }
+        return indent;
+    }
+
+    private void ComputeIndents(TextBuffer buffer, int count)
+    {
+        for (int i = 0; i < count; i++)
+            _wrapIndent![i] = MeasureIndent(buffer[i]);
+    }
+
+    /// <summary>
+    /// Number of characters available on a given sub-line.
+    /// First sub-line gets full width; continuations are reduced by indent.
+    /// </summary>
+    private int CharsForSubLine(int logLine, int wrapIndex)
+    {
+        if (wrapIndex == 0 || _wrapIndent == null) return _charsPerVisualLine;
+        int indent = _wrapIndent[logLine];
+        // Ensure at least 1 char of usable width even for deeply indented lines
+        return Math.Max(1, _charsPerVisualLine - indent);
+    }
+
     private void RecalcCharBreak(TextBuffer buffer, int count)
     {
         _wrapColStarts = null;
+        if (_wrapIndent != null)
+        {
+            // Char-break with indent needs per-sub-line column starts
+            RecalcCharBreakIndented(buffer, count);
+            return;
+        }
         int cumul = 0;
         for (int i = 0; i < count; i++)
         {
@@ -66,6 +117,44 @@ internal class WrapLayout
             cumul += _wrapLineCount[i];
         }
         _totalVisualLines = cumul;
+    }
+
+    private void RecalcCharBreakIndented(TextBuffer buffer, int count)
+    {
+        _colStartBuffer.Clear();
+        int cumul = 0;
+        for (int i = 0; i < count; i++)
+        {
+            _wrapCumulOffset![i] = cumul;
+            int len = buffer[i].Length;
+
+            if (len <= _charsPerVisualLine)
+            {
+                _wrapLineCount![i] = 1;
+                _colStartBuffer.Add(0);
+                cumul++;
+                continue;
+            }
+
+            int subLines = 0;
+            int pos = 0;
+            while (pos < len)
+            {
+                _colStartBuffer.Add(pos);
+                int avail = CharsForSubLine(i, subLines);
+                subLines++;
+                int remaining = len - pos;
+                if (remaining <= avail)
+                    break;
+                pos += avail;
+            }
+            _wrapLineCount![i] = subLines;
+            cumul += subLines;
+        }
+        _totalVisualLines = cumul;
+        if (_wrapColStarts == null || _wrapColStarts.Length < cumul || _wrapColStarts.Length > cumul * 2)
+            _wrapColStarts = new int[cumul];
+        _colStartBuffer.CopyTo(0, _wrapColStarts, 0, cumul);
     }
 
     private readonly List<int> _colStartBuffer = new();
@@ -93,13 +182,14 @@ internal class WrapLayout
             while (pos < len)
             {
                 _colStartBuffer.Add(pos);
+                int avail = CharsForSubLine(i, subLines);
                 subLines++;
                 int remaining = len - pos;
-                if (remaining <= _charsPerVisualLine)
+                if (remaining <= avail)
                     break;
 
                 // Find last whitespace within the visual line width to break at
-                int limit = pos + _charsPerVisualLine;
+                int limit = pos + avail;
                 int breakAt = -1;
                 for (int j = limit; j > pos; j--)
                 {
@@ -119,6 +209,17 @@ internal class WrapLayout
         if (_wrapColStarts == null || _wrapColStarts.Length < cumul || _wrapColStarts.Length > cumul * 2)
             _wrapColStarts = new int[cumul];
         _colStartBuffer.CopyTo(0, _wrapColStarts, 0, cumul);
+    }
+
+    /// <summary>
+    /// Pixel indent offset for a wrap sub-line. Zero for the first sub-line;
+    /// for continuations, returns indentChars * charWidth.
+    /// </summary>
+    public double WrapIndentPx(bool wordWrap, int logLine, int wrapIndex, double charWidth)
+    {
+        if (!wordWrap || wrapIndex == 0 || _wrapIndent == null) return 0;
+        if (logLine >= _wrapIndent.Length) return 0;
+        return _wrapIndent[logLine] * charWidth;
     }
 
     /// <summary>Visual line index for a logical line + column.</summary>
@@ -235,7 +336,8 @@ internal class WrapLayout
             colInWrap = col - wrapIndex * _charsPerVisualLine;
         }
 
-        double x = gutterWidth + gutterPadding + colInWrap * charWidth;
+        double indentPx = WrapIndentPx(true, line, wrapIndex, charWidth);
+        double x = gutterWidth + gutterPadding + indentPx + colInWrap * charWidth;
         double y = (_wrapCumulOffset[line] + wrapIndex) * lineHeight - offsetY;
         return (x, y);
     }
