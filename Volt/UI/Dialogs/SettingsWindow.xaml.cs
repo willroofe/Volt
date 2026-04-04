@@ -6,7 +6,8 @@ public record SettingsSnapshot(
     int TabSize, bool BlockCaret, int CaretBlinkMs,
     string FontFamily, double FontSize, string FontWeight,
     double LineHeight, string ColorTheme, string FindBarPosition,
-    bool FindSeedWithSelection, bool FixedWidthTabs);
+    bool FindSeedWithSelection, bool FixedWidthTabs,
+    bool WordWrap, bool WordWrapAtWords);
 
 public partial class SettingsWindow : Window
 {
@@ -21,8 +22,10 @@ public partial class SettingsWindow : Window
     public string FindBarPosition { get; private set; }
     public bool FindSeedWithSelection { get; private set; }
     public bool FixedWidthTabs { get; private set; }
+    public bool WordWrap { get; private set; }
+    public bool WordWrapAtWords { get; private set; }
 
-    private enum SettingsSection { Theme, Font, Caret, Tabs, Find, Explorer }
+    private enum SettingsSection { Theme, Font, Caret, Tabs, Find, Explorer, WordWrap }
 
     public event EventHandler? Applied;
 
@@ -53,6 +56,10 @@ public partial class SettingsWindow : Window
         FindSeedSelBox.SelectedIndex = snapshot.FindSeedWithSelection ? 0 : 1;
         FixedWidthTabs = snapshot.FixedWidthTabs;
         FixedWidthTabsBox.SelectedIndex = snapshot.FixedWidthTabs ? 0 : 1;
+        WordWrap = snapshot.WordWrap;
+        WordWrapBox.SelectedIndex = snapshot.WordWrap ? 0 : 1;
+        WordWrapAtWords = snapshot.WordWrapAtWords;
+        WordWrapAtWordsBox.SelectedIndex = snapshot.WordWrapAtWords ? 0 : 1;
 
         // Populate font family dropdown
         _fontNames = FontManager.GetMonospaceFonts();
@@ -95,6 +102,7 @@ public partial class SettingsWindow : Window
         NavTabs.Style = (Style)FindResource(section == SettingsSection.Tabs ? "NavButtonActive" : "NavButton");
         NavFind.Style = (Style)FindResource(section == SettingsSection.Find ? "NavButtonActive" : "NavButton");
         NavExplorer.Style = (Style)FindResource(section == SettingsSection.Explorer ? "NavButtonActive" : "NavButton");
+        NavWordWrap.Style = (Style)FindResource(section == SettingsSection.WordWrap ? "NavButtonActive" : "NavButton");
 
         ThemeScroller.Visibility = section == SettingsSection.Theme ? Visibility.Visible : Visibility.Collapsed;
         FontScroller.Visibility = section == SettingsSection.Font ? Visibility.Visible : Visibility.Collapsed;
@@ -102,6 +110,7 @@ public partial class SettingsWindow : Window
         TabsScroller.Visibility = section == SettingsSection.Tabs ? Visibility.Visible : Visibility.Collapsed;
         FindScroller.Visibility = section == SettingsSection.Find ? Visibility.Visible : Visibility.Collapsed;
         ExplorerScroller.Visibility = section == SettingsSection.Explorer ? Visibility.Visible : Visibility.Collapsed;
+        WordWrapScroller.Visibility = section == SettingsSection.WordWrap ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnNavTheme(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Theme);
@@ -110,6 +119,7 @@ public partial class SettingsWindow : Window
     private void OnNavTabs(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Tabs);
     private void OnNavFind(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Find);
     private void OnNavExplorer(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Explorer);
+    private void OnNavWordWrap(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.WordWrap);
 
     private void ReadCurrentValues()
     {
@@ -124,6 +134,8 @@ public partial class SettingsWindow : Window
         FindBarPosition = FindBarPosBox.SelectedIndex == 0 ? "Top" : "Bottom";
         FindSeedWithSelection = FindSeedSelBox.SelectedIndex == 0;
         FixedWidthTabs = FixedWidthTabsBox.SelectedIndex == 0;
+        WordWrap = WordWrapBox.SelectedIndex == 0;
+        WordWrapAtWords = WordWrapAtWordsBox.SelectedIndex == 0;
     }
 
     private void OnApply(object sender, RoutedEventArgs e)

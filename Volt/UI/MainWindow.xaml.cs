@@ -374,6 +374,7 @@ public partial class MainWindow
     private void ApplySettingsToEditor(EditorControl editor)
     {
         editor.TabSize = _settings.Editor.TabSize;
+        editor.WordWrapAtWords = _settings.Editor.WordWrapAtWords;
         editor.WordWrap = _settings.Editor.WordWrap;
         editor.BlockCaret = _settings.Editor.Caret.BlockCaret;
         editor.CaretBlinkMs = _settings.Editor.Caret.BlinkMs;
@@ -1086,6 +1087,14 @@ public partial class MainWindow
         _settings.Save();
     }
 
+    private void ToggleWordWrapAtWords()
+    {
+        _settings.Editor.WordWrapAtWords = !_settings.Editor.WordWrapAtWords;
+        foreach (var tab in _tabs)
+            tab.Editor.WordWrapAtWords = _settings.Editor.WordWrapAtWords;
+        _settings.Save();
+    }
+
     private void OnToggleLeftPanel(object sender, RoutedEventArgs e)
     {
         Shell.ToggleRegion(PanelPlacement.Left);
@@ -1125,7 +1134,8 @@ public partial class MainWindow
             editor.TabSize, _settings.Editor.Caret.BlockCaret, _settings.Editor.Caret.BlinkMs,
             editor.FontFamilyName, editor.EditorFontSize, editor.EditorFontWeight,
             editor.LineHeightMultiplier, _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition,
-            _settings.Editor.Find.SeedWithSelection, _settings.Editor.FixedWidthTabs);
+            _settings.Editor.Find.SeedWithSelection, _settings.Editor.FixedWidthTabs,
+            _settings.Editor.WordWrap, _settings.Editor.WordWrapAtWords);
         var dlg = new SettingsWindow(ThemeManager, snapshot) { Owner = this };
         dlg.Applied += (_, _) => ApplySettingsFromDialog(dlg);
         if (dlg.ShowDialog() == true)
@@ -1145,6 +1155,8 @@ public partial class MainWindow
         _settings.Editor.Find.BarPosition = dlg.FindBarPosition;
         _settings.Editor.Find.SeedWithSelection = dlg.FindSeedWithSelection;
         _settings.Editor.FixedWidthTabs = dlg.FixedWidthTabs;
+        _settings.Editor.WordWrap = dlg.WordWrap;
+        _settings.Editor.WordWrapAtWords = dlg.WordWrapAtWords;
         _settings.Save();
         ApplySettings();
         ThemeManager.Apply(dlg.ColorThemeName);
@@ -1232,6 +1244,7 @@ public partial class MainWindow
                 CloseCurrentWorkspace,
                 () => OnAddFolderToWorkspace(this, new RoutedEventArgs())),
             () => OnToggleWordWrap(this, new RoutedEventArgs()),
+            ToggleWordWrapAtWords,
             ToggleFixedWidthTabs));
         CmdPalette.SetCommands(commands);
         CmdPalette.Open();
