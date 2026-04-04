@@ -926,15 +926,19 @@ public class EditorControl : FrameworkElement, IScrollInfo
             }
             if (_bracketMatchCache is var (bl, bc, ml, mc))
             {
-                foreach (var (bLine, bCol) in new[] { (bl, bc), (ml, mc) })
+                if (bl >= firstLine && bl <= lastLine)
                 {
-                    if (bLine >= firstLine && bLine <= lastLine)
-                    {
-                        var (bx, by) = GetPixelForPosition(bLine, bCol);
-                        dc.DrawRectangle(ThemeManager.MatchingBracketBrush,
-                            ThemeManager.MatchingBracketPen,
-                            new Rect(bx, by, _font.CharWidth, _font.LineHeight));
-                    }
+                    var (bx, by) = GetPixelForPosition(bl, bc);
+                    dc.DrawRectangle(ThemeManager.MatchingBracketBrush,
+                        ThemeManager.MatchingBracketPen,
+                        new Rect(bx, by, _font.CharWidth, _font.LineHeight));
+                }
+                if (ml >= firstLine && ml <= lastLine)
+                {
+                    var (mx, my) = GetPixelForPosition(ml, mc);
+                    dc.DrawRectangle(ThemeManager.MatchingBracketBrush,
+                        ThemeManager.MatchingBracketPen,
+                        new Rect(mx, my, _font.CharWidth, _font.LineHeight));
                 }
             }
         }
@@ -1290,12 +1294,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         if (!insideString && e.Text.Length == 1 && BracketMatcher.Pairs.TryGetValue(ch, out char closer))
         {
-            _buffer.InsertAt(_caretLine, _caretCol, ch.ToString() + closer);
+            _buffer.InsertAt(_caretLine, _caretCol, $"{ch}{closer}");
             _caretCol++;
         }
         else if (!insideString && e.Text.Length == 1 && BracketMatcher.AutoCloseQuotes.Contains(ch))
         {
-            _buffer.InsertAt(_caretLine, _caretCol, ch.ToString() + ch);
+            _buffer.InsertAt(_caretLine, _caretCol, $"{ch}{ch}");
             _caretCol++;
         }
         else
@@ -1469,7 +1473,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             {
                 int leadingSpaces = line.Length - line.TrimStart().Length;
                 int remove = 1;
-                if (_caretCol <= leadingSpaces && line[.._caretCol].All(c => c == ' '))
+                if (_caretCol <= leadingSpaces && line.AsSpan(0, _caretCol).IndexOfAnyExcept(' ') < 0)
                 {
                     int prevStop = (_caretCol - 1) / TabSize * TabSize;
                     remove = _caretCol - prevStop;
@@ -1714,7 +1718,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         var scope = BeginEdit(sl, el);
         DeleteSelectionIfPresent();
 
-        var pasteLines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+        var pasteLines = text.Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
         for (int pi = 0; pi < pasteLines.Length; pi++)
             pasteLines[pi] = TextBuffer.ExpandTabs(pasteLines[pi], TabSize);
 

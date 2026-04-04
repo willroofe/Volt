@@ -400,7 +400,7 @@ public partial class MainWindow
     {
         _settings.Editor.PanelLayouts = Shell.GetCurrentLayout();
         _settings.Editor.OpenRegions = Shell.GetOpenRegions();
-        _settings.Save();
+        _settings.ScheduleSave();
         SyncViewMenuChecks();
     }
 

@@ -21,6 +21,7 @@ public class SyntaxManager
     private readonly List<SyntaxDefinition> _grammars = [];
     private Dictionary<string, SyntaxDefinition> _extensionMap = new(StringComparer.OrdinalIgnoreCase);
     [ThreadStatic] private static bool[]? _claimedBuf;
+    [ThreadStatic] private static List<(int Priority, int Start, int Length, string Scope)>? _candidatesBuf;
 
     private bool _initialized;
 
@@ -71,7 +72,7 @@ public class SyntaxManager
         else
             Array.Clear(_claimedBuf, 0, line.Length);
         var claimed = _claimedBuf;
-        var tokens = new List<SyntaxToken>();
+        var tokens = new List<SyntaxToken>(8);
         int ruleStart = 0;
 
         // Handle partial-line continuations (regex close, string close)
@@ -190,7 +191,9 @@ public class SyntaxManager
         // Collect all candidate matches with rule priority.
         // Each rule finds non-overlapping matches (advancing past each match).
         // The greedy claiming pass resolves cross-rule overlaps by position then priority.
-        var candidates = new List<(int Priority, int Start, int Length, string Scope)>();
+        _candidatesBuf ??= new List<(int Priority, int Start, int Length, string Scope)>();
+        _candidatesBuf.Clear();
+        var candidates = _candidatesBuf;
         for (int r = 0; r < grammar.Rules.Count; r++)
         {
             var rule = grammar.Rules[r];
@@ -402,9 +405,9 @@ public class SyntaxManager
         // After =~ or !~ operator, bare /regex/ is allowed
         foreach (var token in tokens)
         {
-            if (token.Scope != "operator" || token.Start + token.Length > line.Length) continue;
-            string op = line.Substring(token.Start, token.Length);
-            if (op != "=~" && op != "!~") continue;
+            if (token.Scope != "operator" || token.Length != 2 || token.Start + 2 > line.Length) continue;
+            char c0 = line[token.Start], c1 = line[token.Start + 1];
+            if (c1 != '~' || (c0 != '=' && c0 != '!')) continue;
 
             int pos = token.Start + token.Length;
             while (pos < line.Length && char.IsWhiteSpace(line[pos])) pos++;
@@ -507,18 +510,36 @@ public class SyntaxManager
             // Find interpolated variables and escape sequences within the string (skip the quotes)
             int innerStart = token.Start + 1;
             int innerEnd = token.Start + token.Length - 1;
-            string inner = line[innerStart..innerEnd];
+            int innerLen = innerEnd - innerStart;
+            if (innerLen <= 0)
+            {
+                result.Add(token);
+                continue;
+            }
 
-            // Collect all sub-tokens (variables and escapes) sorted by position
+            // Collect all sub-tokens (variables and escapes) sorted by position.
+            // Uses Match loop with startat on the original line to avoid substring allocation.
             var subTokens = new List<(int Start, int Length, string Scope)>();
 
             if (interp.VariableRegex != null)
-                foreach (Match m in interp.VariableRegex.Matches(inner))
-                    subTokens.Add((innerStart + m.Index, m.Length, "variable"));
+            {
+                var m = interp.VariableRegex.Match(line, innerStart, innerLen);
+                while (m.Success)
+                {
+                    subTokens.Add((m.Index, m.Length, "variable"));
+                    m = m.NextMatch();
+                }
+            }
 
             if (interp.EscapeRegex != null)
-                foreach (Match m in interp.EscapeRegex.Matches(inner))
-                    subTokens.Add((innerStart + m.Index, m.Length, "escape"));
+            {
+                var m = interp.EscapeRegex.Match(line, innerStart, innerLen);
+                while (m.Success)
+                {
+                    subTokens.Add((m.Index, m.Length, "escape"));
+                    m = m.NextMatch();
+                }
+            }
 
             if (subTokens.Count == 0)
             {
@@ -528,24 +549,17 @@ public class SyntaxManager
 
             subTokens.Sort((a, b) => a.Start.CompareTo(b.Start));
 
-            // Remove overlapping sub-tokens (first one wins)
-            var filtered = new List<(int Start, int Length, string Scope)>();
-            int lastEnd = 0;
-            foreach (var st in subTokens)
-            {
-                if (st.Start < lastEnd) continue;
-                filtered.Add(st);
-                lastEnd = st.Start + st.Length;
-            }
-
-            // Split the string token around sub-tokens
+            // Split the string token around sub-tokens, skipping overlaps (first wins)
             int pos = token.Start;
-            foreach (var (start, length, scope) in filtered)
+            int lastSubEnd = 0;
+            foreach (var (start, length, scope) in subTokens)
             {
+                if (start < lastSubEnd) continue; // overlap — skip
                 if (start > pos)
                     result.Add(new SyntaxToken(pos, start - pos, "string"));
                 result.Add(new SyntaxToken(start, length, scope));
                 pos = start + length;
+                lastSubEnd = pos;
             }
             // Remaining string portion
             int tokenEnd = token.Start + token.Length;
