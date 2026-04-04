@@ -109,25 +109,13 @@ public class SessionSettings
         catch (Exception) { return null; }
     }
 
-    public static void ClearSessionDir()
-    {
-        try
-        {
-            if (!Directory.Exists(AppPaths.SessionDir)) return;
-            foreach (var file in Directory.GetFiles(AppPaths.SessionDir))
-            {
-                try { File.Delete(file); }
-                catch { /* best effort */ }
-            }
-        }
-        catch { /* best effort */ }
-    }
+    public static void ClearSessionDir() => SafeDeleteFiles(AppPaths.SessionDir);
+    public static void ClearFolderSessionDir(string folderPath) => SafeDeleteFiles(FolderSessionDir(folderPath));
 
-    public static void ClearFolderSessionDir(string folderPath)
+    private static void SafeDeleteFiles(string dir)
     {
         try
         {
-            var dir = FolderSessionDir(folderPath);
             if (!Directory.Exists(dir)) return;
             foreach (var file in Directory.GetFiles(dir))
             {

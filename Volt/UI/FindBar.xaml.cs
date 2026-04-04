@@ -206,45 +206,38 @@ public partial class FindBar : UserControl
     private void OnMatchCaseClick(object sender, RoutedEventArgs e)
     {
         _matchCase = !_matchCase;
-        _matchCaseBtn.SetResourceReference(ForegroundProperty,
-            _matchCase ? ThemeResourceKeys.TextFg : ThemeResourceKeys.TextFgMuted);
-        _matchCaseBtn.SetResourceReference(BackgroundProperty,
-            _matchCase ? ThemeResourceKeys.MenuItemHover : ThemeResourceKeys.MenuPopupBg);
+        UpdateToggleButton(_matchCaseBtn, _matchCase);
         UpdateSearch();
     }
 
     private void OnRegexClick(object sender, RoutedEventArgs e)
     {
         _useRegex = !_useRegex;
-        _regexBtn.SetResourceReference(ForegroundProperty,
-            _useRegex ? ThemeResourceKeys.TextFg : ThemeResourceKeys.TextFgMuted);
-        _regexBtn.SetResourceReference(BackgroundProperty,
-            _useRegex ? ThemeResourceKeys.MenuItemHover : ThemeResourceKeys.MenuPopupBg);
+        UpdateToggleButton(_regexBtn, _useRegex);
         UpdateSearch();
     }
 
     private void OnWholeWordClick(object sender, RoutedEventArgs e)
     {
         _wholeWord = !_wholeWord;
-        _wholeWordBtn.SetResourceReference(ForegroundProperty,
-            _wholeWord ? ThemeResourceKeys.TextFg : ThemeResourceKeys.TextFgMuted);
-        _wholeWordBtn.SetResourceReference(BackgroundProperty,
-            _wholeWord ? ThemeResourceKeys.MenuItemHover : ThemeResourceKeys.MenuPopupBg);
+        UpdateToggleButton(_wholeWordBtn, _wholeWord);
         UpdateSearch();
     }
 
     private void OnFindInSelectionClick(object sender, RoutedEventArgs e)
     {
         _findInSelection = !_findInSelection;
-        if (_findInSelection)
-            _selectionBounds = _editor?.GetSelectionBounds();
-        else
-            _selectionBounds = null;
-        _findInSelBtn.SetResourceReference(ForegroundProperty,
-            _findInSelection ? ThemeResourceKeys.TextFg : ThemeResourceKeys.TextFgMuted);
-        _findInSelBtn.SetResourceReference(BackgroundProperty,
-            _findInSelection ? ThemeResourceKeys.MenuItemHover : ThemeResourceKeys.MenuPopupBg);
+        _selectionBounds = _findInSelection ? _editor?.GetSelectionBounds() : null;
+        UpdateToggleButton(_findInSelBtn, _findInSelection);
         SearchWithoutTrackingSelection();
+    }
+
+    private void UpdateToggleButton(Button btn, bool active)
+    {
+        btn.SetResourceReference(ForegroundProperty,
+            active ? ThemeResourceKeys.TextFg : ThemeResourceKeys.TextFgMuted);
+        btn.SetResourceReference(BackgroundProperty,
+            active ? ThemeResourceKeys.MenuItemHover : ThemeResourceKeys.MenuPopupBg);
     }
 
     private void OnToggleReplaceClick(object sender, RoutedEventArgs e)

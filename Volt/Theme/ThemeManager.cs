@@ -29,9 +29,6 @@ public class ThemeManager
     public Brush FindMatchBrush { get; private set; } = Brushes.Yellow;
     public Brush FindMatchCurrentBrush { get; private set; } = Brushes.Orange;
 
-    // Syntax highlight scope → brush
-    private readonly Dictionary<string, Brush> _scopeBrushes = new();
-
     private bool _initialized;
 
     public void Initialize()
@@ -45,7 +42,7 @@ public class ThemeManager
 
     public Brush GetScopeBrush(string scope)
     {
-        return _scopeBrushes.TryGetValue(scope, out var brush) ? brush : EditorFg;
+        return _colorTheme.GetScopeBrush(scope) ?? EditorFg;
     }
 
     public List<string> GetAvailableThemes()
@@ -62,7 +59,6 @@ public class ThemeManager
         _colorTheme = theme;
 
         UpdateEditorColors();
-        UpdateScopeBrushes();
         UpdateAppResources();
         ThemeChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -105,49 +101,44 @@ public class ThemeManager
         FindMatchCurrentBrush = ColorTheme.ParseBrush(e.FindMatchCurrent);
     }
 
-    private void UpdateScopeBrushes()
-    {
-        _scopeBrushes.Clear();
-        foreach (var (scope, _) in _colorTheme.Scopes)
-        {
-            var brush = _colorTheme.GetScopeBrush(scope);
-            if (brush != null) _scopeBrushes[scope] = brush;
-        }
-    }
-
     private void UpdateAppResources()
     {
         var res = Application.Current.Resources;
         var c = _colorTheme.Chrome;
-        res[ThemeResourceKeys.ChromeBrush] = ColorTheme.ParseBrush(c.TitleBar);
-        res[ThemeResourceKeys.BorderBrush] = ColorTheme.ParseBrush(c.Border);
-        res[ThemeResourceKeys.ContentBg] = ColorTheme.ParseBrush(c.ContentBackground);
-        res[ThemeResourceKeys.TextFg] = ColorTheme.ParseBrush(c.TextForeground);
-        res[ThemeResourceKeys.TextFgStrong] = ColorTheme.ParseBrush(c.TextForegroundStrong);
-        res[ThemeResourceKeys.TextFgMuted] = ColorTheme.ParseBrush(c.TextForegroundMuted);
-        res[ThemeResourceKeys.ButtonFg] = ColorTheme.ParseBrush(c.ButtonForeground);
-        res[ThemeResourceKeys.ButtonHover] = ColorTheme.ParseBrush(c.ButtonHover);
-        res[ThemeResourceKeys.MenuPopupBg] = ColorTheme.ParseBrush(c.MenuPopupBackground);
-        res[ThemeResourceKeys.MenuPopupBorder] = ColorTheme.ParseBrush(c.MenuPopupBorder);
-        res[ThemeResourceKeys.MenuItemHover] = ColorTheme.ParseBrush(c.MenuItemHover);
-        res[ThemeResourceKeys.NavBg] = ColorTheme.ParseBrush(c.NavBackground);
-        res[ThemeResourceKeys.NavActive] = ColorTheme.ParseBrush(c.NavActive);
-        res[ThemeResourceKeys.NavHover] = ColorTheme.ParseBrush(c.NavHover);
-        res[ThemeResourceKeys.ScrollBg] = ColorTheme.ParseBrush(c.ScrollBackground);
-        res[ThemeResourceKeys.ScrollThumb] = ColorTheme.ParseBrush(c.ScrollThumb);
-        res[ThemeResourceKeys.ScrollThumbHover] = ColorTheme.ParseBrush(c.ScrollThumbHover);
-        res[ThemeResourceKeys.TabBarBg] = ColorTheme.ParseBrush(c.TabBarBackground);
-        res[ThemeResourceKeys.TabActive] = ColorTheme.ParseBrush(c.TabActive);
-        res[ThemeResourceKeys.TabInactive] = ColorTheme.ParseBrush(c.TabInactive);
-        res[ThemeResourceKeys.TabHover] = ColorTheme.ParseBrush(c.TabHover);
-        res[ThemeResourceKeys.TabBorder] = ColorTheme.ParseBrush(c.TabBorder);
-        res[ThemeResourceKeys.ExplorerBg] = ColorTheme.ParseBrush(c.ExplorerBackground);
-        res[ThemeResourceKeys.ExplorerHeaderBg] = ColorTheme.ParseBrush(c.ExplorerHeaderBackground);
-        res[ThemeResourceKeys.ExplorerHeaderFg] = ColorTheme.ParseBrush(c.ExplorerHeaderForeground);
-        res[ThemeResourceKeys.ExplorerItemHover] = ColorTheme.ParseBrush(c.ExplorerItemHover);
-        res[ThemeResourceKeys.ExplorerItemSelected] = ColorTheme.ParseBrush(c.ExplorerItemSelected);
-        res[ThemeResourceKeys.ExplorerDropTarget] = ColorTheme.ParseBrush(c.ExplorerDropTarget);
-        res[ThemeResourceKeys.InputSelection] = ColorTheme.ParseBrush(c.InputSelection);
+        ReadOnlySpan<(string Key, string Hex)> mapping =
+        [
+            (ThemeResourceKeys.ChromeBrush, c.TitleBar),
+            (ThemeResourceKeys.BorderBrush, c.Border),
+            (ThemeResourceKeys.ContentBg, c.ContentBackground),
+            (ThemeResourceKeys.TextFg, c.TextForeground),
+            (ThemeResourceKeys.TextFgStrong, c.TextForegroundStrong),
+            (ThemeResourceKeys.TextFgMuted, c.TextForegroundMuted),
+            (ThemeResourceKeys.ButtonFg, c.ButtonForeground),
+            (ThemeResourceKeys.ButtonHover, c.ButtonHover),
+            (ThemeResourceKeys.MenuPopupBg, c.MenuPopupBackground),
+            (ThemeResourceKeys.MenuPopupBorder, c.MenuPopupBorder),
+            (ThemeResourceKeys.MenuItemHover, c.MenuItemHover),
+            (ThemeResourceKeys.NavBg, c.NavBackground),
+            (ThemeResourceKeys.NavActive, c.NavActive),
+            (ThemeResourceKeys.NavHover, c.NavHover),
+            (ThemeResourceKeys.ScrollBg, c.ScrollBackground),
+            (ThemeResourceKeys.ScrollThumb, c.ScrollThumb),
+            (ThemeResourceKeys.ScrollThumbHover, c.ScrollThumbHover),
+            (ThemeResourceKeys.TabBarBg, c.TabBarBackground),
+            (ThemeResourceKeys.TabActive, c.TabActive),
+            (ThemeResourceKeys.TabInactive, c.TabInactive),
+            (ThemeResourceKeys.TabHover, c.TabHover),
+            (ThemeResourceKeys.TabBorder, c.TabBorder),
+            (ThemeResourceKeys.ExplorerBg, c.ExplorerBackground),
+            (ThemeResourceKeys.ExplorerHeaderBg, c.ExplorerHeaderBackground),
+            (ThemeResourceKeys.ExplorerHeaderFg, c.ExplorerHeaderForeground),
+            (ThemeResourceKeys.ExplorerItemHover, c.ExplorerItemHover),
+            (ThemeResourceKeys.ExplorerItemSelected, c.ExplorerItemSelected),
+            (ThemeResourceKeys.ExplorerDropTarget, c.ExplorerDropTarget),
+            (ThemeResourceKeys.InputSelection, c.InputSelection),
+        ];
+        foreach (var (key, hex) in mapping)
+            res[key] = ColorTheme.ParseBrush(hex);
     }
 
     private void EnsureDefaultThemes()

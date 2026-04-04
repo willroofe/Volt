@@ -590,79 +590,7 @@ public partial class MainWindow
         }
 
         var restored = _sessionManager.RestoreSession(_settings.Session);
-
-        if (restored.Tabs.Count > 0)
-        {
-            TabInfo? activeTab = null;
-
-            for (int i = 0; i < restored.Tabs.Count; i++)
-            {
-                var rt = restored.Tabs[i];
-                var tab = CreateTab();
-
-                if (rt.FilePath != null)
-                {
-                    tab.FilePath = rt.FilePath;
-                    tab.FileEncoding = FileHelper.DetectEncoding(rt.FilePath);
-
-                    if (rt.IsDirty)
-                    {
-                        tab.Editor.SetContent(rt.SavedContent ?? FileHelper.ReadAllText(rt.FilePath, tab.FileEncoding));
-                        tab.Editor.MarkDirty();
-                    }
-                    else
-                    {
-                        tab.Editor.SetContent(FileHelper.ReadAllText(rt.FilePath, tab.FileEncoding));
-                    }
-
-                    tab.LastKnownFileSize = new FileInfo(rt.FilePath).Length;
-                    tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(rt.FilePath, tab.LastKnownFileSize);
-                    tab.StartWatching();
-                }
-                else
-                {
-                    // Untitled tab — restore saved content if available
-                    if (rt.SavedContent != null)
-                    {
-                        tab.Editor.SetContent(rt.SavedContent);
-                        tab.Editor.MarkDirty();
-                    }
-                }
-
-                UpdateTabHeader(tab);
-
-                // Defer caret/scroll restore until after layout so the editor has valid extents
-                var restoredTab = rt;
-                RoutedEventHandler? onLoaded = null;
-                onLoaded = (_, _) =>
-                {
-                    tab.Editor.Loaded -= onLoaded;
-                    tab.Editor.SetCaretPosition(restoredTab.CaretLine, restoredTab.CaretCol);
-                    tab.Editor.SetVerticalOffset(restoredTab.ScrollVertical);
-                    tab.Editor.SetHorizontalOffset(restoredTab.ScrollHorizontal);
-                    tab.Editor.InvalidateVisual();
-                };
-                tab.Editor.Loaded += onLoaded;
-
-                if (i == restored.ActiveTabIndex)
-                    activeTab = tab;
-            }
-
-            if (_tabs.Count == 0)
-            {
-                var tab = CreateTab();
-                ActivateTab(tab);
-            }
-            else
-            {
-                ActivateTab(activeTab ?? _tabs[0]);
-            }
-        }
-        else
-        {
-            var tab = CreateTab();
-            ActivateTab(tab);
-        }
+        RestoreTabsFromSession(restored);
 
         // Clean up session files after restore
         SessionSettings.ClearSessionDir();
@@ -698,6 +626,11 @@ public partial class MainWindow
         }
 
         var restored = _sessionManager.RestoreSession(session, folderPath);
+        RestoreTabsFromSession(restored);
+    }
+
+    private void RestoreTabsFromSession(RestoredSession restored)
+    {
         if (restored.Tabs.Count == 0)
         {
             var tab = CreateTab();
@@ -754,7 +687,15 @@ public partial class MainWindow
                 activeTab = tab;
         }
 
-        ActivateTab(activeTab ?? _tabs[0]);
+        if (_tabs.Count == 0)
+        {
+            var tab = CreateTab();
+            ActivateTab(tab);
+        }
+        else
+        {
+            ActivateTab(activeTab ?? _tabs[0]);
+        }
     }
 
     private void RestoreWindowPosition()
