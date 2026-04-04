@@ -23,32 +23,21 @@ No fundamental architectural problems were found. Issues are primarily duplicati
 
 ## 1. Dead Weight
 
-### Debug.WriteLine / Console.WriteLine in production code
+### ~~Debug.WriteLine / Console.WriteLine in production code~~ DONE
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `Editor/SyntaxManager.cs` | 219, 593–594 | Regex timeout and grammar extraction errors |
-| `Editor/SyntaxDefinition.cs` | 103, 122, 141, 155, 172, 177, 182 | Seven `Debug.WriteLine` calls for parse errors |
-| `Editor/FontManager.cs` | 170 | Font resolution error |
-| `UI/MainWindow.xaml.cs` | 815, 828, 992 | Workspace/session save failures |
-| `UI/Explorer/FileExplorerPanel.xaml.cs` | 510 | Staged delete failure |
-| `UI/Explorer/FileTreeItem.cs` | 117, 237 | LoadChildren/RefreshChildren failures |
+All ~27 `Debug.WriteLine` calls removed across 10 files: `SyntaxManager.cs`, `SyntaxDefinition.cs`, `FontManager.cs`, `MainWindow.xaml.cs`, `FileExplorerPanel.xaml.cs`, `FileTreeItem.cs`, `AppSettings.cs`, `EditorControl.cs`, `ColorTheme.cs`, `ThemeManager.cs`. Catch blocks preserved with empty bodies or simplified.
 
-**Impact**: Low per-instance, but ~15 scattered statements add noise. Remove or replace with a lightweight logging abstraction if diagnostics are needed.
+### ~~Redundant null checks~~ DONE
 
-### Redundant null checks
+Removed `ThemeManager != null` guards in `EditorControl.cs` Loaded/Unloaded handlers — `ThemeManager` is non-nullable, set in constructor.
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `Editor/EditorControl.cs` | 280–281, 294–295 | `ThemeManager != null` checks on a required non-nullable property |
-| `UI/MainWindow.xaml.cs` | 59–60 | `_editor != null` followed by `_editor?.` on next line |
-| `UI/MainWindow.xaml.cs` | 116–117 | `_activeTab` checked twice on consecutive lines |
+**False positives removed from review:**
+- ~~`UI/MainWindow.xaml.cs` 59–60~~ — no `_editor` field exists at these lines
+- ~~`UI/MainWindow.xaml.cs` 116–117~~ — single guard before event unhook, not redundant
 
-### Redundant field initialization
+### ~~Redundant field initialization~~ NOT APPLICABLE
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `Theme/ThemeManager.cs` | 20–30 | 11 brush properties initialized with defaults that are immediately overwritten by `UpdateEditorColors()` |
+~~`Theme/ThemeManager.cs` 20–30~~ — false positive. The default brush values serve as safe fallbacks before `Apply()` runs during startup. Removing them would leave null properties.
 
 ---
 

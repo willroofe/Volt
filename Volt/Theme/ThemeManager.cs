@@ -84,10 +84,7 @@ public class ThemeManager
                 var theme = ColorTheme.LoadFromFile(file);
                 if (theme != null) _themeCache.Add(theme);
             }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Failed to load theme '{file}': {ex.Message}");
-            }
+            catch (Exception) { }
         }
         return _themeCache;
     }
@@ -159,13 +156,7 @@ public class ThemeManager
         {
             EmbeddedResourceHelper.ExtractAll("Volt.Resources.Themes.", _themesDir);
         }
-        catch (IOException ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to extract default themes: {ex.Message}");
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to extract default themes: {ex.Message}");
-        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 }

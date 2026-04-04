@@ -98,9 +98,8 @@ public class SyntaxDefinition
                 rule.CompiledRegex = new Regex(rule.Pattern,
                     RegexOptions.Compiled, RegexTimeout);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                System.Diagnostics.Debug.WriteLine($"Invalid regex for scope '{rule.Scope}': {rule.Pattern} — {ex.Message}");
                 rule.CompiledRegex = null;
             }
         }
@@ -117,9 +116,8 @@ public class SyntaxDefinition
                         BlockComments[i].EndRegex = new Regex(BlockComments[i].End,
                             RegexOptions.Compiled, RegexTimeout);
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Invalid block comment regex at index {i}: {ex.Message}");
                     BlockComments.RemoveAt(i);
                 }
             }
@@ -136,9 +134,8 @@ public class SyntaxDefinition
                     Interpolation.EscapeRegex = new Regex(Interpolation.EscapePattern,
                         RegexOptions.Compiled, RegexTimeout);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to compile interpolation patterns: {ex.Message}");
                 Interpolation = null;
             }
         }
@@ -150,9 +147,8 @@ public class SyntaxDefinition
                 Heredoc.CompiledRegex = new Regex(Heredoc.Pattern,
                     RegexOptions.Compiled, RegexTimeout);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to compile heredoc pattern: {ex.Message}");
                 Heredoc = null;
             }
         }
@@ -167,19 +163,8 @@ public class SyntaxDefinition
             def?.Compile();
             return def;
         }
-        catch (IOException ex)
+        catch (Exception e) when (e is IOException or JsonException or ArgumentException)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to load grammar '{path}': {ex.Message}");
-            return null;
-        }
-        catch (JsonException ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to load grammar '{path}': {ex.Message}");
-            return null;
-        }
-        catch (ArgumentException ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to load grammar '{path}': {ex.Message}");
             return null;
         }
     }

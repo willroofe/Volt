@@ -214,10 +214,7 @@ public class SyntaxManager
                     }
                 }
             }
-            catch (RegexMatchTimeoutException)
-            {
-                System.Diagnostics.Debug.WriteLine($"Regex timeout in grammar rule {r} (scope '{rule.Scope}')");
-            }
+            catch (RegexMatchTimeoutException) { }
         }
 
         candidates.Sort((a, b) => a.Start != b.Start ? a.Start.CompareTo(b.Start) : a.Priority.CompareTo(b.Priority));
@@ -590,7 +587,7 @@ public class SyntaxManager
         {
             EmbeddedResourceHelper.ExtractAll("Volt.Resources.Grammars.", GrammarsDir);
         }
-        catch (IOException ex) { System.Diagnostics.Debug.WriteLine($"Failed to extract default grammars: {ex.Message}"); }
-        catch (UnauthorizedAccessException ex) { System.Diagnostics.Debug.WriteLine($"Failed to extract default grammars: {ex.Message}"); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 }

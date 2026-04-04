@@ -59,9 +59,8 @@ public class FontManager
                 var fw = (FontWeight)_fontWeightConverter.ConvertFromString(value)!;
                 Apply(_monoTypeface.FontFamily.Source, _fontSize, fw);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                System.Diagnostics.Debug.WriteLine($"Invalid font weight '{value}': {ex.Message}");
                 Apply(_monoTypeface.FontFamily.Source, _fontSize, FontWeights.Normal);
             }
         }
@@ -165,10 +164,7 @@ public class FontManager
                 if (Math.Abs(narrow.WidthIncludingTrailingWhitespace - wide.WidthIncludingTrailingWhitespace) < 0.01)
                     mono.Add(family.Source);
             }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Failed to probe font '{family.Source}': {ex.Message}");
-            }
+            catch (Exception) { }
         }
         _monoFontCache = mono;
         return _monoFontCache;

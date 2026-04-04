@@ -810,10 +810,7 @@ public partial class MainWindow
                     _settings.LastOpenWorkspacePath = null;
                 }
             }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Workspace save failed: {ex.Message}");
-            }
+            catch (Exception) { }
         }
 
         // Try to persist session; if it fails, fall back to prompting for dirty tabs
@@ -823,10 +820,7 @@ public partial class MainWindow
             SaveSession();
             sessionSaved = true;
         }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Session save failed: {ex.Message}");
-        }
+        catch (Exception) { }
 
         if (!sessionSaved)
         {
@@ -987,10 +981,7 @@ public partial class MainWindow
             tab.LastKnownFileSize = new FileInfo(tab.FilePath!).Length;
             tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(tab.FilePath!, tab.LastKnownFileSize);
         }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Post-save metadata refresh failed: {ex.Message}");
-        }
+        catch (Exception) { }
         tab.Editor.MarkClean();
         UpdateTabHeader(tab);
         return true;

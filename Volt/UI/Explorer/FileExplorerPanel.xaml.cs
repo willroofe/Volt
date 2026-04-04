@@ -507,7 +507,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
                 else if (File.Exists(op.NewPath))
                     FileSystem.DeleteFile(op.NewPath, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
             }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Failed to flush staged delete: {ex.Message}"); }
+            catch (Exception) { }
         }
     }
 
