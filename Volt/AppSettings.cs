@@ -96,11 +96,7 @@ public class SessionSettings
             var path = TabContentPath(index);
             return File.Exists(path) ? File.ReadAllText(path) : null;
         }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to load session tab {index}: {ex.Message}");
-            return null;
-        }
+        catch (Exception) { return null; }
     }
 
     public static string? LoadFolderTabContent(string folderPath, int index)
@@ -110,11 +106,7 @@ public class SessionSettings
             var path = FolderTabContentPath(folderPath, index);
             return File.Exists(path) ? File.ReadAllText(path) : null;
         }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to load folder session tab {index}: {ex.Message}");
-            return null;
-        }
+        catch (Exception) { return null; }
     }
 
     public static void ClearSessionDir()
@@ -195,15 +187,12 @@ public class AppSettings
 
             return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to load settings: {ex.Message}");
             // Preserve the corrupted file for debugging
             try
             {
-                var backupPath = SettingsPath + ".bak";
-                File.Copy(SettingsPath, backupPath, overwrite: true);
-                System.Diagnostics.Debug.WriteLine($"Corrupted settings backed up to {backupPath}");
+                File.Copy(SettingsPath, SettingsPath + ".bak", overwrite: true);
             }
             catch { /* best effort */ }
             return new AppSettings();
@@ -247,10 +236,7 @@ public class AppSettings
         // If Save() fails, the migrated settings are still returned in-memory and the
         // old-format file will trigger re-migration on next launch (acceptable).
         try { settings.Save(); }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to save migrated settings: {ex.Message}");
-        }
+        catch (Exception) { }
         return settings;
     }
 }

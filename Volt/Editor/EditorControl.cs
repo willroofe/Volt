@@ -277,8 +277,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         Loaded += (_, _) =>
         {
-            if (ThemeManager != null)
-                ThemeManager.ThemeChanged += OnThemeChanged;
+            ThemeManager.ThemeChanged += OnThemeChanged;
             RebuildGutterPen();
             _font.Dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
             Keyboard.Focus(this);
@@ -291,8 +290,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _blinkTimer.Stop();
             _font.BeforeFontChanged -= OnBeforeFontChanged;
             _font.FontChanged -= OnFontChanged;
-            if (ThemeManager != null)
-                ThemeManager.ThemeChanged -= OnThemeChanged;
+            ThemeManager.ThemeChanged -= OnThemeChanged;
         };
     }
 
@@ -1678,10 +1676,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             if (_selection.HasSelection)
                 Clipboard.SetText(_selection.GetSelectedText(_buffer, _caretLine, _caretCol));
         }
-        catch (System.Runtime.InteropServices.ExternalException ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Clipboard copy failed: {ex.Message}");
-        }
+        catch (System.Runtime.InteropServices.ExternalException) { }
     }
 
     private void HandleCut()
@@ -1694,9 +1689,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             Clipboard.SetText(text);
         }
-        catch (System.Runtime.InteropServices.ExternalException ex)
+        catch (System.Runtime.InteropServices.ExternalException)
         {
-            System.Diagnostics.Debug.WriteLine($"Clipboard cut failed: {ex.Message}");
             return; // Don't delete if clipboard write failed
         }
         var scope = BeginEdit(sl, el);

@@ -114,7 +114,7 @@ public class FileTreeItem : INotifyPropertyChanged
         }
         catch (UnauthorizedAccessException) { _hasPlaceholder = false; Children.Clear(); }
         catch (IOException) { _hasPlaceholder = false; Children.Clear(); }
-        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"LoadChildren failed: {ex.Message}"); }
+        catch (Exception) { }
     }
 
     private void StartWatching()
@@ -234,7 +234,7 @@ public class FileTreeItem : INotifyPropertyChanged
         }
         catch (UnauthorizedAccessException) { }
         catch (IOException) { }
-        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"RefreshChildren failed: {ex.Message}"); }
+        catch (Exception) { }
     }
 
     private void OnChildTreeChanged(FileTreeItem child)
