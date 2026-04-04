@@ -96,7 +96,7 @@ public class FindManager
         Regex regex;
         try
         {
-            var options = RegexOptions.Compiled;
+            var options = RegexOptions.None;
             if (!matchCase) options |= RegexOptions.IgnoreCase;
             regex = new Regex(query, options, TimeSpan.FromSeconds(1));
         }

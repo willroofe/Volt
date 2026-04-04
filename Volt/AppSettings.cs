@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Windows.Threading;
 
 namespace Volt;
 
@@ -130,6 +131,8 @@ public class SessionSettings
 public class AppSettings
 {
     private static readonly string SettingsPath = AppPaths.SettingsPath;
+    private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
+    private DispatcherTimer? _saveTimer;
 
     public int SettingsVersion { get; set; } = 1;
     public ApplicationSettings Application { get; set; } = new();
@@ -153,10 +156,30 @@ public class AppSettings
 
     public void Save()
     {
+        _saveTimer?.Stop();
         var dir = Path.GetDirectoryName(SettingsPath)!;
         Directory.CreateDirectory(dir);
-        var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+        var json = JsonSerializer.Serialize(this, SerializerOptions);
         FileHelper.AtomicWriteText(SettingsPath, json, System.Text.Encoding.UTF8);
+    }
+
+    /// <summary>
+    /// Debounced save — batches rapid changes into a single disk write after 1 second of inactivity.
+    /// Use for high-frequency events (panel resize, layout changes). For one-shot actions, use Save().
+    /// </summary>
+    public void ScheduleSave()
+    {
+        if (_saveTimer == null)
+        {
+            _saveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _saveTimer.Tick += (_, _) =>
+            {
+                _saveTimer.Stop();
+                Save();
+            };
+        }
+        _saveTimer.Stop();
+        _saveTimer.Start();
     }
 
     public static AppSettings Load()
