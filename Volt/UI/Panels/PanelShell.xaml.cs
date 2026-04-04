@@ -370,10 +370,20 @@ public partial class PanelShell : UserControl
     private void OnAddPanelRequested(TabRegion region)
     {
         var available = GetAvailablePanels();
-        if (available.Count == 0) return;
-
         var placement = GetPlacement(region);
         var menu = ContextMenuHelper.Create();
+
+        if (available.Count == 0)
+        {
+            var placeholder = ContextMenuHelper.Item("No more panels available", () => { });
+            placeholder.IsEnabled = false;
+            placeholder.FontStyle = FontStyles.Italic;
+            placeholder.SetResourceReference(MenuItem.ForegroundProperty, ThemeResourceKeys.TextFgMuted);
+            menu.Items.Add(placeholder);
+            region.ContextMenu = menu;
+            menu.IsOpen = true;
+            return;
+        }
         foreach (var panel in available)
         {
             var id = panel.PanelId;
