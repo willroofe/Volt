@@ -1980,11 +1980,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
     }
 
     public void SetFindMatches(string query, bool matchCase, bool useRegex = false, bool wholeWord = false,
-        (int, int, int, int)? selectionBounds = null)
+        (int, int, int, int)? selectionBounds = null, bool preserveSelection = false)
     {
         _find.Search(_buffer, query, matchCase, _caretLine, _caretCol, useRegex, wholeWord, selectionBounds);
         if (_find.MatchCount > 0)
-            NavigateToCurrentMatch();
+            NavigateToCurrentMatch(preserveSelection);
         InvalidateVisual();
     }
 
@@ -2046,14 +2046,19 @@ public class EditorControl : FrameworkElement, IScrollInfo
         InvalidateVisual();
     }
 
-    private void NavigateToCurrentMatch()
+    private void NavigateToCurrentMatch(bool preserveSelection = false)
     {
         var match = _find.GetCurrentMatch();
         if (match == null) return;
         var (line, col, _) = match.Value;
-        _caretLine = line;
-        _caretCol = col;
-        _selection.Clear();
+
+        if (!preserveSelection)
+        {
+            _caretLine = line;
+            _caretCol = col;
+            _selection.Clear();
+        }
+
         CentreLineInViewport(line);
         ResetCaret();
     }

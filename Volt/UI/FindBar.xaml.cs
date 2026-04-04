@@ -22,6 +22,7 @@ public partial class FindBar : UserControl
     private bool _wholeWord;
     private bool _findInSelection;
     private (int startLine, int startCol, int endLine, int endCol)? _selectionBounds;
+    private (int startLine, int startCol, int endLine, int endCol)? _selectionBoundsAtOpen;
     private EditorControl? _editor;
 
     public event EventHandler? Closed;
@@ -58,6 +59,8 @@ public partial class FindBar : UserControl
 
     public void Open(bool showReplace = false)
     {
+        // Capture the editor's selection before searching (which clears it via navigation)
+        _selectionBoundsAtOpen = _editor?.GetSelectionBounds();
         Visibility = Visibility.Visible;
         SetReplaceVisible(showReplace);
         UpdateSearch();
@@ -93,6 +96,7 @@ public partial class FindBar : UserControl
         _matchCount.Text = "";
         _findInSelection = false;
         _selectionBounds = null;
+        _selectionBoundsAtOpen = null;
         _findInSelBtn.SetResourceReference(ForegroundProperty, ThemeResourceKeys.TextFgMuted);
         _findInSelBtn.SetResourceReference(BackgroundProperty, ThemeResourceKeys.MenuPopupBg);
         Closed?.Invoke(this, EventArgs.Empty);
@@ -142,7 +146,7 @@ public partial class FindBar : UserControl
     {
         _findInSelection = !_findInSelection;
         if (_findInSelection)
-            _selectionBounds = _editor?.GetSelectionBounds();
+            _selectionBounds = _editor?.GetSelectionBounds() ?? _selectionBoundsAtOpen;
         else
             _selectionBounds = null;
         _findInSelBtn.SetResourceReference(ForegroundProperty,
@@ -198,7 +202,8 @@ public partial class FindBar : UserControl
         }
 
         _editor.SetFindMatches(query, _matchCase, _useRegex, _wholeWord,
-            _findInSelection ? _selectionBounds : null);
+            _findInSelection ? _selectionBounds : null,
+            preserveSelection: _selectionBoundsAtOpen != null);
         UpdateMatchCountLabel();
     }
 
