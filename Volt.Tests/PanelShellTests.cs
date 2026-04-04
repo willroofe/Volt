@@ -16,11 +16,13 @@ public class PanelShellTests
 #pragma warning restore CS0067
     }
 
+    private static FakePanel CreatePanel(string id = "test", string title = "Test Panel") => new(id, title);
+
     [StaFact]
     public void RegisterPanel_ThenShow_MakesPanelVisible()
     {
         var shell = new PanelShell();
-        var panel = new FakePanel("test", "Test Panel");
+        var panel = CreatePanel();
         shell.RegisterPanel(panel, PanelPlacement.Left, 250);
 
         Assert.False(shell.IsPanelVisible("test"));
@@ -33,7 +35,7 @@ public class PanelShellTests
     public void HidePanel_MakesPanelNotVisible()
     {
         var shell = new PanelShell();
-        var panel = new FakePanel("test", "Test Panel");
+        var panel = CreatePanel();
         shell.RegisterPanel(panel, PanelPlacement.Left, 250);
         shell.ShowPanel("test");
 
@@ -45,7 +47,7 @@ public class PanelShellTests
     public void TogglePanel_FlipsVisibility()
     {
         var shell = new PanelShell();
-        var panel = new FakePanel("test", "Test Panel");
+        var panel = CreatePanel();
         shell.RegisterPanel(panel, PanelPlacement.Left, 250);
 
         shell.TogglePanel("test");
@@ -59,7 +61,7 @@ public class PanelShellTests
     public void MovePanel_ChangesPlacement()
     {
         var shell = new PanelShell();
-        var panel = new FakePanel("test", "Test Panel");
+        var panel = CreatePanel();
         shell.RegisterPanel(panel, PanelPlacement.Left, 250);
         shell.ShowPanel("test");
 
@@ -75,8 +77,8 @@ public class PanelShellTests
     public void GetCurrentLayout_ReturnsAllRegisteredPanels()
     {
         var shell = new PanelShell();
-        var panel1 = new FakePanel("left", "Left");
-        var panel2 = new FakePanel("right", "Right");
+        var panel1 = CreatePanel("left", "Left");
+        var panel2 = CreatePanel("right", "Right");
         shell.RegisterPanel(panel1, PanelPlacement.Left, 200);
         shell.RegisterPanel(panel2, PanelPlacement.Right, 300);
         shell.ShowPanel("left");
@@ -98,7 +100,7 @@ public class PanelShellTests
     public void RestoreLayout_AppliesConfigToRegisteredPanels()
     {
         var shell = new PanelShell();
-        var panel = new FakePanel("test", "Test");
+        var panel = CreatePanel("test", "Test");
         shell.RegisterPanel(panel, PanelPlacement.Left, 250);
 
         shell.RestoreLayout([
@@ -124,7 +126,7 @@ public class PanelShellTests
     public void PanelLayoutChanged_FiresOnShowHide()
     {
         var shell = new PanelShell();
-        var panel = new FakePanel("test", "Test");
+        var panel = CreatePanel("test", "Test");
         shell.RegisterPanel(panel, PanelPlacement.Left, 250);
 
         var events = new List<(string id, PanelPlacement placement, double size)>();
@@ -149,7 +151,7 @@ public class PanelShellTests
     public void ShowPanel_AlreadyVisible_DoesNotFireEvent()
     {
         var shell = new PanelShell();
-        var panel = new FakePanel("test", "Test");
+        var panel = CreatePanel("test", "Test");
         shell.RegisterPanel(panel, PanelPlacement.Left, 250);
         shell.ShowPanel("test");
 
@@ -164,8 +166,8 @@ public class PanelShellTests
     public void MultiplePanels_SameRegion_BothVisible()
     {
         var shell = new PanelShell();
-        var panel1 = new FakePanel("a", "Panel A");
-        var panel2 = new FakePanel("b", "Panel B");
+        var panel1 = CreatePanel("a", "Panel A");
+        var panel2 = CreatePanel("b", "Panel B");
         shell.RegisterPanel(panel1, PanelPlacement.Left, 250);
         shell.RegisterPanel(panel2, PanelPlacement.Left, 250);
 
@@ -188,8 +190,8 @@ public class PanelShellTests
     public void HidePanel_InMultiTabRegion_DoesNotCollapseRegion()
     {
         var shell = new PanelShell();
-        var panel1 = new FakePanel("a", "Panel A");
-        var panel2 = new FakePanel("b", "Panel B");
+        var panel1 = CreatePanel("a", "Panel A");
+        var panel2 = CreatePanel("b", "Panel B");
         shell.RegisterPanel(panel1, PanelPlacement.Left, 250);
         shell.RegisterPanel(panel2, PanelPlacement.Left, 250);
 
@@ -206,8 +208,8 @@ public class PanelShellTests
     public void GetAvailablePanels_ReturnsHiddenPanels()
     {
         var shell = new PanelShell();
-        var panel1 = new FakePanel("a", "Panel A");
-        var panel2 = new FakePanel("b", "Panel B");
+        var panel1 = CreatePanel("a", "Panel A");
+        var panel2 = CreatePanel("b", "Panel B");
         shell.RegisterPanel(panel1, PanelPlacement.Left, 250);
         shell.RegisterPanel(panel2, PanelPlacement.Right, 250);
 
@@ -222,7 +224,7 @@ public class PanelShellTests
     public void ToggleRegion_CollapsesAndRestores()
     {
         var shell = new PanelShell();
-        var panel = new FakePanel("test", "Test");
+        var panel = CreatePanel("test", "Test");
         shell.RegisterPanel(panel, PanelPlacement.Left, 250);
         shell.ShowPanel("test");
 
@@ -239,8 +241,8 @@ public class PanelShellTests
     public void RestoreLayout_PreservesTabOrder()
     {
         var shell = new PanelShell();
-        var panel1 = new FakePanel("a", "Panel A");
-        var panel2 = new FakePanel("b", "Panel B");
+        var panel1 = CreatePanel("a", "Panel A");
+        var panel2 = CreatePanel("b", "Panel B");
         shell.RegisterPanel(panel1, PanelPlacement.Left, 250);
         shell.RegisterPanel(panel2, PanelPlacement.Left, 250);
 
