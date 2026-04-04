@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 
@@ -24,12 +25,16 @@ public partial class FindBar : UserControl
     public FindBar()
     {
         InitializeComponent();
+        UpdatePanelMargin();
 
         IsVisibleChanged += (_, _) =>
         {
             if (IsVisible)
+            {
+                UpdatePanelMargin();
                 Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,
                     () => { if (_input != null) { Keyboard.Focus(_input); _input.SelectAll(); } });
+            }
         };
     }
 
@@ -44,7 +49,7 @@ public partial class FindBar : UserControl
         VerticalAlignment = top ? VerticalAlignment.Top : VerticalAlignment.Bottom;
         Margin = top ? new Thickness(0, FindBarTopMargin, 0, 0) : new Thickness(0, 0, 0, FindBarBottomMargin);
         _panel.VerticalAlignment = top ? VerticalAlignment.Top : VerticalAlignment.Bottom;
-        _panel.Margin = new Thickness(16, 8, 16, 8);
+        UpdatePanelMargin();
     }
 
     public void Open(bool showReplace = false)
@@ -203,5 +208,36 @@ public partial class FindBar : UserControl
 
         if (!e.Handled)
             base.OnPreviewKeyDown(e);
+    }
+
+    private void UpdatePanelMargin()
+    {
+        const double pad = 8;
+        double scrollBarWidth = 0;
+        if (_editor != null)
+        {
+            for (DependencyObject? d = _editor; d != null; d = VisualTreeHelper.GetParent(d))
+            {
+                if (d is ScrollViewer sv)
+                {
+                    scrollBarWidth = FindVerticalScrollBar(sv)?.ActualWidth ?? 0;
+                    break;
+                }
+            }
+        }
+        _panel.Margin = new Thickness(pad, 8, pad + scrollBarWidth, 8);
+    }
+
+    private static ScrollBar? FindVerticalScrollBar(DependencyObject parent)
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is ScrollBar { Orientation: Orientation.Vertical } sb)
+                return sb;
+            var result = FindVerticalScrollBar(child);
+            if (result != null) return result;
+        }
+        return null;
     }
 }
