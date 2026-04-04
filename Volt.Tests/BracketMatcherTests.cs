@@ -5,17 +5,10 @@ namespace Volt.Tests;
 
 public class BracketMatcherTests
 {
-    private static TextBuffer MakeBuffer(string content)
-    {
-        var buf = new TextBuffer();
-        buf.SetContent(content, tabSize: 4);
-        return buf;
-    }
-
     [Fact]
     public void FindMatch_MatchesParensOnSameLine()
     {
-        var buf = MakeBuffer("foo(bar)");
+        var buf = TestHelpers.MakeBuffer("foo(bar)");
         var result = BracketMatcher.FindMatch(buf, 0, 3);
 
         Assert.NotNull(result);
@@ -28,7 +21,7 @@ public class BracketMatcherTests
     [Fact]
     public void FindMatch_MatchesNestedBrackets()
     {
-        var buf = MakeBuffer("{a[b(c)d]e}");
+        var buf = TestHelpers.MakeBuffer("{a[b(c)d]e}");
         var result = BracketMatcher.FindMatch(buf, 0, 0);
 
         Assert.NotNull(result);
@@ -39,7 +32,7 @@ public class BracketMatcherTests
     [Fact]
     public void FindMatch_CrossLineMatching()
     {
-        var buf = MakeBuffer("if {\n  x\n}");
+        var buf = TestHelpers.MakeBuffer("if {\n  x\n}");
         var result = BracketMatcher.FindMatch(buf, 0, 3);
 
         Assert.NotNull(result);
@@ -52,7 +45,7 @@ public class BracketMatcherTests
     [Fact]
     public void FindMatch_UnmatchedBracket_ReturnsNull()
     {
-        var buf = MakeBuffer("(unclosed");
+        var buf = TestHelpers.MakeBuffer("(unclosed");
         var result = BracketMatcher.FindMatch(buf, 0, 0);
 
         Assert.Null(result);
@@ -61,7 +54,7 @@ public class BracketMatcherTests
     [Fact]
     public void FindMatch_ClosingBracketMatchesOpener()
     {
-        var buf = MakeBuffer("(hello)");
+        var buf = TestHelpers.MakeBuffer("(hello)");
         var result = BracketMatcher.FindMatch(buf, 0, 6);
 
         Assert.NotNull(result);
@@ -72,7 +65,7 @@ public class BracketMatcherTests
     [Fact]
     public void FindMatch_MixedBracketTypes()
     {
-        var buf = MakeBuffer("{[()]}");
+        var buf = TestHelpers.MakeBuffer("{[()]}");
         var result = BracketMatcher.FindMatch(buf, 0, 0);
 
         Assert.NotNull(result);
@@ -83,7 +76,7 @@ public class BracketMatcherTests
     [Fact]
     public void FindMatch_UnmatchedCloser_ReturnsNull()
     {
-        var buf = MakeBuffer("hello ) world");
+        var buf = TestHelpers.MakeBuffer("hello ) world");
         var result = BracketMatcher.FindMatch(buf, 0, 6);
 
         Assert.Null(result);
@@ -92,7 +85,7 @@ public class BracketMatcherTests
     [Fact]
     public void FindMatch_BracketAtStartOfLine()
     {
-        var buf = MakeBuffer("{\n  x\n}");
+        var buf = TestHelpers.MakeBuffer("{\n  x\n}");
         var result = BracketMatcher.FindMatch(buf, 2, 0);
 
         Assert.NotNull(result);
@@ -105,7 +98,7 @@ public class BracketMatcherTests
     [Fact]
     public void FindMatch_EmptyBuffer_ReturnsNull()
     {
-        var buf = MakeBuffer("");
+        var buf = TestHelpers.MakeBuffer("");
         var result = BracketMatcher.FindMatch(buf, 0, 0);
 
         Assert.Null(result);
@@ -114,7 +107,7 @@ public class BracketMatcherTests
     [Fact]
     public void FindMatch_ClampsOutOfRangePosition()
     {
-        var buf = MakeBuffer("(x)");
+        var buf = TestHelpers.MakeBuffer("(x)");
         // Out-of-range position should be clamped, not crash
         var result = BracketMatcher.FindMatch(buf, 99, 99);
 

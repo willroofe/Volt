@@ -19,6 +19,8 @@ public partial class SettingsWindow : Window
     public double SelectedLineHeight { get; private set; }
     public string FindBarPosition { get; private set; }
 
+    private enum SettingsSection { Theme, Font, Caret, Find, Explorer }
+
     public event EventHandler? Applied;
 
     private readonly ThemeManager _themeManager;
@@ -78,26 +80,26 @@ public partial class SettingsWindow : Window
         ColorThemeBox.SelectedIndex = ti >= 0 ? ti : 0;
     }
 
-    private void SelectNav(string section)
+    private void SelectNav(SettingsSection section)
     {
-        NavTheme.Style = (Style)FindResource(section == "Theme" ? "NavButtonActive" : "NavButton");
-        NavFont.Style = (Style)FindResource(section == "Font" ? "NavButtonActive" : "NavButton");
-        NavCaret.Style = (Style)FindResource(section == "Caret" ? "NavButtonActive" : "NavButton");
-        NavFind.Style = (Style)FindResource(section == "Find" ? "NavButtonActive" : "NavButton");
-        NavExplorer.Style = (Style)FindResource(section == "Explorer" ? "NavButtonActive" : "NavButton");
+        NavTheme.Style = (Style)FindResource(section == SettingsSection.Theme ? "NavButtonActive" : "NavButton");
+        NavFont.Style = (Style)FindResource(section == SettingsSection.Font ? "NavButtonActive" : "NavButton");
+        NavCaret.Style = (Style)FindResource(section == SettingsSection.Caret ? "NavButtonActive" : "NavButton");
+        NavFind.Style = (Style)FindResource(section == SettingsSection.Find ? "NavButtonActive" : "NavButton");
+        NavExplorer.Style = (Style)FindResource(section == SettingsSection.Explorer ? "NavButtonActive" : "NavButton");
 
-        ThemeScroller.Visibility = section == "Theme" ? Visibility.Visible : Visibility.Collapsed;
-        FontScroller.Visibility = section == "Font" ? Visibility.Visible : Visibility.Collapsed;
-        CaretScroller.Visibility = section == "Caret" ? Visibility.Visible : Visibility.Collapsed;
-        FindScroller.Visibility = section == "Find" ? Visibility.Visible : Visibility.Collapsed;
-        ExplorerScroller.Visibility = section == "Explorer" ? Visibility.Visible : Visibility.Collapsed;
+        ThemeScroller.Visibility = section == SettingsSection.Theme ? Visibility.Visible : Visibility.Collapsed;
+        FontScroller.Visibility = section == SettingsSection.Font ? Visibility.Visible : Visibility.Collapsed;
+        CaretScroller.Visibility = section == SettingsSection.Caret ? Visibility.Visible : Visibility.Collapsed;
+        FindScroller.Visibility = section == SettingsSection.Find ? Visibility.Visible : Visibility.Collapsed;
+        ExplorerScroller.Visibility = section == SettingsSection.Explorer ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void OnNavTheme(object sender, RoutedEventArgs e) => SelectNav("Theme");
-    private void OnNavFont(object sender, RoutedEventArgs e) => SelectNav("Font");
-    private void OnNavCaret(object sender, RoutedEventArgs e) => SelectNav("Caret");
-    private void OnNavFind(object sender, RoutedEventArgs e) => SelectNav("Find");
-    private void OnNavExplorer(object sender, RoutedEventArgs e) => SelectNav("Explorer");
+    private void OnNavTheme(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Theme);
+    private void OnNavFont(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Font);
+    private void OnNavCaret(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Caret);
+    private void OnNavFind(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Find);
+    private void OnNavExplorer(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Explorer);
 
     private void ReadCurrentValues()
     {

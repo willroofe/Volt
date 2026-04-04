@@ -23,8 +23,19 @@ public class WorkspaceManager
     public Workspace OpenWorkspace(string workspacePath)
     {
         var json = File.ReadAllText(workspacePath, Encoding.UTF8);
-        var workspace = JsonSerializer.Deserialize<Workspace>(json, JsonOptions)
-                        ?? new Workspace();
+        Workspace workspace;
+        try
+        {
+            workspace = JsonSerializer.Deserialize<Workspace>(json, JsonOptions)
+                            ?? new Workspace();
+        }
+        catch (JsonException ex)
+        {
+            ThemedMessageBox.Show(System.Windows.Application.Current.MainWindow,
+                $"Failed to read workspace file:\n{ex.Message}",
+                "Invalid Workspace File");
+            workspace = new Workspace();
+        }
         workspace.FilePath = workspacePath;
         workspace.Folders ??= [];
         if (string.IsNullOrWhiteSpace(workspace.Name))

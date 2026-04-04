@@ -5,17 +5,10 @@ namespace Volt.Tests;
 
 public class FindManagerTests
 {
-    private static TextBuffer MakeBuffer(string content)
-    {
-        var buf = new TextBuffer();
-        buf.SetContent(content, tabSize: 4);
-        return buf;
-    }
-
     [Fact]
     public void Search_FindsMatchesWithPositions()
     {
-        var buf = MakeBuffer("hello world\nhello again");
+        var buf = TestHelpers.MakeBuffer("hello world\nhello again");
         var find = new FindManager();
 
         find.Search(buf, "hello", matchCase: false, caretLine: 0, caretCol: 0);
@@ -28,7 +21,7 @@ public class FindManagerTests
     [Fact]
     public void Search_CaseSensitive_FiltersCorrectly()
     {
-        var buf = MakeBuffer("Hello hello HELLO");
+        var buf = TestHelpers.MakeBuffer("Hello hello HELLO");
         var find = new FindManager();
 
         find.Search(buf, "hello", matchCase: true, caretLine: 0, caretCol: 0);
@@ -40,7 +33,7 @@ public class FindManagerTests
     [Fact]
     public void MoveNext_WrapsAround()
     {
-        var buf = MakeBuffer("aaa\naaa");
+        var buf = TestHelpers.MakeBuffer("aaa\naaa");
         var find = new FindManager();
         find.Search(buf, "aaa", matchCase: false, caretLine: 0, caretCol: 0);
 
@@ -56,7 +49,7 @@ public class FindManagerTests
     [Fact]
     public void MovePrevious_WrapsAround()
     {
-        var buf = MakeBuffer("aaa\naaa");
+        var buf = TestHelpers.MakeBuffer("aaa\naaa");
         var find = new FindManager();
         find.Search(buf, "aaa", matchCase: false, caretLine: 0, caretCol: 0);
 
@@ -69,7 +62,7 @@ public class FindManagerTests
     [Fact]
     public void Search_NoMatch_ReturnsZero()
     {
-        var buf = MakeBuffer("hello world");
+        var buf = TestHelpers.MakeBuffer("hello world");
         var find = new FindManager();
 
         find.Search(buf, "xyz", matchCase: false, caretLine: 0, caretCol: 0);

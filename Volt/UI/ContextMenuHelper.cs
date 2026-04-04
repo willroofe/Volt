@@ -27,15 +27,16 @@ public static class ContextMenuHelper
     public static MenuItem Item(string header, string iconGlyph, Action onClick)
     {
         var mi = Item(header, onClick);
-        mi.Icon = new TextBlock
+        var icon = new TextBlock
         {
             Text = iconGlyph,
             FontFamily = new FontFamily("Segoe MDL2 Assets"),
             FontSize = 12,
-            Foreground = (Brush)Application.Current.Resources[ThemeResourceKeys.TextFg],
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center
         };
+        icon.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFg);
+        mi.Icon = icon;
         return mi;
     }
 

@@ -27,8 +27,6 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
     private const string FileIcon = "\uE8A5";
 
     private static readonly Typeface NormalTypeface = new("Segoe UI");
-    private static readonly Typeface SemiBoldTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
-    private static readonly Typeface ItalicTypeface = new(new FontFamily("Segoe UI"), FontStyles.Italic, FontWeights.Normal, FontStretches.Normal);
     private static readonly Typeface IconTypeface = new("Segoe MDL2 Assets");
 
     private readonly List<FlatRow> _flatRows = [];

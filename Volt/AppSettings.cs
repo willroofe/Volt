@@ -57,12 +57,10 @@ public class SessionTab
 
 public class SessionSettings
 {
-    public static readonly string SessionDir = AppPaths.SessionDir;
-
     public List<SessionTab> Tabs { get; set; } = [];
     public int ActiveTabIndex { get; set; }
 
-    public static string TabContentPath(int index) => Path.Combine(SessionDir, $"tab-{index}.txt");
+    public static string TabContentPath(int index) => Path.Combine(AppPaths.SessionDir, $"tab-{index}.txt");
 
     public static string FolderSessionDir(string folderPath)
     {
@@ -70,7 +68,7 @@ public class SessionSettings
         var hash = Convert.ToHexString(
             System.Security.Cryptography.SHA256.HashData(
                 System.Text.Encoding.UTF8.GetBytes(folderPath.ToLowerInvariant())))[..16];
-        return Path.Combine(SessionDir, "folders", hash);
+        return Path.Combine(AppPaths.SessionDir, "folders", hash);
     }
 
     public static string FolderTabContentPath(string folderPath, int index)
@@ -78,7 +76,7 @@ public class SessionSettings
 
     public void SaveTabContent(int index, string content)
     {
-        Directory.CreateDirectory(SessionDir);
+        Directory.CreateDirectory(AppPaths.SessionDir);
         FileHelper.AtomicWriteText(TabContentPath(index), content, System.Text.Encoding.UTF8);
     }
 
@@ -121,8 +119,8 @@ public class SessionSettings
     {
         try
         {
-            if (!Directory.Exists(SessionDir)) return;
-            foreach (var file in Directory.GetFiles(SessionDir))
+            if (!Directory.Exists(AppPaths.SessionDir)) return;
+            foreach (var file in Directory.GetFiles(AppPaths.SessionDir))
             {
                 try { File.Delete(file); }
                 catch { /* best effort */ }
@@ -162,13 +160,14 @@ public class AppSettings
     public string? LastOpenWorkspacePath { get; set; }
     public List<string>? UnsavedWorkspaceFolders { get; set; }
     public SessionSettings Session { get; set; } = new();
-    public Dictionary<string, SessionSettings> FolderSessions { get; set; } = new();
+    public Dictionary<string, SessionSettings> FolderSessions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public static readonly string[] FindBarPositionOptions = ["Top", "Bottom"];
     public static readonly double[] FontSizeOptions = [8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 36];
     public static readonly int[] TabSizeOptions = [2, 4, 8];
     public static readonly string[] FontWeightOptions = ["Thin", "ExtraLight", "Light", "Normal", "Medium", "SemiBold", "Bold", "ExtraBold", "Black"];
     public static readonly double[] LineHeightOptions = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2.0];
+
     public void Save()
     {
         var dir = Path.GetDirectoryName(SettingsPath)!;

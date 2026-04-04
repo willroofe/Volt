@@ -108,12 +108,13 @@ public class FileTreeItem : INotifyPropertyChanged
             }
             foreach (var file in files)
                 Children.Add(new FileTreeItem(file, false));
+
+            StartWatching();
+            TreeChanged?.Invoke(this);
         }
         catch (UnauthorizedAccessException) { _hasPlaceholder = false; Children.Clear(); }
         catch (IOException) { _hasPlaceholder = false; Children.Clear(); }
-
-        StartWatching();
-        TreeChanged?.Invoke(this);
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"LoadChildren failed: {ex.Message}"); }
     }
 
     private void StartWatching()
@@ -187,24 +188,24 @@ public class FileTreeItem : INotifyPropertyChanged
 
     private async void RefreshChildren()
     {
-        if (!_isExpanded || _hasPlaceholder) return;
-
-        // Stop watchers on old children before replacing them
-        foreach (var child in Children)
-            child.StopWatchingRecursive();
-
-        // Capture which subdirectories were expanded
-        var expandedDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var child in Children)
-        {
-            if (child.IsDirectory && child.IsExpanded && !string.IsNullOrEmpty(child.FullPath))
-                expandedDirs.Add(child.FullPath);
-        }
-
-        Children.Clear();
-
         try
         {
+            if (!_isExpanded || _hasPlaceholder) return;
+
+            // Stop watchers on old children before replacing them
+            foreach (var child in Children)
+                child.StopWatchingRecursive();
+
+            // Capture which subdirectories were expanded
+            var expandedDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var child in Children)
+            {
+                if (child.IsDirectory && child.IsExpanded && !string.IsNullOrEmpty(child.FullPath))
+                    expandedDirs.Add(child.FullPath);
+            }
+
+            Children.Clear();
+
             var (dirs, files) = await Task.Run(() =>
             {
                 var d = Directory.GetDirectories(FullPath)
@@ -228,11 +229,12 @@ public class FileTreeItem : INotifyPropertyChanged
             }
             foreach (var file in files)
                 Children.Add(new FileTreeItem(file, false));
+
+            TreeChanged?.Invoke(this);
         }
         catch (UnauthorizedAccessException) { }
         catch (IOException) { }
-
-        TreeChanged?.Invoke(this);
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"RefreshChildren failed: {ex.Message}"); }
     }
 
     private void OnChildTreeChanged(FileTreeItem child)

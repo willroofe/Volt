@@ -96,7 +96,7 @@ public class SyntaxDefinition
             try
             {
                 rule.CompiledRegex = new Regex(rule.Pattern,
-                    RegexOptions.Compiled | RegexOptions.Multiline, RegexTimeout);
+                    RegexOptions.Compiled, RegexTimeout);
             }
             catch (Exception ex)
             {
@@ -167,7 +167,17 @@ public class SyntaxDefinition
             def?.Compile();
             return def;
         }
-        catch (Exception ex)
+        catch (IOException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to load grammar '{path}': {ex.Message}");
+            return null;
+        }
+        catch (JsonException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to load grammar '{path}': {ex.Message}");
+            return null;
+        }
+        catch (ArgumentException ex)
         {
             System.Diagnostics.Debug.WriteLine($"Failed to load grammar '{path}': {ex.Message}");
             return null;

@@ -84,6 +84,8 @@ public class FontManager
 
     public void Apply(string familyName, double size, FontWeight weight)
     {
+        if (_monoTypeface != null! && familyName == _monoTypeface.FontFamily.Source
+            && Math.Abs(size - _fontSize) < 0.001 && weight == _fontWeight) return;
         BeforeFontChanged?.Invoke();
         _fontWeight = weight;
         _monoTypeface = new Typeface(new FontFamily(familyName), FontStyles.Normal, weight, FontStretches.Normal);

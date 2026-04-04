@@ -5,17 +5,10 @@ namespace Volt.Tests;
 
 public class WrapLayoutTests
 {
-    private static TextBuffer MakeBuffer(string content)
-    {
-        var buf = new TextBuffer();
-        buf.SetContent(content, tabSize: 4);
-        return buf;
-    }
-
     [Fact]
     public void WrapOff_VisualLineEqualsLogicalLine()
     {
-        var buf = MakeBuffer("short\nlines\nhere");
+        var buf = TestHelpers.MakeBuffer("short\nlines\nhere");
         var wrap = new WrapLayout();
 
         wrap.Recalculate(wordWrap: false, buf, textAreaWidth: 500, charWidth: 8);
@@ -29,7 +22,7 @@ public class WrapLayoutTests
     [Fact]
     public void WrapOn_LongLineProducesMultipleVisualLines()
     {
-        var buf = MakeBuffer("12345678901234567890\nshort");
+        var buf = TestHelpers.MakeBuffer("12345678901234567890\nshort");
         var wrap = new WrapLayout();
 
         wrap.Recalculate(wordWrap: true, buf, textAreaWidth: 80, charWidth: 8);
@@ -43,7 +36,7 @@ public class WrapLayoutTests
     [Fact]
     public void VisualToLogical_Roundtrip()
     {
-        var buf = MakeBuffer("12345678901234567890\nshort");
+        var buf = TestHelpers.MakeBuffer("12345678901234567890\nshort");
         var wrap = new WrapLayout();
         wrap.Recalculate(wordWrap: true, buf, textAreaWidth: 80, charWidth: 8);
 
@@ -63,7 +56,7 @@ public class WrapLayoutTests
     [Fact]
     public void VisualToLogical_BeyondBufferBounds_Clamps()
     {
-        var buf = MakeBuffer("line1\nline2");
+        var buf = TestHelpers.MakeBuffer("line1\nline2");
         var wrap = new WrapLayout();
         wrap.Recalculate(wordWrap: true, buf, textAreaWidth: 500, charWidth: 8);
 
@@ -74,7 +67,7 @@ public class WrapLayoutTests
     [Fact]
     public void LogicalToVisualLine_WithColumn_SelectsCorrectWrapLine()
     {
-        var buf = MakeBuffer("12345678901234567890"); // 20 chars, wraps at 10
+        var buf = TestHelpers.MakeBuffer("12345678901234567890"); // 20 chars, wraps at 10
         var wrap = new WrapLayout();
         wrap.Recalculate(wordWrap: true, buf, textAreaWidth: 80, charWidth: 8);
 
@@ -86,7 +79,7 @@ public class WrapLayoutTests
     [Fact]
     public void WrapColStart_ReturnsCorrectOffset()
     {
-        var buf = MakeBuffer("12345678901234567890\nshort");
+        var buf = TestHelpers.MakeBuffer("12345678901234567890\nshort");
         var wrap = new WrapLayout();
         wrap.Recalculate(wordWrap: true, buf, textAreaWidth: 80, charWidth: 8);
 
@@ -97,7 +90,7 @@ public class WrapLayoutTests
     [Fact]
     public void GetPixelForPosition_WrappedLine()
     {
-        var buf = MakeBuffer("12345678901234567890"); // 20 chars
+        var buf = TestHelpers.MakeBuffer("12345678901234567890"); // 20 chars
         var wrap = new WrapLayout();
         wrap.Recalculate(wordWrap: true, buf, textAreaWidth: 80, charWidth: 8);
 
@@ -121,7 +114,7 @@ public class WrapLayoutTests
     [Fact]
     public void HasValidData_TrueAfterRecalculate()
     {
-        var buf = MakeBuffer("hello\nworld");
+        var buf = TestHelpers.MakeBuffer("hello\nworld");
         var wrap = new WrapLayout();
         wrap.Recalculate(wordWrap: true, buf, textAreaWidth: 500, charWidth: 8);
 
@@ -131,7 +124,7 @@ public class WrapLayoutTests
     [Fact]
     public void WrapOff_GetPixelForPosition_IdentityMapping()
     {
-        var buf = MakeBuffer("hello\nworld");
+        var buf = TestHelpers.MakeBuffer("hello\nworld");
         var wrap = new WrapLayout();
         wrap.Recalculate(wordWrap: false, buf, textAreaWidth: 500, charWidth: 8);
 

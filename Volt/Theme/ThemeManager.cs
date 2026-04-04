@@ -39,7 +39,8 @@ public class ThemeManager
         if (_initialized) return;
         _initialized = true;
         EnsureDefaultThemes();
-        Apply("Dark");
+        // Theme is applied later by App.OnStartup via Apply(settings.ColorTheme)
+        // to avoid a redundant double-apply when the user's theme matches "Dark".
     }
 
     public Brush GetScopeBrush(string scope)

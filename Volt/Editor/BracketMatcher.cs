@@ -60,9 +60,8 @@ public static class BracketMatcher
     private static (int line, int col, int matchLine, int matchCol)? FindEnclosing(
         TextBuffer buffer, int caretLine, int caretCol)
     {
-        var depths = new Dictionary<char, int>();
-        foreach (var opener in Pairs.Keys)
-            depths[opener] = 0;
+        // depths[0] = '(', depths[1] = '{', depths[2] = '['
+        var depths = new int[3];
 
         int line = caretLine;
         int col = caretCol - 1;
@@ -82,17 +81,18 @@ public static class BracketMatcher
             if (ClosingBrackets.Contains(ch))
             {
                 var opener = ReversePairs[ch];
-                depths[opener]++;
+                depths[BracketIndex(opener)]++;
             }
             else if (Pairs.TryGetValue(ch, out char closer))
             {
-                depths[ch]--;
-                if (depths[ch] < 0)
+                int bi = BracketIndex(ch);
+                depths[bi]--;
+                if (depths[bi] < 0)
                 {
                     var match = ScanForBracket(buffer, ch, closer, line, col, forward: true);
                     if (match != null)
                         return (line, col, match.Value.line, match.Value.col);
-                    depths[ch] = 0;
+                    depths[bi] = 0;
                 }
             }
 
@@ -100,6 +100,8 @@ public static class BracketMatcher
         }
         return null;
     }
+
+    private static int BracketIndex(char ch) => ch switch { '(' => 0, '{' => 1, '[' => 2, _ => -1 };
 
     private static (int line, int col)? ScanForBracket(
         TextBuffer buffer, char bracket, char target, int startLine, int startCol, bool forward)

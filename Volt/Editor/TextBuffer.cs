@@ -157,10 +157,11 @@ public class TextBuffer
         _lines.InsertRange(start, newLines);
         if (_lines.Count == 0) _lines.Add("");
         _editGeneration++;
+        _charCountDirty = true;
 
         if (_maxLineLengthDirty || removingMax)
         {
-            _maxLineLengthDirty = true; _charCountDirty = true;
+            _maxLineLengthDirty = true;
         }
         else
         {

@@ -8,6 +8,7 @@ namespace Volt;
 public partial class TabRegion : UserControl
 {
     private readonly List<TabEntry> _tabs = [];
+    private List<string>? _panelIdsCache;
     private TabEntry? _activeTab;
     private Point? _dragStartPoint;
     private string? _dragPanelId;
@@ -39,13 +40,13 @@ public partial class TabRegion : UserControl
     public string? ActivePanelId => _activeTab?.Container.PanelId;
     public int TabCount => _tabs.Count;
     public bool IsEmpty => _tabs.Count == 0;
-    public IReadOnlyList<string> PanelIds => _tabs.Select(t => t.Container.PanelId).ToList();
+    public IReadOnlyList<string> PanelIds => _panelIdsCache ??= _tabs.Select(t => t.Container.PanelId).ToList();
 
     public void SetDropHighlight(bool highlight)
     {
         if (highlight)
         {
-            var fg = (Brush)Application.Current.Resources["ThemeTextFg"];
+            var fg = (Brush)Application.Current.Resources[ThemeResourceKeys.TextFg];
             var brush = fg.Clone();
             brush.Opacity = 0.2;
             brush.Freeze();
@@ -53,7 +54,7 @@ public partial class TabRegion : UserControl
         }
         else
         {
-            HeaderBorder.SetResourceReference(Border.BackgroundProperty, "ThemeExplorerHeaderBg");
+            HeaderBorder.SetResourceReference(Border.BackgroundProperty, ThemeResourceKeys.ExplorerHeaderBg);
         }
     }
 
@@ -61,6 +62,7 @@ public partial class TabRegion : UserControl
     {
         var entry = CreateTabEntry(container);
         _tabs.Add(entry);
+        _panelIdsCache = null;
         TabStrip.Children.Add(entry.Header);
         SetActiveTab(entry);
     }
@@ -72,6 +74,13 @@ public partial class TabRegion : UserControl
 
         int idx = _tabs.IndexOf(entry);
         _tabs.Remove(entry);
+        _panelIdsCache = null;
+
+        // Unsubscribe mouse event handlers before removing from visual tree
+        entry.Header.MouseLeftButtonDown -= entry.OnMouseLeftButtonDown;
+        entry.Header.MouseMove -= entry.OnMouseMove;
+        entry.Header.MouseLeftButtonUp -= entry.OnMouseLeftButtonUp;
+        entry.Header.MouseRightButtonUp -= entry.OnMouseRightButtonUp;
         TabStrip.Children.Remove(entry.Header);
 
         // Unsubscribe from title changes
@@ -115,12 +124,12 @@ public partial class TabRegion : UserControl
         // Deactivate previous
         if (_activeTab != null)
         {
-            _activeTab.Header.SetResourceReference(Border.BackgroundProperty, "ThemeExplorerHeaderBg");
+            _activeTab.Header.SetResourceReference(Border.BackgroundProperty, ThemeResourceKeys.ExplorerHeaderBg);
         }
 
         _activeTab = entry;
         ContentArea.Content = entry.Container;
-        entry.Header.SetResourceReference(Border.BackgroundProperty, "ThemeTabActive");
+        entry.Header.SetResourceReference(Border.BackgroundProperty, ThemeResourceKeys.TabActive);
         ActiveTabChanged?.Invoke(entry.Container.PanelId);
     }
 
@@ -139,41 +148,15 @@ public partial class TabRegion : UserControl
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth = 120
         };
-        textBlock.SetResourceReference(TextBlock.ForegroundProperty, "ThemeExplorerHeaderFg");
+        textBlock.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.ExplorerHeaderFg);
 
         var closeBtn = new Button
         {
-            Content = "\uE8BB",
-            FontFamily = new FontFamily("Segoe MDL2 Assets"),
-            FontSize = 8,
-            Width = 20,
-            Height = 20,
-            Background = System.Windows.Media.Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            Focusable = false,
-            Cursor = Cursors.Hand,
-            VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 6, 0)
         };
-        closeBtn.SetResourceReference(Button.ForegroundProperty, "ThemeButtonFg");
+        if (Application.Current?.TryFindResource("TabCloseButton") is Style closeBtnStyle)
+            closeBtn.Style = closeBtnStyle;
         closeBtn.Click += (_, _) => PanelClosed?.Invoke(container.PanelId);
-
-        // Apply the same hover template as the "+" button
-        var closeBtnTemplate = new System.Windows.Controls.ControlTemplate(typeof(Button));
-        var bdFactory = new System.Windows.FrameworkElementFactory(typeof(Border));
-        bdFactory.SetValue(Border.BackgroundProperty, System.Windows.Media.Brushes.Transparent);
-        bdFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
-        bdFactory.Name = "Bd";
-        var cpFactory = new System.Windows.FrameworkElementFactory(typeof(ContentPresenter));
-        cpFactory.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-        cpFactory.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
-        bdFactory.AppendChild(cpFactory);
-        closeBtnTemplate.VisualTree = bdFactory;
-        var hoverTrigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-        hoverTrigger.Setters.Add(new Setter(Border.BackgroundProperty,
-            new System.Windows.DynamicResourceExtension("ThemeButtonHover"), "Bd"));
-        closeBtnTemplate.Triggers.Add(hoverTrigger);
-        closeBtn.Template = closeBtnTemplate;
 
         var tabPanel = new DockPanel { VerticalAlignment = VerticalAlignment.Center };
         DockPanel.SetDock(closeBtn, Dock.Right);
@@ -188,26 +171,25 @@ public partial class TabRegion : UserControl
             Cursor = Cursors.Hand,
             BorderThickness = new Thickness(0, 0, 1, 0)
         };
-        header.SetResourceReference(Border.BorderBrushProperty, "ThemeTabBorder");
-        header.SetResourceReference(Border.BackgroundProperty, "ThemeExplorerHeaderBg");
+        header.SetResourceReference(Border.BorderBrushProperty, ThemeResourceKeys.TabBorder);
+        header.SetResourceReference(Border.BackgroundProperty, ThemeResourceKeys.ExplorerHeaderBg);
 
         // Title change subscription
         Action onTitleChanged = () => textBlock.Text = panel.Title;
         panel.TitleChanged += onTitleChanged;
 
-        // Click to activate
-        header.MouseLeftButtonDown += (_, e) =>
+        // Named event handlers for proper unsubscription
+        MouseButtonEventHandler onMouseLeftButtonDown = (_, e) =>
         {
             var tabEntry = _tabs.Find(t => t.Container.PanelId == container.PanelId);
             if (tabEntry != null) SetActiveTab(tabEntry);
-            // Start drag tracking
             _dragStartPoint = e.GetPosition(this);
             _dragPanelId = container.PanelId;
             header.CaptureMouse();
             e.Handled = true;
         };
 
-        header.MouseMove += (sender, e) =>
+        MouseEventHandler onMouseMove = (sender, e) =>
         {
             if (_dragStartPoint == null || _dragPanelId == null) return;
             if (e.LeftButton != MouseButtonState.Pressed)
@@ -225,19 +207,27 @@ public partial class TabRegion : UserControl
             }
         };
 
-        header.MouseLeftButtonUp += (sender, _) => CancelDragTracking(sender);
+        MouseButtonEventHandler onMouseLeftButtonUp = (sender, _) => CancelDragTracking(sender);
 
-        // Right-click context menu with "Close"
-        header.MouseRightButtonUp += (_, e) =>
+        // Context menu created lazily on first right-click, then reused
+        MouseButtonEventHandler onMouseRightButtonUp = (_, e) =>
         {
-            var menu = ContextMenuHelper.Create();
-            menu.Items.Add(ContextMenuHelper.Item("Close", () => PanelClosed?.Invoke(container.PanelId)));
-            header.ContextMenu = menu;
-            menu.IsOpen = true;
+            if (header.ContextMenu == null)
+            {
+                var menu = ContextMenuHelper.Create();
+                menu.Items.Add(ContextMenuHelper.Item("Close", () => PanelClosed?.Invoke(container.PanelId)));
+                header.ContextMenu = menu;
+            }
+            header.ContextMenu.IsOpen = true;
             e.Handled = true;
         };
 
-        return new TabEntry(container, header, onTitleChanged);
+        header.MouseLeftButtonDown += onMouseLeftButtonDown;
+        header.MouseMove += onMouseMove;
+        header.MouseLeftButtonUp += onMouseLeftButtonUp;
+        header.MouseRightButtonUp += onMouseRightButtonUp;
+
+        return new TabEntry(container, header, onTitleChanged, onMouseLeftButtonDown, onMouseMove, onMouseLeftButtonUp, onMouseRightButtonUp);
     }
 
     private void CancelDragTracking(object sender)
@@ -247,10 +237,17 @@ public partial class TabRegion : UserControl
         ((UIElement)sender).ReleaseMouseCapture();
     }
 
-    private class TabEntry(PanelContainer container, Border header, Action onTitleChanged)
+    private class TabEntry(
+        PanelContainer container, Border header, Action onTitleChanged,
+        MouseButtonEventHandler onMouseLeftButtonDown, MouseEventHandler onMouseMove,
+        MouseButtonEventHandler onMouseLeftButtonUp, MouseButtonEventHandler onMouseRightButtonUp)
     {
         public PanelContainer Container { get; } = container;
         public Border Header { get; } = header;
         public Action OnTitleChanged { get; } = onTitleChanged;
+        public MouseButtonEventHandler OnMouseLeftButtonDown { get; } = onMouseLeftButtonDown;
+        public MouseEventHandler OnMouseMove { get; } = onMouseMove;
+        public MouseButtonEventHandler OnMouseLeftButtonUp { get; } = onMouseLeftButtonUp;
+        public MouseButtonEventHandler OnMouseRightButtonUp { get; } = onMouseRightButtonUp;
     }
 }
