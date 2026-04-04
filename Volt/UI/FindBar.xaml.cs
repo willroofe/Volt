@@ -20,6 +20,8 @@ public partial class FindBar : UserControl
     private bool _matchCase;
     private bool _useRegex;
     private bool _wholeWord;
+    private bool _findInSelection;
+    private (int startLine, int startCol, int endLine, int endCol)? _selectionBounds;
     private EditorControl? _editor;
 
     public event EventHandler? Closed;
@@ -89,6 +91,10 @@ public partial class FindBar : UserControl
         _editor?.ClearFindMatches();
         Visibility = Visibility.Collapsed;
         _matchCount.Text = "";
+        _findInSelection = false;
+        _selectionBounds = null;
+        _findInSelBtn.SetResourceReference(ForegroundProperty, ThemeResourceKeys.TextFgMuted);
+        _findInSelBtn.SetResourceReference(BackgroundProperty, ThemeResourceKeys.MenuPopupBg);
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -129,6 +135,20 @@ public partial class FindBar : UserControl
             _wholeWord ? ThemeResourceKeys.TextFg : ThemeResourceKeys.TextFgMuted);
         _wholeWordBtn.SetResourceReference(BackgroundProperty,
             _wholeWord ? ThemeResourceKeys.MenuItemHover : ThemeResourceKeys.MenuPopupBg);
+        UpdateSearch();
+    }
+
+    private void OnFindInSelectionClick(object sender, RoutedEventArgs e)
+    {
+        _findInSelection = !_findInSelection;
+        if (_findInSelection)
+            _selectionBounds = _editor?.GetSelectionBounds();
+        else
+            _selectionBounds = null;
+        _findInSelBtn.SetResourceReference(ForegroundProperty,
+            _findInSelection ? ThemeResourceKeys.TextFg : ThemeResourceKeys.TextFgMuted);
+        _findInSelBtn.SetResourceReference(BackgroundProperty,
+            _findInSelection ? ThemeResourceKeys.MenuItemHover : ThemeResourceKeys.MenuPopupBg);
         UpdateSearch();
     }
 
@@ -177,7 +197,8 @@ public partial class FindBar : UserControl
             return;
         }
 
-        _editor.SetFindMatches(query, _matchCase, _useRegex, _wholeWord);
+        _editor.SetFindMatches(query, _matchCase, _useRegex, _wholeWord,
+            _findInSelection ? _selectionBounds : null);
         UpdateMatchCountLabel();
     }
 
@@ -201,7 +222,8 @@ public partial class FindBar : UserControl
     private void DoReplaceAll()
     {
         if (_editor == null || _editor.FindMatchCount == 0) return;
-        _editor.ReplaceAll(_input.Text, _replaceInput.Text, _matchCase, _useRegex, _wholeWord);
+        _editor.ReplaceAll(_input.Text, _replaceInput.Text, _matchCase, _useRegex, _wholeWord,
+            _findInSelection ? _selectionBounds : null);
         UpdateSearch();
     }
 

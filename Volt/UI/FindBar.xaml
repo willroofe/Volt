@@ -43,6 +43,20 @@
                         SnapsToDevicePixels="True"
                         BorderBrush="{DynamicResource ThemeMenuPopupBorder}">
                     <DockPanel>
+                        <Button x:Name="_findInSelBtn"
+                                DockPanel.Dock="Right"
+                                Style="{StaticResource MatchCaseButton}"
+                                Width="24" Height="22"
+                                Margin="0,2,2,2" Padding="0"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                Focusable="False"
+                                ToolTip="Find in selection"
+                                Background="Transparent"
+                                Foreground="{DynamicResource ThemeTextFgMuted}"
+                                Click="OnFindInSelectionClick">
+                            <TextBlock Text="&#xE8C8;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                        </Button>
                         <Button x:Name="_regexBtn"
                                 DockPanel.Dock="Right"
                                 Style="{StaticResource MatchCaseButton}"

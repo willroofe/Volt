@@ -1972,9 +1972,17 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public int FindMatchCount => _find.MatchCount;
     public int CurrentMatchIndex => _find.CurrentIndex;
 
-    public void SetFindMatches(string query, bool matchCase, bool useRegex = false, bool wholeWord = false)
+    public (int startLine, int startCol, int endLine, int endCol)? GetSelectionBounds()
     {
-        _find.Search(_buffer, query, matchCase, _caretLine, _caretCol, useRegex, wholeWord);
+        if (!_selection.HasSelection) return null;
+        var (sl, sc, el, ec) = _selection.GetOrdered(_caretLine, _caretCol);
+        return (sl, sc, el, ec);
+    }
+
+    public void SetFindMatches(string query, bool matchCase, bool useRegex = false, bool wholeWord = false,
+        (int, int, int, int)? selectionBounds = null)
+    {
+        _find.Search(_buffer, query, matchCase, _caretLine, _caretCol, useRegex, wholeWord, selectionBounds);
         if (_find.MatchCount > 0)
             NavigateToCurrentMatch();
         InvalidateVisual();
@@ -2016,7 +2024,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         InvalidateVisual();
     }
 
-    public void ReplaceAll(string query, string replacement, bool matchCase, bool useRegex = false, bool wholeWord = false)
+    public void ReplaceAll(string query, string replacement, bool matchCase, bool useRegex = false, bool wholeWord = false,
+        (int, int, int, int)? selectionBounds = null)
     {
         var range = _find.GetMatchLineRange();
         if (range == null) return;

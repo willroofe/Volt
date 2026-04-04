@@ -20,7 +20,8 @@ public class FindManager
     public bool LastWholeWord { get; private set; }
 
     public void Search(TextBuffer buffer, string query, bool matchCase, int caretLine, int caretCol,
-        bool useRegex = false, bool wholeWord = false)
+        bool useRegex = false, bool wholeWord = false,
+        (int startLine, int startCol, int endLine, int endCol)? selectionBounds = null)
     {
         LastQuery = query;
         LastMatchCase = matchCase;
@@ -42,6 +43,9 @@ public class FindManager
             SearchLiteral(buffer, query, matchCase);
         }
 
+        if (selectionBounds is var (sl, sc, el, ec))
+            FilterToSelection(sl, sc, el, ec);
+
         if (_matches.Count > 0)
         {
             int lo = 0, hi = _matches.Count - 1;
@@ -56,6 +60,19 @@ public class FindManager
             }
             _currentIndex = lo < _matches.Count ? lo : 0;
         }
+    }
+
+    private void FilterToSelection(int sl, int sc, int el, int ec)
+    {
+        _matches.RemoveAll(m =>
+        {
+            int matchEnd = m.Col + m.Length;
+            // Match must start at or after selection start
+            if (m.Line < sl || (m.Line == sl && m.Col < sc)) return true;
+            // Match must end at or before selection end
+            if (m.Line > el || (m.Line == el && matchEnd > ec)) return true;
+            return false;
+        });
     }
 
     private void SearchLiteral(TextBuffer buffer, string query, bool matchCase)
