@@ -45,6 +45,7 @@ internal static class FileHelper
         [".rs"] = "Rust Source",
         [".ini"] = "Configuration File", [".cfg"] = "Configuration File",
         [".log"] = "Log File",
+        [".volt-workspace"] = "Volt Workspace Definition",
     };
 
     public static string GetFileTypeName(string extension)
