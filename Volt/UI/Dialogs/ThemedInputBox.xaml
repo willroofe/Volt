@@ -11,36 +11,6 @@
                       GlassFrameThickness="-1"
                       UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
-    <Window.Resources>
-        <Style x:Key="DialogButton" TargetType="Button">
-            <Setter Property="MinWidth" Value="80"/>
-            <Setter Property="Margin" Value="4,0,0,0"/>
-            <Setter Property="Padding" Value="12,6,12,6"/>
-            <Setter Property="FontFamily" Value="Segoe UI"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Foreground" Value="{DynamicResource ThemeButtonFg}"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd"
-                                Background="{DynamicResource ThemeContentBg}"
-                                BorderBrush="{DynamicResource ThemeMenuPopupBorder}"
-                                BorderThickness="1" CornerRadius="3"
-                                Padding="{TemplateBinding Padding}"
-                                SnapsToDevicePixels="True">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeButtonHover}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </Window.Resources>
     <DockPanel Background="{DynamicResource ThemeContentBg}">
         <!-- Title bar -->
         <Grid DockPanel.Dock="Top" Background="{DynamicResource ThemeChromeBrush}" Height="32">

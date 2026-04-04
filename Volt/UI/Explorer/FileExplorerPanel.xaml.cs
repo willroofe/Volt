@@ -273,52 +273,39 @@ public partial class FileExplorerPanel : UserControl, IPanel
         return null;
     }
 
-    private void DoNewFile(string parentDir)
+    private void DoNewFile(string parentDir) => CreateFileSystemItem(parentDir, isDirectory: false);
+    private void DoNewFolder(string parentDir) => CreateFileSystemItem(parentDir, isDirectory: true);
+
+    private void CreateFileSystemItem(string parentDir, bool isDirectory)
     {
+        var kind = isDirectory ? "Folder" : "File";
         var owner = Window.GetWindow(this);
         if (owner == null) return;
-        var name = ThemedInputBox.Show(owner, "New File", "File name:");
+        var name = ThemedInputBox.Show(owner, $"New {kind}", $"{kind} name:");
         if (string.IsNullOrWhiteSpace(name)) return;
         if (name.Trim().IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
         {
-            ThemedMessageBox.Show(owner, "The file name contains invalid characters.", "New File");
+            ThemedMessageBox.Show(owner, $"The {kind.ToLowerInvariant()} name contains invalid characters.", $"New {kind}");
             return;
         }
         var fullPath = Path.Combine(parentDir, name.Trim());
         if (File.Exists(fullPath) || Directory.Exists(fullPath))
         {
-            ThemedMessageBox.Show(owner, $"'{name.Trim()}' already exists.", "New File");
+            ThemedMessageBox.Show(owner, $"'{name.Trim()}' already exists.", $"New {kind}");
             return;
         }
         try
         {
-            File.Create(fullPath).Dispose();
-            PushUndo(new FileOperation(FileOperationKind.CreateFile, fullPath, null));
-        }
-        catch (Exception ex) { ThemedMessageBox.Show(owner, ex.Message, "Error"); }
-    }
-
-    private void DoNewFolder(string parentDir)
-    {
-        var owner = Window.GetWindow(this);
-        if (owner == null) return;
-        var name = ThemedInputBox.Show(owner, "New Folder", "Folder name:");
-        if (string.IsNullOrWhiteSpace(name)) return;
-        if (name.Trim().IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-        {
-            ThemedMessageBox.Show(owner, "The folder name contains invalid characters.", "New Folder");
-            return;
-        }
-        var fullPath = Path.Combine(parentDir, name.Trim());
-        if (Directory.Exists(fullPath) || File.Exists(fullPath))
-        {
-            ThemedMessageBox.Show(owner, $"'{name.Trim()}' already exists.", "New Folder");
-            return;
-        }
-        try
-        {
-            Directory.CreateDirectory(fullPath);
-            PushUndo(new FileOperation(FileOperationKind.CreateFolder, fullPath, null));
+            if (isDirectory)
+            {
+                Directory.CreateDirectory(fullPath);
+                PushUndo(new FileOperation(FileOperationKind.CreateFolder, fullPath, null));
+            }
+            else
+            {
+                File.Create(fullPath).Dispose();
+                PushUndo(new FileOperation(FileOperationKind.CreateFile, fullPath, null));
+            }
         }
         catch (Exception ex) { ThemedMessageBox.Show(owner, ex.Message, "Error"); }
     }
