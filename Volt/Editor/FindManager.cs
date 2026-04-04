@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace Volt;
 
 /// <summary>
@@ -14,28 +16,22 @@ public class FindManager
     public IReadOnlyList<(int Line, int Col, int Length)> Matches => _matches;
     public string LastQuery { get; private set; } = "";
     public bool LastMatchCase { get; private set; }
+    public bool LastUseRegex { get; private set; }
 
-    public void Search(TextBuffer buffer, string query, bool matchCase, int caretLine, int caretCol)
+    public void Search(TextBuffer buffer, string query, bool matchCase, int caretLine, int caretCol, bool useRegex = false)
     {
         LastQuery = query;
         LastMatchCase = matchCase;
+        LastUseRegex = useRegex;
         _matches.Clear();
         _currentIndex = -1;
 
         if (string.IsNullOrEmpty(query)) return;
 
-        var comparison = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-        for (int line = 0; line < buffer.Count; line++)
-        {
-            int pos = 0;
-            while (pos < buffer[line].Length)
-            {
-                int idx = buffer[line].IndexOf(query, pos, comparison);
-                if (idx < 0) break;
-                _matches.Add((line, idx, query.Length));
-                pos = idx + 1;
-            }
-        }
+        if (useRegex)
+            SearchRegex(buffer, query, matchCase);
+        else
+            SearchLiteral(buffer, query, matchCase);
 
         if (_matches.Count > 0)
         {
@@ -50,6 +46,54 @@ public class FindManager
                     hi = mid - 1;
             }
             _currentIndex = lo < _matches.Count ? lo : 0;
+        }
+    }
+
+    private void SearchLiteral(TextBuffer buffer, string query, bool matchCase)
+    {
+        var comparison = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        for (int line = 0; line < buffer.Count; line++)
+        {
+            int pos = 0;
+            while (pos < buffer[line].Length)
+            {
+                int idx = buffer[line].IndexOf(query, pos, comparison);
+                if (idx < 0) break;
+                _matches.Add((line, idx, query.Length));
+                pos = idx + 1;
+            }
+        }
+    }
+
+    private void SearchRegex(TextBuffer buffer, string query, bool matchCase)
+    {
+        Regex regex;
+        try
+        {
+            var options = RegexOptions.Compiled;
+            if (!matchCase) options |= RegexOptions.IgnoreCase;
+            regex = new Regex(query, options, TimeSpan.FromSeconds(1));
+        }
+        catch (ArgumentException)
+        {
+            return; // Invalid regex pattern — show no matches
+        }
+
+        for (int line = 0; line < buffer.Count; line++)
+        {
+            var text = buffer[line];
+            var match = regex.Match(text);
+            while (match.Success)
+            {
+                if (match.Length == 0)
+                {
+                    // Zero-length match (e.g. ^, $, lookahead) — skip to avoid infinite loop
+                    match = match.NextMatch();
+                    continue;
+                }
+                _matches.Add((line, match.Index, match.Length));
+                match = match.NextMatch();
+            }
         }
     }
 

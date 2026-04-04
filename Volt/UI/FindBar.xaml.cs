@@ -18,6 +18,7 @@ public partial class FindBar : UserControl
     private const double FindBarBottomMargin = 19; // visual padding below the find bar
 
     private bool _matchCase;
+    private bool _useRegex;
     private EditorControl? _editor;
 
     public event EventHandler? Closed;
@@ -110,6 +111,16 @@ public partial class FindBar : UserControl
         UpdateSearch();
     }
 
+    private void OnRegexClick(object sender, RoutedEventArgs e)
+    {
+        _useRegex = !_useRegex;
+        _regexBtn.SetResourceReference(ForegroundProperty,
+            _useRegex ? ThemeResourceKeys.TextFg : ThemeResourceKeys.TextFgMuted);
+        _regexBtn.SetResourceReference(BackgroundProperty,
+            _useRegex ? ThemeResourceKeys.MenuItemHover : ThemeResourceKeys.MenuPopupBg);
+        UpdateSearch();
+    }
+
     private void OnToggleReplaceClick(object sender, RoutedEventArgs e)
     {
         bool show = _replaceRow.Visibility != Visibility.Visible;
@@ -155,7 +166,7 @@ public partial class FindBar : UserControl
             return;
         }
 
-        _editor.SetFindMatches(query, _matchCase);
+        _editor.SetFindMatches(query, _matchCase, _useRegex);
         UpdateMatchCountLabel();
     }
 
@@ -179,7 +190,7 @@ public partial class FindBar : UserControl
     private void DoReplaceAll()
     {
         if (_editor == null || _editor.FindMatchCount == 0) return;
-        _editor.ReplaceAll(_input.Text, _replaceInput.Text, _matchCase);
+        _editor.ReplaceAll(_input.Text, _replaceInput.Text, _matchCase, _useRegex);
         UpdateSearch();
     }
 
