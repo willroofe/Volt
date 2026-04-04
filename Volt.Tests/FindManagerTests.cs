@@ -5,13 +5,16 @@ namespace Volt.Tests;
 
 public class FindManagerTests
 {
+    private static void Search(FindManager find, TextBuffer buf, string query, bool matchCase = false)
+        => find.Search(buf, query, matchCase, caretLine: 0, caretCol: 0);
+
     [Fact]
     public void Search_FindsMatchesWithPositions()
     {
         var buf = TestHelpers.MakeBuffer("hello world\nhello again");
         var find = new FindManager();
 
-        find.Search(buf, "hello", matchCase: false, caretLine: 0, caretCol: 0);
+        Search(find, buf, "hello");
 
         Assert.Equal(2, find.MatchCount);
         Assert.Equal((0, 0, 5), find.Matches[0]);
@@ -24,7 +27,7 @@ public class FindManagerTests
         var buf = TestHelpers.MakeBuffer("Hello hello HELLO");
         var find = new FindManager();
 
-        find.Search(buf, "hello", matchCase: true, caretLine: 0, caretCol: 0);
+        Search(find, buf, "hello", matchCase: true);
 
         Assert.Equal(1, find.MatchCount);
         Assert.Equal((0, 6, 5), find.Matches[0]);
@@ -35,7 +38,7 @@ public class FindManagerTests
     {
         var buf = TestHelpers.MakeBuffer("aaa\naaa");
         var find = new FindManager();
-        find.Search(buf, "aaa", matchCase: false, caretLine: 0, caretCol: 0);
+        Search(find, buf, "aaa");
 
         Assert.Equal(0, find.CurrentIndex);
 
@@ -51,7 +54,7 @@ public class FindManagerTests
     {
         var buf = TestHelpers.MakeBuffer("aaa\naaa");
         var find = new FindManager();
-        find.Search(buf, "aaa", matchCase: false, caretLine: 0, caretCol: 0);
+        Search(find, buf, "aaa");
 
         Assert.Equal(0, find.CurrentIndex);
 
@@ -65,7 +68,7 @@ public class FindManagerTests
         var buf = TestHelpers.MakeBuffer("hello world");
         var find = new FindManager();
 
-        find.Search(buf, "xyz", matchCase: false, caretLine: 0, caretCol: 0);
+        Search(find, buf, "xyz");
 
         Assert.Equal(0, find.MatchCount);
         Assert.Null(find.GetCurrentMatch());

@@ -37,18 +37,24 @@ public class TextBufferBenchmarks
         return _largeBuffer.MaxLineLength;
     }
 
+    private static readonly string Line80 = "0123456789012345678901234567890123456789012345678901234567890123456789012345678X";
+    private static readonly string Line10K = new('X', 10_000);
+
+    [IterationSetup(Target = nameof(InsertAtMidLine))]
+    public void ResetMidLine() => _smallBuffer[500] = Line80;
+
+    [IterationSetup(Target = nameof(InsertAtLongLine))]
+    public void ResetLongLine() => _smallBuffer[500] = Line10K;
+
     [Benchmark(Description = "InsertAt mid-line (80 char line)")]
     public void InsertAtMidLine()
     {
-        // Reset the line before each insert to keep it stable
-        _smallBuffer[500] = "0123456789012345678901234567890123456789012345678901234567890123456789012345678X";
         _smallBuffer.InsertAt(500, 40, "a");
     }
 
     [Benchmark(Description = "InsertAt mid-line (10K char line)")]
     public void InsertAtLongLine()
     {
-        _smallBuffer[500] = new string('X', 10_000);
         _smallBuffer.InsertAt(500, 5000, "a");
     }
 }

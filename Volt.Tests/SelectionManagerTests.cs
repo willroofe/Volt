@@ -5,14 +5,20 @@ namespace Volt.Tests;
 
 public class SelectionManagerTests
 {
+    private static SelectionManager CreateSelection(int anchorLine, int anchorCol)
+    {
+        var sel = new SelectionManager();
+        sel.AnchorLine = anchorLine;
+        sel.AnchorCol = anchorCol;
+        sel.HasSelection = true;
+        return sel;
+    }
+
     [Fact]
     public void GetSelectedText_SingleLine()
     {
         var buf = TestHelpers.MakeBuffer("hello world");
-        var sel = new SelectionManager();
-        sel.AnchorLine = 0;
-        sel.AnchorCol = 6;
-        sel.HasSelection = true;
+        var sel = CreateSelection(0, 6);
 
         var text = sel.GetSelectedText(buf, caretLine: 0, caretCol: 11);
         Assert.Equal("world", text);
@@ -22,10 +28,7 @@ public class SelectionManagerTests
     public void GetSelectedText_MultiLine()
     {
         var buf = TestHelpers.MakeBuffer("hello\nbeautiful\nworld");
-        var sel = new SelectionManager();
-        sel.AnchorLine = 0;
-        sel.AnchorCol = 2;
-        sel.HasSelection = true;
+        var sel = CreateSelection(0, 2);
 
         var text = sel.GetSelectedText(buf, caretLine: 2, caretCol: 3);
         // Should use the buffer's line ending (LF in this case)
@@ -36,10 +39,7 @@ public class SelectionManagerTests
     public void GetSelectedText_BackwardSelection()
     {
         var buf = TestHelpers.MakeBuffer("abcdef");
-        var sel = new SelectionManager();
-        sel.AnchorLine = 0;
-        sel.AnchorCol = 5;
-        sel.HasSelection = true;
+        var sel = CreateSelection(0, 5);
 
         // Caret before anchor — backward selection
         var text = sel.GetSelectedText(buf, caretLine: 0, caretCol: 1);
@@ -60,10 +60,7 @@ public class SelectionManagerTests
     public void DeleteSelection_SingleLine()
     {
         var buf = TestHelpers.MakeBuffer("hello world");
-        var sel = new SelectionManager();
-        sel.AnchorLine = 0;
-        sel.AnchorCol = 5;
-        sel.HasSelection = true;
+        var sel = CreateSelection(0, 5);
 
         var (line, col) = sel.DeleteSelection(buf, caretLine: 0, caretCol: 11);
 
@@ -77,10 +74,7 @@ public class SelectionManagerTests
     public void DeleteSelection_MultiLine()
     {
         var buf = TestHelpers.MakeBuffer("aaa\nbbb\nccc");
-        var sel = new SelectionManager();
-        sel.AnchorLine = 0;
-        sel.AnchorCol = 1;
-        sel.HasSelection = true;
+        var sel = CreateSelection(0, 1);
 
         var (line, col) = sel.DeleteSelection(buf, caretLine: 2, caretCol: 2);
 
@@ -107,9 +101,7 @@ public class SelectionManagerTests
     public void ClampToBuffer_ClampsOutOfRange()
     {
         var buf = TestHelpers.MakeBuffer("short");
-        var sel = new SelectionManager();
-        sel.AnchorLine = 99;
-        sel.AnchorCol = 99;
+        var sel = CreateSelection(99, 99);
         int caretLine = 50, caretCol = 50;
 
         sel.ClampToBuffer(buf, ref caretLine, ref caretCol);
@@ -175,10 +167,7 @@ public class SelectionManagerTests
     {
         var buf = new TextBuffer();
         buf.SetContent("line1\r\nline2\r\nline3", tabSize: 4);
-        var sel = new SelectionManager();
-        sel.AnchorLine = 0;
-        sel.AnchorCol = 0;
-        sel.HasSelection = true;
+        var sel = CreateSelection(0, 0);
 
         var text = sel.GetSelectedText(buf, caretLine: 2, caretCol: 5);
         // Should use CRLF since the buffer detected CRLF

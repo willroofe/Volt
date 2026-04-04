@@ -5,17 +5,23 @@ namespace Volt.Tests;
 
 public class BracketMatcherTests
 {
+    private static void AssertMatch(
+        (int line, int col, int matchLine, int matchCol)? result,
+        int line, int col, int matchLine, int matchCol)
+    {
+        Assert.NotNull(result);
+        Assert.Equal(line, result.Value.line);
+        Assert.Equal(col, result.Value.col);
+        Assert.Equal(matchLine, result.Value.matchLine);
+        Assert.Equal(matchCol, result.Value.matchCol);
+    }
+
     [Fact]
     public void FindMatch_MatchesParensOnSameLine()
     {
         var buf = TestHelpers.MakeBuffer("foo(bar)");
         var result = BracketMatcher.FindMatch(buf, 0, 3);
-
-        Assert.NotNull(result);
-        Assert.Equal(0, result.Value.line);
-        Assert.Equal(3, result.Value.col);
-        Assert.Equal(0, result.Value.matchLine);
-        Assert.Equal(7, result.Value.matchCol);
+        AssertMatch(result, 0, 3, 0, 7);
     }
 
     [Fact]
@@ -23,10 +29,7 @@ public class BracketMatcherTests
     {
         var buf = TestHelpers.MakeBuffer("{a[b(c)d]e}");
         var result = BracketMatcher.FindMatch(buf, 0, 0);
-
-        Assert.NotNull(result);
-        Assert.Equal(0, result.Value.col);
-        Assert.Equal(10, result.Value.matchCol);
+        AssertMatch(result, 0, 0, 0, 10);
     }
 
     [Fact]
@@ -34,12 +37,7 @@ public class BracketMatcherTests
     {
         var buf = TestHelpers.MakeBuffer("if {\n  x\n}");
         var result = BracketMatcher.FindMatch(buf, 0, 3);
-
-        Assert.NotNull(result);
-        Assert.Equal(0, result.Value.line);
-        Assert.Equal(3, result.Value.col);
-        Assert.Equal(2, result.Value.matchLine);
-        Assert.Equal(0, result.Value.matchCol);
+        AssertMatch(result, 0, 3, 2, 0);
     }
 
     [Fact]
@@ -56,10 +54,7 @@ public class BracketMatcherTests
     {
         var buf = TestHelpers.MakeBuffer("(hello)");
         var result = BracketMatcher.FindMatch(buf, 0, 6);
-
-        Assert.NotNull(result);
-        Assert.Equal(6, result.Value.col);
-        Assert.Equal(0, result.Value.matchCol);
+        AssertMatch(result, 0, 6, 0, 0);
     }
 
     [Fact]
@@ -67,10 +62,7 @@ public class BracketMatcherTests
     {
         var buf = TestHelpers.MakeBuffer("{[()]}");
         var result = BracketMatcher.FindMatch(buf, 0, 0);
-
-        Assert.NotNull(result);
-        Assert.Equal(0, result.Value.col);
-        Assert.Equal(5, result.Value.matchCol);
+        AssertMatch(result, 0, 0, 0, 5);
     }
 
     [Fact]
@@ -87,12 +79,7 @@ public class BracketMatcherTests
     {
         var buf = TestHelpers.MakeBuffer("{\n  x\n}");
         var result = BracketMatcher.FindMatch(buf, 2, 0);
-
-        Assert.NotNull(result);
-        Assert.Equal(2, result.Value.line);
-        Assert.Equal(0, result.Value.col);
-        Assert.Equal(0, result.Value.matchLine);
-        Assert.Equal(0, result.Value.matchCol);
+        AssertMatch(result, 2, 0, 0, 0);
     }
 
     [Fact]
