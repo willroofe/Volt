@@ -52,8 +52,21 @@ public class EditorControl : FrameworkElement, IScrollInfo
         set
         {
             if (_wordWrap == value) return;
-            // Remember caret's screen-relative Y before layout changes
-            double caretScreenY = GetVisualY(_caretLine, _caretCol) - _offset.Y;
+            // Anchor to top visible line so toggling wrap doesn't shift the viewport
+            int anchorLine;
+            int anchorWrap = 0;
+            double anchorDelta;
+            if (_wordWrap && _wrap.HasValidData(_buffer.Count) && _wrap.TotalVisualLines > 0)
+            {
+                int topVisual = Math.Clamp((int)(_offset.Y / _font.LineHeight), 0, _wrap.TotalVisualLines - 1);
+                (anchorLine, anchorWrap) = VisualToLogical(topVisual);
+                anchorDelta = _offset.Y - (_wrap.CumulOffset(anchorLine) + anchorWrap) * _font.LineHeight;
+            }
+            else
+            {
+                anchorLine = Math.Clamp((int)(_offset.Y / _font.LineHeight), 0, Math.Max(0, _buffer.Count - 1));
+                anchorDelta = _offset.Y - anchorLine * _font.LineHeight;
+            }
             _wordWrap = value;
             _skipWrapAnchor = true;
             RecalcWrapData();
@@ -62,10 +75,20 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _gutterVisualDirty = true;
             UpdateExtent();
             _skipWrapAnchor = false;
-            // Restore caret to same screen position instead of EnsureCaretVisible
-            double newCaretY = GetVisualY(_caretLine, _caretCol);
-            double maxOffset = Math.Max(0, _extent.Height - _viewport.Height);
-            _offset.Y = Math.Clamp(newCaretY - caretScreenY, 0, maxOffset);
+            // Restore scroll so the same logical line stays at the top of the viewport
+            if (_wordWrap && _wrap.HasValidData(_buffer.Count))
+            {
+                int newWrap = Math.Min(anchorWrap, VisualLineCount(anchorLine) - 1);
+                double newY = (_wrap.CumulOffset(anchorLine) + newWrap) * _font.LineHeight + anchorDelta;
+                double maxY = Math.Max(0, _extent.Height - _viewport.Height);
+                _offset.Y = Math.Clamp(newY, 0, maxY);
+            }
+            else
+            {
+                double newY = anchorLine * _font.LineHeight + anchorDelta;
+                double maxY = Math.Max(0, _extent.Height - _viewport.Height);
+                _offset.Y = Math.Clamp(newY, 0, maxY);
+            }
             _textTransform.Y = -_offset.Y;
             _gutterTransform.Y = -_offset.Y;
             ScrollOwner?.InvalidateScrollInfo();
