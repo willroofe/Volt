@@ -6,6 +6,7 @@ public interface IPanel
 {
     string PanelId { get; }
     string Title { get; }
+    string? IconGlyph { get; }
     UIElement Content { get; }
     event Action? TitleChanged;
 }
