@@ -32,11 +32,17 @@ public class SyntaxManager
         LoadGrammars();
     }
 
+    private static readonly Dictionary<string, string> _extensionAliases = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".volt-workspace"] = ".json",
+    };
+
     public SyntaxDefinition? GetDefinition(string? extension)
     {
         if (string.IsNullOrEmpty(extension)) return null;
         var ext = extension.ToLowerInvariant();
-        _extensionMap.TryGetValue(ext, out var grammar);
+        if (!_extensionMap.TryGetValue(ext, out var grammar) && _extensionAliases.TryGetValue(ext, out var alias))
+            _extensionMap.TryGetValue(alias, out grammar);
         return grammar;
     }
 
