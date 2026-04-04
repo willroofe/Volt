@@ -18,9 +18,26 @@ internal class TabHeaderFactory
     private int _dragTargetIndex = -1;
     private Popup? _dragGhost;
 
+    public bool FixedWidth { get; set; }
+    private const double FixedTabWidth = 160;
+
     public event Action<TabInfo>? TabActivated;
     public event Action<TabInfo>? TabClosed;
     public event Action<TabInfo, int>? TabReordered;
+
+    public void ApplyFixedWidth(Border header)
+    {
+        if (FixedWidth)
+        {
+            header.Width = FixedTabWidth;
+            header.MinWidth = FixedTabWidth;
+        }
+        else
+        {
+            header.Width = double.NaN;
+            header.MinWidth = 60;
+        }
+    }
 
     public Border CreateHeader(TabInfo tab, Panel tabStrip, FrameworkElement dropIndicator)
     {
@@ -52,6 +69,11 @@ internal class TabHeaderFactory
             Cursor = Cursors.Hand,
             BorderThickness = new Thickness(0, 0, 1, 0)
         };
+        if (FixedWidth)
+        {
+            header.Width = FixedTabWidth;
+            header.MinWidth = FixedTabWidth;
+        }
         header.SetResourceReference(Border.BorderBrushProperty, ThemeResourceKeys.TabBorder);
 
         header.MouseLeftButtonDown += (_, e) =>

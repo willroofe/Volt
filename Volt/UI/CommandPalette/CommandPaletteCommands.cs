@@ -25,7 +25,8 @@ internal record CommandPaletteContext(
     Action SaveSettings,
     ExplorerActions Explorer,
     WorkspaceActions Workspace,
-    Action ToggleWordWrap);
+    Action ToggleWordWrap,
+    Action ToggleFixedWidthTabs);
 
 /// <summary>
 /// Builds the command list for the command palette, keeping the 90 lines of
@@ -135,6 +136,8 @@ internal static class CommandPaletteCommands
                     Revert: () => findBar.SetPosition(original)
                 )).ToList();
             }),
+
+            new("Toggle Fixed Width Tabs", Action: ctx.ToggleFixedWidthTabs),
 
             new("Toggle File Explorer", Action: explorer.ToggleExplorer),
 

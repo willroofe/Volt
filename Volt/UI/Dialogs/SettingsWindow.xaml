@@ -267,6 +267,9 @@
                     <Button x:Name="NavCaret" Content="Caret"
                             Style="{StaticResource NavButton}"
                             Click="OnNavCaret"/>
+                    <Button x:Name="NavTabs" Content="Tabs"
+                            Style="{StaticResource NavButton}"
+                            Click="OnNavTabs"/>
                     <Button x:Name="NavFind" Content="Find"
                             Style="{StaticResource NavButton}"
                             Click="OnNavFind"/>
@@ -367,6 +370,25 @@
                             <ComboBoxItem Content="2"/>
                             <ComboBoxItem Content="4"/>
                             <ComboBoxItem Content="8"/>
+                        </ComboBox>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Tabs section -->
+                <ScrollViewer x:Name="TabsScroller" Grid.Row="0"
+                              Template="{StaticResource ThemedScrollViewer}"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Visibility="Collapsed">
+                    <StackPanel Margin="24,20">
+                        <TextBlock Text="Tabs" Style="{StaticResource SectionHeader}"/>
+
+                        <TextBlock Text="Fixed width tabs" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="FixedWidthTabsBox" Width="100" Height="26"
+                                  HorizontalAlignment="Left" Margin="0,0,0,16"
+                                  VerticalContentAlignment="Center" FontSize="13">
+                            <ComboBoxItem Content="On"/>
+                            <ComboBoxItem Content="Off"/>
                         </ComboBox>
                     </StackPanel>
                 </ScrollViewer>

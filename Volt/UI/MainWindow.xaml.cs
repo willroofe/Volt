@@ -47,6 +47,7 @@ public partial class MainWindow
         Shell.CenterContent = EditorColumnGrid;
 
         _settings = App.Current.Settings;
+        _tabHeaderFactory.FixedWidth = _settings.Editor.FixedWidthTabs;
 
         _tabHeaderFactory.TabActivated += tab => ActivateTab(tab);
         _tabHeaderFactory.TabClosed += tab => CloseTab(tab);
@@ -365,6 +366,9 @@ public partial class MainWindow
         FindBarControl.SetPosition(_settings.Editor.Find.BarPosition);
         FindBarControl.SeedWithSelection = _settings.Editor.Find.SeedWithSelection;
         MenuWordWrap.IsChecked = _settings.Editor.WordWrap;
+        _tabHeaderFactory.FixedWidth = _settings.Editor.FixedWidthTabs;
+        foreach (var tab in _tabs)
+            _tabHeaderFactory.ApplyFixedWidth(tab.HeaderElement);
     }
 
     private void ApplySettingsToEditor(EditorControl editor)
@@ -1128,6 +1132,15 @@ public partial class MainWindow
         _settings.Save();
     }
 
+    private void ToggleFixedWidthTabs()
+    {
+        _settings.Editor.FixedWidthTabs = !_settings.Editor.FixedWidthTabs;
+        _tabHeaderFactory.FixedWidth = _settings.Editor.FixedWidthTabs;
+        foreach (var tab in _tabs)
+            _tabHeaderFactory.ApplyFixedWidth(tab.HeaderElement);
+        _settings.Save();
+    }
+
     private void OnToggleLeftPanel(object sender, RoutedEventArgs e)
     {
         Shell.ToggleRegion(PanelPlacement.Left);
@@ -1167,7 +1180,7 @@ public partial class MainWindow
             editor.TabSize, _settings.Editor.Caret.BlockCaret, _settings.Editor.Caret.BlinkMs,
             editor.FontFamilyName, editor.EditorFontSize, editor.EditorFontWeight,
             editor.LineHeightMultiplier, _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition,
-            _settings.Editor.Find.SeedWithSelection);
+            _settings.Editor.Find.SeedWithSelection, _settings.Editor.FixedWidthTabs);
         var dlg = new SettingsWindow(ThemeManager, snapshot) { Owner = this };
         dlg.Applied += (_, _) => ApplySettingsFromDialog(dlg);
         if (dlg.ShowDialog() == true)
@@ -1186,6 +1199,7 @@ public partial class MainWindow
         _settings.Application.ColorTheme = dlg.ColorThemeName;
         _settings.Editor.Find.BarPosition = dlg.FindBarPosition;
         _settings.Editor.Find.SeedWithSelection = dlg.FindSeedWithSelection;
+        _settings.Editor.FixedWidthTabs = dlg.FixedWidthTabs;
         _settings.Save();
         ApplySettings();
         ThemeManager.Apply(dlg.ColorThemeName);
@@ -1272,7 +1286,8 @@ public partial class MainWindow
                 () => OnOpenWorkspace(this, new RoutedEventArgs()),
                 CloseCurrentWorkspace,
                 () => OnAddFolderToWorkspace(this, new RoutedEventArgs())),
-            () => OnToggleWordWrap(this, new RoutedEventArgs())));
+            () => OnToggleWordWrap(this, new RoutedEventArgs()),
+            ToggleFixedWidthTabs));
         CmdPalette.SetCommands(commands);
         CmdPalette.Open();
     }
