@@ -21,6 +21,7 @@ public partial class FindBar : UserControl
     private bool _useRegex;
     private bool _wholeWord;
     private bool _findInSelection;
+    private bool _seedWithSelection = true;
     private (int startLine, int startCol, int endLine, int endCol)? _selectionBounds;
     private (int startLine, int startCol, int endLine, int endCol)? _selectionBoundsAtOpen;
     private EditorControl? _editor;
@@ -43,6 +44,12 @@ public partial class FindBar : UserControl
         };
     }
 
+    public bool SeedWithSelection
+    {
+        get => _seedWithSelection;
+        set => _seedWithSelection = value;
+    }
+
     public void SetEditor(EditorControl editor)
     {
         _editor = editor;
@@ -61,6 +68,12 @@ public partial class FindBar : UserControl
     {
         // Capture the editor's selection before searching (which clears it via navigation)
         _selectionBoundsAtOpen = _editor?.GetSelectionBounds();
+        if (_seedWithSelection && _editor != null)
+        {
+            var selected = _editor.GetSelectedText();
+            if (!string.IsNullOrEmpty(selected) && !selected.Contains('\n') && !selected.Contains('\r'))
+                _input.Text = selected;
+        }
         Visibility = Visibility.Visible;
         SetReplaceVisible(showReplace);
         UpdateSearch();

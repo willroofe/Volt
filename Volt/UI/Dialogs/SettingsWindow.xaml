@@ -387,6 +387,14 @@
                             <ComboBoxItem Content="Top"/>
                             <ComboBoxItem Content="Bottom"/>
                         </ComboBox>
+
+                        <TextBlock Text="Add selection to find" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="FindSeedSelBox" Width="100" Height="26"
+                                  HorizontalAlignment="Left" Margin="0,0,0,16"
+                                  VerticalContentAlignment="Center" FontSize="13">
+                            <ComboBoxItem Content="On"/>
+                            <ComboBoxItem Content="Off"/>
+                        </ComboBox>
                     </StackPanel>
                 </ScrollViewer>
 

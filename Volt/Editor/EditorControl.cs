@@ -1972,6 +1972,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public int FindMatchCount => _find.MatchCount;
     public int CurrentMatchIndex => _find.CurrentIndex;
 
+    public string GetSelectedText()
+    {
+        return _selection.GetSelectedText(_buffer, _caretLine, _caretCol);
+    }
+
     public (int startLine, int startCol, int endLine, int endCol)? GetSelectionBounds()
     {
         if (!_selection.HasSelection) return null;

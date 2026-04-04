@@ -25,6 +25,7 @@ public class CaretSettings
 public class FindSettings
 {
     public string BarPosition { get; set; } = "Bottom";
+    public bool SeedWithSelection { get; set; } = true;
 }
 
 public class ExplorerSettings
