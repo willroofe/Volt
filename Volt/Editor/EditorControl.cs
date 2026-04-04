@@ -45,6 +45,25 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public int TabSize { get; set; } = 4;
     public bool BlockCaret { get; set; }
 
+    private bool _wordWrapAtWords = true;
+    public bool WordWrapAtWords
+    {
+        get => _wordWrapAtWords;
+        set
+        {
+            if (_wordWrapAtWords == value) return;
+            _wordWrapAtWords = value;
+            if (_wordWrap)
+            {
+                RecalcWrapData();
+                _textVisualDirty = true;
+                _gutterVisualDirty = true;
+                UpdateExtent();
+                InvalidateVisual();
+            }
+        }
+    }
+
     private bool _wordWrap;
     public bool WordWrap
     {
@@ -652,7 +671,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void RecalcWrapData()
     {
         double textAreaWidth = _viewport.Width - _gutterWidth - GutterPadding;
-        _wrap.Recalculate(_wordWrap, _buffer, textAreaWidth, _font.CharWidth);
+        _wrap.Recalculate(_wordWrap, _wordWrapAtWords, _buffer, textAreaWidth, _font.CharWidth);
     }
 
     // ── Wrap coordinate helpers (delegate to WrapLayout) ────────────
@@ -901,13 +920,17 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 {
                     int col = mCol;
                     int remaining = mLen;
+                    int vCount = VisualLineCount(mLine);
                     while (remaining > 0)
                     {
-                        int wrapIndex = col / _wrap.CharsPerVisualLine;
-                        int colInWrap = col - wrapIndex * _wrap.CharsPerVisualLine;
-                        int charsOnThisLine = Math.Min(remaining, _wrap.CharsPerVisualLine - colInWrap);
+                        int visLine = LogicalToVisualLine(mLine, col);
+                        int wrapIndex = visLine - _wrap.CumulOffset(mLine);
+                        int wrapStart = WrapColStart(mLine, wrapIndex);
+                        int colInWrap = col - wrapStart;
+                        int wrapEnd = wrapIndex + 1 < vCount ? WrapColStart(mLine, wrapIndex + 1) : _buffer[mLine].Length;
+                        int charsOnThisLine = Math.Min(remaining, wrapEnd - col);
                         double mx = _gutterWidth + GutterPadding + colInWrap * _font.CharWidth;
-                        double my = (_wrap.CumulOffset(mLine) + wrapIndex) * _font.LineHeight - _offset.Y;
+                        double my = visLine * _font.LineHeight - _offset.Y;
                         dc.DrawRectangle(brush, null,
                             new Rect(mx, my, charsOnThisLine * _font.CharWidth, _font.LineHeight));
                         col += charsOnThisLine;
@@ -987,7 +1010,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
             bool extendToEdge = (line > sl || sA > selStart || w > 0) && (line < el || sB < selEnd || w < vCount - 1);
             if (line != el && w == vCount - 1) extendToEdge = true;
-            if (line == sl && line != el && w >= (sc / _wrap.CharsPerVisualLine)) extendToEdge = true;
+            if (line == sl && line != el && w >= (LogicalToVisualLine(line, sc) - _wrap.CumulOffset(line))) extendToEdge = true;
             if (extendToEdge && line != el) x2 = Math.Max(x2, ActualWidth);
             if (line == sl && line != el && sB >= wEnd) x2 = Math.Max(x2, ActualWidth);
 
@@ -1023,7 +1046,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 cached = _tokenCache[i];
             }
 
-            if (!_wordWrap || line.Length <= _wrap.CharsPerVisualLine)
+            if (!_wordWrap || VisualLineCount(i) <= 1)
             {
                 double y = _wordWrap ? _wrap.CumulOffset(i) * _font.LineHeight : i * _font.LineHeight;
                 RenderLineTokens(dc, line, x, y, 0, line.Length, cached.tokens);
@@ -1033,8 +1056,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 int vCount = VisualLineCount(i);
                 for (int w = 0; w < vCount; w++)
                 {
-                    int segStart = w * _wrap.CharsPerVisualLine;
-                    int segEnd = Math.Min(segStart + _wrap.CharsPerVisualLine, line.Length);
+                    int segStart = WrapColStart(i, w);
+                    int segEnd = w + 1 < vCount ? WrapColStart(i, w + 1) : line.Length;
                     double y = (_wrap.CumulOffset(i) + w) * _font.LineHeight;
                     RenderLineTokens(dc, line, x, y, segStart, segEnd, cached.tokens);
                 }

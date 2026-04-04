@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace Volt;
 
 /// <summary>
@@ -10,6 +12,7 @@ internal class WrapLayout
     private int _charsPerVisualLine;
     private int[]? _wrapLineCount;      // visual lines per logical line
     private int[]? _wrapCumulOffset;    // cumulative visual line offset
+    private int[]? _wrapColStarts;      // starting column for each visual line (word-break mode only)
     private int _totalVisualLines;
 
     public int CharsPerVisualLine => _charsPerVisualLine;
@@ -23,12 +26,13 @@ internal class WrapLayout
     /// Recalculate wrap data from the buffer. When wrap is off, clears arrays
     /// and sets TotalVisualLines to the buffer line count.
     /// </summary>
-    public void Recalculate(bool wordWrap, TextBuffer buffer, double textAreaWidth, double charWidth)
+    public void Recalculate(bool wordWrap, bool breakAtWords, TextBuffer buffer, double textAreaWidth, double charWidth)
     {
         if (!wordWrap)
         {
             _wrapLineCount = null;
             _wrapCumulOffset = null;
+            _wrapColStarts = null;
             _totalVisualLines = buffer.Count;
             return;
         }
@@ -43,15 +47,78 @@ internal class WrapLayout
             _wrapLineCount = new int[count];
             _wrapCumulOffset = new int[count];
         }
+
+        if (breakAtWords)
+            RecalcWordBreak(buffer, count);
+        else
+            RecalcCharBreak(buffer, count);
+    }
+
+    private void RecalcCharBreak(TextBuffer buffer, int count)
+    {
+        _wrapColStarts = null;
         int cumul = 0;
         for (int i = 0; i < count; i++)
         {
-            _wrapCumulOffset[i] = cumul;
+            _wrapCumulOffset![i] = cumul;
             int len = buffer[i].Length;
-            _wrapLineCount[i] = len <= _charsPerVisualLine ? 1 : (len + _charsPerVisualLine - 1) / _charsPerVisualLine;
+            _wrapLineCount![i] = len <= _charsPerVisualLine ? 1 : (len + _charsPerVisualLine - 1) / _charsPerVisualLine;
             cumul += _wrapLineCount[i];
         }
         _totalVisualLines = cumul;
+    }
+
+    private readonly List<int> _colStartBuffer = new();
+
+    private void RecalcWordBreak(TextBuffer buffer, int count)
+    {
+        _colStartBuffer.Clear();
+        int cumul = 0;
+        for (int i = 0; i < count; i++)
+        {
+            _wrapCumulOffset![i] = cumul;
+            string line = buffer[i];
+            int len = line.Length;
+
+            if (len <= _charsPerVisualLine)
+            {
+                _wrapLineCount![i] = 1;
+                _colStartBuffer.Add(0);
+                cumul++;
+                continue;
+            }
+
+            int subLines = 0;
+            int pos = 0;
+            while (pos < len)
+            {
+                _colStartBuffer.Add(pos);
+                subLines++;
+                int remaining = len - pos;
+                if (remaining <= _charsPerVisualLine)
+                    break;
+
+                // Find last whitespace within the visual line width to break at
+                int limit = pos + _charsPerVisualLine;
+                int breakAt = -1;
+                for (int j = limit; j > pos; j--)
+                {
+                    if (line[j - 1] == ' ' || line[j - 1] == '\t')
+                    {
+                        breakAt = j;
+                        break;
+                    }
+                }
+                pos = breakAt > pos ? breakAt : limit;
+            }
+            _wrapLineCount![i] = subLines;
+            cumul += subLines;
+        }
+        _totalVisualLines = cumul;
+        // Copy to array for O(1) lookup
+        if (_wrapColStarts == null || _wrapColStarts.Length < cumul || _wrapColStarts.Length > cumul * 2)
+            _wrapColStarts = new int[cumul];
+        _colStartBuffer.CopyTo(0, _wrapColStarts, 0, cumul);
     }
 
     /// <summary>Visual line index for a logical line + column.</summary>
@@ -59,8 +126,23 @@ internal class WrapLayout
     {
         if (!wordWrap) return logLine;
         if (_wrapCumulOffset == null || logLine >= _wrapCumulOffset.Length) return logLine;
-        int wrapIndex = _charsPerVisualLine > 0 ? Math.Min(col / _charsPerVisualLine, _wrapLineCount![logLine] - 1) : 0;
-        return _wrapCumulOffset[logLine] + wrapIndex;
+        if (_wrapColStarts != null)
+        {
+            int baseVis = _wrapCumulOffset[logLine];
+            int subCount = _wrapLineCount![logLine];
+            int wrapIndex = 0;
+            for (int s = subCount - 1; s > 0; s--)
+            {
+                if (col >= _wrapColStarts[baseVis + s])
+                {
+                    wrapIndex = s;
+                    break;
+                }
+            }
+            return baseVis + wrapIndex;
+        }
+        int wi = _charsPerVisualLine > 0 ? Math.Min(col / _charsPerVisualLine, _wrapLineCount![logLine] - 1) : 0;
+        return _wrapCumulOffset[logLine] + wi;
     }
 
     /// <summary>Pixel Y for a logical position.</summary>
@@ -99,7 +181,19 @@ internal class WrapLayout
     {
         if (!wordWrap) return 0;
         if (_wrapCumulOffset == null || logLine >= _wrapCumulOffset.Length) return 0;
+        if (_wrapColStarts != null)
+            return _wrapColStarts[_wrapCumulOffset[logLine] + wrapIndex];
         return wrapIndex * _charsPerVisualLine;
+    }
+
+    /// <summary>Number of columns in a given wrap sub-line.</summary>
+    public int WrapSubLineLength(bool wordWrap, int logLine, int wrapIndex, int lineLength)
+    {
+        if (!wordWrap) return lineLength;
+        int start = WrapColStart(wordWrap, logLine, wrapIndex);
+        int subCount = VisualLineCount(wordWrap, logLine);
+        int end = wrapIndex + 1 < subCount ? WrapColStart(wordWrap, logLine, wrapIndex + 1) : lineLength;
+        return end - start;
     }
 
     /// <summary>Pixel X and Y for a caret/selection position, accounting for wrap.</summary>
@@ -117,8 +211,30 @@ internal class WrapLayout
             return (gutterWidth + gutterPadding + col * charWidth - offsetX,
                     line * lineHeight - offsetY);
         }
-        int wrapIndex = Math.Min(col / _charsPerVisualLine, _wrapLineCount![line] - 1);
-        int colInWrap = col - wrapIndex * _charsPerVisualLine;
+
+        int wrapIndex;
+        int colInWrap;
+        if (_wrapColStarts != null)
+        {
+            int baseVis = _wrapCumulOffset[line];
+            int subCount = _wrapLineCount![line];
+            wrapIndex = 0;
+            for (int s = subCount - 1; s > 0; s--)
+            {
+                if (col >= _wrapColStarts[baseVis + s])
+                {
+                    wrapIndex = s;
+                    break;
+                }
+            }
+            colInWrap = col - _wrapColStarts[baseVis + wrapIndex];
+        }
+        else
+        {
+            wrapIndex = Math.Min(col / _charsPerVisualLine, _wrapLineCount![line] - 1);
+            colInWrap = col - wrapIndex * _charsPerVisualLine;
+        }
+
         double x = gutterWidth + gutterPadding + colInWrap * charWidth;
         double y = (_wrapCumulOffset[line] + wrapIndex) * lineHeight - offsetY;
         return (x, y);

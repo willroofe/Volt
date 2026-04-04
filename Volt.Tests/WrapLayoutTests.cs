@@ -11,7 +11,7 @@ public class WrapLayoutTests
         var buf = TestHelpers.MakeBuffer("short\nlines\nhere");
         var wrap = new WrapLayout();
 
-        wrap.Recalculate(wordWrap: false, buf, textAreaWidth: 500, charWidth: 8);
+        wrap.Recalculate(wordWrap: false, breakAtWords: false, buf, textAreaWidth: 500, charWidth: 8);
 
         Assert.Equal(3, wrap.TotalVisualLines);
         Assert.Equal(0, wrap.LogicalToVisualLine(wordWrap: false, 0));
@@ -25,7 +25,7 @@ public class WrapLayoutTests
         var buf = TestHelpers.MakeBuffer("12345678901234567890\nshort");
         var wrap = new WrapLayout();
 
-        wrap.Recalculate(wordWrap: true, buf, textAreaWidth: 80, charWidth: 8);
+        wrap.Recalculate(wordWrap: true, breakAtWords: false, buf, textAreaWidth: 80, charWidth: 8);
 
         Assert.Equal(10, wrap.CharsPerVisualLine);
         Assert.Equal(2, wrap.VisualLineCount(wordWrap: true, 0));
@@ -38,7 +38,7 @@ public class WrapLayoutTests
     {
         var buf = TestHelpers.MakeBuffer("12345678901234567890\nshort");
         var wrap = new WrapLayout();
-        wrap.Recalculate(wordWrap: true, buf, textAreaWidth: 80, charWidth: 8);
+        wrap.Recalculate(wordWrap: true, breakAtWords: false, buf, textAreaWidth: 80, charWidth: 8);
 
         var (log0, wrapIdx0) = wrap.VisualToLogical(wordWrap: true, 0, buf.Count);
         Assert.Equal(0, log0);
@@ -58,7 +58,7 @@ public class WrapLayoutTests
     {
         var buf = TestHelpers.MakeBuffer("line1\nline2");
         var wrap = new WrapLayout();
-        wrap.Recalculate(wordWrap: true, buf, textAreaWidth: 500, charWidth: 8);
+        wrap.Recalculate(wordWrap: true, breakAtWords: false, buf, textAreaWidth: 500, charWidth: 8);
 
         var (logLine, _) = wrap.VisualToLogical(wordWrap: true, 999, buf.Count);
         Assert.True(logLine < buf.Count);
@@ -69,7 +69,7 @@ public class WrapLayoutTests
     {
         var buf = TestHelpers.MakeBuffer("12345678901234567890"); // 20 chars, wraps at 10
         var wrap = new WrapLayout();
-        wrap.Recalculate(wordWrap: true, buf, textAreaWidth: 80, charWidth: 8);
+        wrap.Recalculate(wordWrap: true, breakAtWords: false, buf, textAreaWidth: 80, charWidth: 8);
 
         Assert.Equal(0, wrap.LogicalToVisualLine(wordWrap: true, 0, col: 0));
         Assert.Equal(0, wrap.LogicalToVisualLine(wordWrap: true, 0, col: 9));
@@ -81,7 +81,7 @@ public class WrapLayoutTests
     {
         var buf = TestHelpers.MakeBuffer("12345678901234567890\nshort");
         var wrap = new WrapLayout();
-        wrap.Recalculate(wordWrap: true, buf, textAreaWidth: 80, charWidth: 8);
+        wrap.Recalculate(wordWrap: true, breakAtWords: false, buf, textAreaWidth: 80, charWidth: 8);
 
         Assert.Equal(0, wrap.WrapColStart(wordWrap: true, 0, 0));
         Assert.Equal(10, wrap.WrapColStart(wordWrap: true, 0, 1));
@@ -92,7 +92,7 @@ public class WrapLayoutTests
     {
         var buf = TestHelpers.MakeBuffer("12345678901234567890"); // 20 chars
         var wrap = new WrapLayout();
-        wrap.Recalculate(wordWrap: true, buf, textAreaWidth: 80, charWidth: 8);
+        wrap.Recalculate(wordWrap: true, breakAtWords: false, buf, textAreaWidth: 80, charWidth: 8);
 
         var (x, y) = wrap.GetPixelForPosition(
             wordWrap: true, line: 0, col: 15,
@@ -116,7 +116,7 @@ public class WrapLayoutTests
     {
         var buf = TestHelpers.MakeBuffer("hello\nworld");
         var wrap = new WrapLayout();
-        wrap.Recalculate(wordWrap: true, buf, textAreaWidth: 500, charWidth: 8);
+        wrap.Recalculate(wordWrap: true, breakAtWords: false, buf, textAreaWidth: 500, charWidth: 8);
 
         Assert.True(wrap.HasValidData(buf.Count));
     }
@@ -126,7 +126,7 @@ public class WrapLayoutTests
     {
         var buf = TestHelpers.MakeBuffer("hello\nworld");
         var wrap = new WrapLayout();
-        wrap.Recalculate(wordWrap: false, buf, textAreaWidth: 500, charWidth: 8);
+        wrap.Recalculate(wordWrap: false, breakAtWords: false, buf, textAreaWidth: 500, charWidth: 8);
 
         var (x, y) = wrap.GetPixelForPosition(
             wordWrap: false, line: 1, col: 3,
@@ -135,5 +135,74 @@ public class WrapLayoutTests
 
         Assert.Equal(40 + 8 + 3 * 8, x);
         Assert.Equal(20.0, y); // Line 1 * lineHeight
+    }
+
+    [Fact]
+    public void WordBreak_BreaksAtWordBoundary()
+    {
+        // "hello world test" = 16 chars, charsPerLine = 10
+        // Should break: "hello " (6) | "world test" (10) — breaks after last space within limit
+        var buf = TestHelpers.MakeBuffer("hello world test");
+        var wrap = new WrapLayout();
+        wrap.Recalculate(wordWrap: true, breakAtWords: true, buf, textAreaWidth: 80, charWidth: 8);
+
+        Assert.Equal(2, wrap.VisualLineCount(wordWrap: true, 0));
+        Assert.Equal(0, wrap.WrapColStart(wordWrap: true, 0, 0));
+        // Break should be after "hello " (at column 6)
+        Assert.Equal(6, wrap.WrapColStart(wordWrap: true, 0, 1));
+    }
+
+    [Fact]
+    public void WordBreak_FallsBackToCharBreakForLongWord()
+    {
+        // "abcdefghijklmnopqrst" = 20 chars, no spaces, charsPerLine = 10
+        var buf = TestHelpers.MakeBuffer("abcdefghijklmnopqrst");
+        var wrap = new WrapLayout();
+        wrap.Recalculate(wordWrap: true, breakAtWords: true, buf, textAreaWidth: 80, charWidth: 8);
+
+        Assert.Equal(2, wrap.VisualLineCount(wordWrap: true, 0));
+        Assert.Equal(0, wrap.WrapColStart(wordWrap: true, 0, 0));
+        Assert.Equal(10, wrap.WrapColStart(wordWrap: true, 0, 1)); // hard break at 10
+    }
+
+    [Fact]
+    public void WordBreak_ShortLineFitsOnOneLine()
+    {
+        var buf = TestHelpers.MakeBuffer("short");
+        var wrap = new WrapLayout();
+        wrap.Recalculate(wordWrap: true, breakAtWords: true, buf, textAreaWidth: 80, charWidth: 8);
+
+        Assert.Equal(1, wrap.VisualLineCount(wordWrap: true, 0));
+    }
+
+    [Fact]
+    public void WordBreak_GetPixelForPosition_CorrectForWrappedColumn()
+    {
+        // "hello world test" → breaks at col 6: "hello " | "world test"
+        var buf = TestHelpers.MakeBuffer("hello world test");
+        var wrap = new WrapLayout();
+        wrap.Recalculate(wordWrap: true, breakAtWords: true, buf, textAreaWidth: 80, charWidth: 8);
+
+        // col 8 = "or" in "world" → wrap line 1, local col 2
+        var (x, y) = wrap.GetPixelForPosition(
+            wordWrap: true, line: 0, col: 8,
+            gutterWidth: 40, gutterPadding: 8, charWidth: 8, lineHeight: 20,
+            offsetX: 0, offsetY: 0);
+
+        Assert.Equal(40 + 8 + 2 * 8, x); // col 8 - wrapStart 6 = local col 2
+        Assert.Equal(20.0, y);            // second visual line
+    }
+
+    [Fact]
+    public void WordBreak_LogicalToVisualLine_CorrectMapping()
+    {
+        // "hello world test" → breaks at col 6
+        var buf = TestHelpers.MakeBuffer("hello world test");
+        var wrap = new WrapLayout();
+        wrap.Recalculate(wordWrap: true, breakAtWords: true, buf, textAreaWidth: 80, charWidth: 8);
+
+        Assert.Equal(0, wrap.LogicalToVisualLine(wordWrap: true, 0, col: 0));
+        Assert.Equal(0, wrap.LogicalToVisualLine(wordWrap: true, 0, col: 5));
+        Assert.Equal(1, wrap.LogicalToVisualLine(wordWrap: true, 0, col: 8));
     }
 }

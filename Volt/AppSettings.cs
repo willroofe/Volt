@@ -39,6 +39,7 @@ public class EditorSettings
 {
     public int TabSize { get; set; } = 4;
     public bool WordWrap { get; set; }
+    public bool WordWrapAtWords { get; set; } = true;
     public bool FixedWidthTabs { get; set; }
     public FontSettings Font { get; set; } = new();
     public CaretSettings Caret { get; set; } = new();
