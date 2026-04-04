@@ -43,206 +43,127 @@ Removed `ThemeManager != null` guards in `EditorControl.cs` Loaded/Unloaded hand
 
 ## 2. Duplication
 
-### HIGH-IMPACT: Tab restoration logic (MainWindow.xaml.cs) — ~100 lines recoverable
+### ~~HIGH-IMPACT: Tab restoration logic (MainWindow.xaml.cs)~~ DONE
 
-Three methods contain near-identical tab-restoration code:
+Extracted `RestoreTabsFromSession(RestoredSession)` helper. `RestoreSession()` and `RestoreFolderTabs()` now delegate to it. `RestoreWorkspaceSession()` left separate — uses a different data model (`WorkspaceSessionTab`), different scroll restore mechanism (`Dispatcher.InvokeAsync` + `ScrollHost`), and no dirty-state handling.
 
-| Method | Lines | Line count |
-|--------|-------|------------|
-| `RestoreSession()` | 598–649 | ~50 |
-| `RestoreFolderTabs()` | 709–758 | ~50 |
-| `RestoreWorkspaceSession()` | 1552–1595 | ~43 |
+### ~~HIGH-IMPACT: XAML button templates~~ PARTIALLY DONE
 
-**Fix**: Extract a single `RestoreTabsFromList(IEnumerable<TabInfo> tabs, TabInfo? activeTab)` method.
+Moved identical `DialogButton` style from `ThemedInputBox.xaml` and `ThemedMessageBox.xaml` into `App.xaml`. TabRegion inline templates differ in `CornerRadius` (3 vs 2) from `MatchCaseButton`, so not consolidated. SettingsWindow/FindBar templates are already using shared styles from App.xaml.
 
-### HIGH-IMPACT: XAML button templates — ~50 lines recoverable
+### ~~MODERATE-IMPACT: ThemeManager resource assignments~~ DONE
 
-Five files define near-identical button `ControlTemplate` blocks:
+`UpdateAppResources()` now uses a data-driven `ReadOnlySpan<(string, string)>` mapping with a `foreach` loop.
 
-| File | Lines | Template name |
-|------|-------|---------------|
-| `UI/FindBar.xaml` | 28–102 | Four `MatchCaseButton`-style buttons |
-| `UI/Dialogs/SettingsWindow.xaml` | 42–83 | `TitleBarButton` + `CloseButton` |
-| `UI/Dialogs/ThemedInputBox.xaml` | 15–42 | `DialogButton` |
-| `UI/Dialogs/ThemedMessageBox.xaml` | 15–42 | `DialogButton` (identical copy) |
-| `UI/Panels/TabRegion.xaml` | 19–53 | Close/add button templates |
+### ~~MODERATE-IMPACT: FindBar toggle handlers~~ DONE
 
-**Fix**: Consolidate shared button styles into `App.xaml` or a shared resource dictionary.
+Extracted `UpdateToggleButton(Button btn, bool active)` helper. Four handlers now call it instead of duplicating `SetResourceReference` pairs.
 
-### MODERATE-IMPACT: ThemeManager resource assignments — ~40 lines recoverable
+### ~~MODERATE-IMPACT: FileExplorerPanel new file/folder~~ DONE
 
-**ThemeManager.cs lines 121–154**: 28 identical `res[key] = ColorTheme.ParseBrush(hex)` assignments.
+`DoNewFile()` and `DoNewFolder()` now delegate to `CreateFileSystemItem(string parentDir, bool isDirectory)`.
 
-**Fix**: Use a data-driven loop:
-```csharp
-var mapping = new[] {
-    (ThemeResourceKeys.ChromeBrush, c.TitleBar),
-    (ThemeResourceKeys.BorderBrush, c.Border),
-    // ...
-};
-foreach (var (key, hex) in mapping)
-    res[key] = ColorTheme.ParseBrush(hex);
-```
+### MODERATE-IMPACT: TextBuffer dirty-flag assignments — SKIPPED
 
-Similarly, **ThemeManager.cs lines 95–109** has 12 sequential editor color assignments that could use the same pattern.
+`InvalidateMaxLineLength()` already exists and sets both dirty flags. The internal mutation methods also increment `_editGeneration`, making a single unified call awkward. Not worth adding another helper.
 
-### MODERATE-IMPACT: FindBar toggle handlers — ~60 lines recoverable
+### MODERATE-IMPACT: Scroll-anchor restoration (EditorControl.cs) — SKIPPED
 
-**FindBar.xaml.cs lines 206–234**: Four toggle button handlers (`OnMatchCaseClick`, `OnRegexClick`, `OnWholeWordClick`, `OnFindInSelectionClick`) are structurally identical: toggle boolean, update button appearance, call `UpdateSearch`.
+The two anchor sites (`WordWrap` setter, `UpdateExtent`) differ in initial-state handling (wrap-on vs wrap-off), maxY calculation, and restore conditions. Extracting helpers would just move the complexity.
 
-**Fix**: Extract `ToggleOption(ref bool field, Button btn)`.
+### MODERATE-IMPACT: PanelShell placement switches — SKIPPED
 
-### MODERATE-IMPACT: FileExplorerPanel new file/folder — ~30 lines recoverable
+The four switches map placements to XAML-named elements with different property types (Width vs Height). A dictionary lookup would require the same mapping and wouldn't reduce complexity.
 
-**FileExplorerPanel.xaml.cs lines 276–324**: `DoNewFile()` and `DoNewFolder()` are 95% identical.
+### LOW-IMPACT: AppSettings migration — SKIPPED
 
-**Fix**: Extract `CreateFileSystemItem(string parentDir, bool isDirectory)`.
+Migration code runs once per settings upgrade. Not worth adding a generic helper for one-time code.
 
-### MODERATE-IMPACT: TextBuffer dirty-flag assignments
+### ~~LOW-IMPACT: Session directory clearing~~ DONE
 
-**TextBuffer.cs** — six separate locations assign `_maxLineLengthDirty = true; _charCountDirty = true;` (lines 115, 121, 127, 201, 223, 247, 258).
+Extracted `SafeDeleteFiles(string dir)` — both `ClearSessionDir()` and `ClearFolderSessionDir()` now delegate to it.
 
-**Fix**: Extract `InvalidateCachedLengths()` method.
+### LOW-IMPACT: SyntaxDefinition error handling — SKIPPED
 
-### MODERATE-IMPACT: Scroll-anchor restoration (EditorControl.cs)
+Four try-catch blocks have different error recovery (null field, remove entry, null parent). Not unifiable with a single `TryCompileRegex` helper.
 
-**EditorControl.cs lines 54–95**: The wrap/scroll anchor save-restore pattern appears three times with slight variations in the `WordWrap` setter and `UpdateExtent()`.
+### ~~LOW-IMPACT: Duplicate brush caching~~ DONE
 
-**Fix**: Extract `SaveScrollAnchor()` / `RestoreScrollAnchor()` helpers.
-
-### MODERATE-IMPACT: PanelShell placement switches
-
-**PanelShell.xaml.cs lines 258–330**: Four separate `switch` statements on `PanelPlacement` for `GetContentPresenter`, `GetSplitter`, `GetDropOverlay`, and `SetSplitterRowCol`.
-
-**Fix**: Use `Dictionary<PanelPlacement, (ContentPresenter, GridSplitter, ...)>` lookup.
-
-### LOW-IMPACT: AppSettings migration
-
-**AppSettings.cs lines 217–245**: 18 repetitive `TryGetProperty` blocks with identical structure.
-
-**Fix**: Helper method `T ReadProperty<T>(JsonElement root, string key, T defaultValue)`.
-
-### LOW-IMPACT: Session directory clearing
-
-**AppSettings.cs lines 120–147**: `ClearSessionDir()` and `ClearFolderSessionDir()` are identical except for the path.
-
-**Fix**: Extract `SafeDeleteFiles(string dir)`.
-
-### LOW-IMPACT: SyntaxDefinition error handling
-
-**SyntaxDefinition.cs lines 92–158**: Four identical try-catch blocks with `Debug.WriteLine`.
-
-**Fix**: Extract `TryCompileRegex(string pattern, out Regex? result)`.
-
-### LOW-IMPACT: Duplicate brush caching
-
-**ThemeManager.cs line 33** (`_scopeBrushes`) and **ColorTheme.cs line 71** (`_brushCache`) maintain parallel caches for scope brushes.
-
-**Fix**: Remove `_scopeBrushes` and delegate to `ColorTheme` directly.
+Removed `_scopeBrushes` dictionary and `UpdateScopeBrushes()` method from `ThemeManager`. `GetScopeBrush()` now delegates directly to `ColorTheme.GetScopeBrush()` which has its own cache.
 
 ---
 
-## 3. Over-Engineering
+## 3. Over-Engineering — ALL SKIPPED
 
-### LOW-IMPACT: PanelShell nested classes
+### LOW-IMPACT: PanelShell nested classes — SKIPPED
 
-**PanelShell.xaml.cs lines 639–645**: `PanelRegistration` is a 7-line class that could be a `record`:
-```csharp
-record PanelRegistration(IPanel Panel, PanelPlacement Placement, PanelContainer Container, bool IsVisible);
-```
+`PanelRegistration` already uses a primary constructor and has mutable properties (`Placement`, `IsVisible`). Already concise.
 
-### LOW-IMPACT: TabRegion TabEntry
+### LOW-IMPACT: TabRegion TabEntry — SKIPPED
 
-**TabRegion.cs lines 240–252**: `TabEntry` stores event handler lambdas for later unsubscription. Inherent WPF complexity, but could be simplified to a record.
+Event handler lambdas need unsubscription tracking. Inherent WPF complexity.
 
-### LOW-IMPACT: ExplorerTreeControl FlatRow
+### LOW-IMPACT: ExplorerTreeControl FlatRow — SKIPPED
 
-**ExplorerTreeControl.cs line 717**: `FlatRow` struct could be a simple tuple `(FileTreeItem Item, int Depth)`.
+Named struct is more readable than a tuple in the rendering code.
 
 ---
 
-## 4. Structural Complexity
+## 4. Structural Complexity — ALL SKIPPED (verified as already reasonable)
 
-### HIGH-IMPACT: EditorControl.OnKeyDown — 26-case switch
+### HIGH-IMPACT: EditorControl.OnKeyDown — SKIPPED
 
-**EditorControl.cs lines 1317–1391**: Massive switch with internal if-else chains. Cases like `Key.Z when ctrl` (lines 1375–1381) follow repetitive patterns.
+Only ~70 lines. Each case already delegates to a named handler method. A dispatch table would be more complex for mixed modifier patterns.
 
-**Fix**: Extract case bodies into named methods (`HandleCtrlZ()`, `HandleCtrlY()`, etc.) or use a `Dictionary<(Key, bool ctrl, bool shift), Action>` dispatch table.
+### HIGH-IMPACT: EditorControl.EnsureLineStates — SKIPPED
 
-### HIGH-IMPACT: EditorControl.EnsureLineStates
+Only ~37 lines, not 60 as originally estimated. Nesting is manageable. Splitting would add more lines than it saves.
 
-**EditorControl.cs lines 781–801**: 60-line method with 4 nesting levels handling line count shifting, dirty tracking, and continuation.
+### ~~MODERATE-IMPACT: MainWindow.RestoreSession~~ DONE (via Duplication section)
 
-**Fix**: Split into `GrowLineStates()`, `ShrinkLineStates()`, `RevalidateLineStates()`.
+Tab-creation loop extracted to `RestoreTabsFromSession()`.
 
-### MODERATE-IMPACT: ExplorerTreeControl.OnRender
+### MODERATE-IMPACT: ExplorerTreeControl.OnRender — SKIPPED
 
-**ExplorerTreeControl.cs lines 292–378**: 86-line render method with manual FormattedText caching, conditional rendering for hover/selected/drop-target states, and multi-step icon/arrow/text positioning.
+Render-path code benefits from being inline for performance visibility. Helper extraction would just scatter the logic.
 
-**Fix**: Extract `RenderRow()`, `RenderIcon()`, `RenderText()` helpers.
+### MODERATE-IMPACT: PanelShell drag-to-dock — SKIPPED
 
-### MODERATE-IMPACT: MainWindow.RestoreSession
+Position threshold logic is specific to the drop zone calculation and wouldn't simplify meaningfully as separate methods.
 
-**MainWindow.xaml.cs lines 551–669**: 119-line method with 5+ nesting levels including lambdas inside loops.
+### MODERATE-IMPACT: RenderWrappedSelection — SKIPPED
 
-**Fix**: In addition to extracting the shared tab-restoration helper (see Duplication above), split the remaining session-specific logic into smaller methods.
+Only 28 lines. The `extendToEdge` logic is 4 lines — not worth extracting.
 
-### MODERATE-IMPACT: PanelShell drag-to-dock
+### LOW-IMPACT: FileExplorerPanel Undo/Redo switches — SKIPPED
 
-**PanelShell.xaml.cs lines 509–586**: 77-line `OnMouseMove` calculating drop zones with repeated position threshold checks and brush manipulation.
+Undo and redo have opposite operations per case. Combining with an `isUndo` flag would add internal branching without reducing complexity.
 
-**Fix**: Extract `CalculateDropZone()` and `UpdateDropOverlay()`.
+### LOW-IMPACT: AppSettings.Load nesting — SKIPPED
 
-### MODERATE-IMPACT: RenderWrappedSelection
-
-**EditorControl.cs lines 969–997**: 28 lines with 6 nesting levels determining if selection extends to edge.
-
-**Fix**: Extract the `extendToEdge` logic (lines 986–990) into a helper method.
-
-### LOW-IMPACT: FileExplorerPanel Undo/Redo switches
-
-**FileExplorerPanel.xaml.cs lines 411–481**: `Undo()` and `Redo()` contain near-identical 5-case switch statements.
-
-**Fix**: Extract shared `ApplyFileOperation(FileOperation op, bool isUndo)`.
-
-### LOW-IMPACT: AppSettings.Load nesting
-
-**AppSettings.cs lines 181–211**: Nested try-catch blocks for file load and backup creation.
-
-**Fix**: Extract `TryLoadAndMigrate(string json)`.
+Simple try-catch-try-catch pattern. Extracting a helper for one callsite is unnecessary.
 
 ---
 
-## 5. Verbose Patterns
+## 5. Verbose Patterns — ALL SKIPPED (verified as false positives or not worth changing)
 
-### MODERATE-IMPACT: Manual loops replaceable with LINQ
+### MODERATE-IMPACT: Manual loops replaceable with LINQ — SKIPPED
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `Editor/EditorControl.cs` | 514–527 | Manual while loop for quote detection — use `LastIndexOf` |
-| `Editor/EditorControl.cs` | 879–884 | Manual binary search — `Array.BinarySearch` exists |
-| `Editor/FindManager.cs` | 51–61 | Hand-rolled binary search — use `Array.BinarySearch` |
-| `Editor/SyntaxManager.cs` | 318–323 | Quote-finding loop — use `FirstOrDefault` |
-| `UI/Explorer/FileExplorerPanel.xaml.cs` | 185–194 | Manual foreach for workspace folders — use `AddRange` + LINQ |
+- Quote detection (EditorControl.cs) tracks escape state — not replaceable with `LastIndexOf`
+- Binary searches (EditorControl.cs, FindManager.cs) use composite keys (line, col) — `Array.BinarySearch` would need a custom comparer and wouldn't be cleaner
+- Workspace folder loop (FileExplorerPanel.xaml.cs) has side effects (event subscription, conditional expansion) — not suitable for `AddRange` + LINQ
 
-### MODERATE-IMPACT: Verbose null-check patterns
+### MODERATE-IMPACT: Verbose null-check patterns — SKIPPED
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `UI/MainWindow.xaml.cs` | 204–208 | Multiple null checks in `RemoveTab` — consolidate |
-| `UI/FindBar.xaml.cs` | 379–393 | Manual visual tree walk — use null-conditional chain |
+Standard defensive patterns. Consolidating would reduce readability without meaningful benefit.
 
-### LOW-IMPACT: Complex boolean expressions
+### LOW-IMPACT: Complex boolean expressions — SKIPPED
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `Editor/EditorControl.cs` | 1406–1408 | Triple-nested bracket pair detection condition |
-| `Editor/EditorControl.cs` | 1460–1461 | Two-line pair deletion OR condition |
-| `UI/MainWindow.xaml.cs` | 775–778 | Window visibility check with 4 comparisons |
+The conditions are domain-specific logic that reads clearly in context.
 
-### LOW-IMPACT: App.xaml scrollbar template duplication
+### LOW-IMPACT: App.xaml scrollbar template duplication — SKIPPED
 
-**App.xaml lines 155–216**: Vertical and horizontal scrollbar templates are 60+ lines of nearly identical XAML differing only in orientation.
+WPF requires separate templates for vertical/horizontal scrollbar orientations. The templates differ in layout direction properties. This is inherent WPF boilerplate.
 
 ---
 
@@ -269,12 +190,11 @@ record PanelRegistration(IPanel Panel, PanelPlacement Placement, PanelContainer 
 
 ## Summary Table
 
-| Category | High | Moderate | Low | Est. Lines Saved |
-|----------|------|----------|-----|-----------------|
-| Dead Weight | 0 | 1 (Debug.WriteLine cleanup) | 2 | ~30 |
-| Duplication | 3 (tab restore, XAML templates, ThemeManager) | 5 (FindBar toggles, new file/folder, TextBuffer dirty, scroll anchor, PanelShell switches) | 5 | ~300 |
-| Over-Engineering | 0 | 0 | 3 | ~15 |
-| Structural Complexity | 2 (OnKeyDown, EnsureLineStates) | 4 (OnRender, RestoreSession, drag-to-dock, RenderWrappedSelection) | 2 | ~50 (via extraction, not deletion) |
-| Verbose Patterns | 0 | 3 (LINQ replacements, null checks, scrollbar XAML) | 3 | ~40 |
-| ~~Tests/Benchmarks~~ | ~~0~~ | ~~2 (setup duplication, assertions)~~ | ~~2~~ | ~~\~60~~ | **ALL DONE** |
-| **Totals** | **5** | **13 remaining** | **15 remaining** | **~340–490 remaining** |
+| Category | Status | Changes Made |
+|----------|--------|-------------|
+| Dead Weight | **ALL DONE** | ~27 Debug.WriteLine removed, 2 redundant null checks removed |
+| Duplication | **6 DONE, 4 SKIPPED** | Tab restore helper, DialogButton to App.xaml, ThemeManager data-driven loop, FindBar toggle helper, CreateFileSystemItem, SafeDeleteFiles, scope brush cache dedup |
+| Over-Engineering | **ALL SKIPPED** | Verified as already reasonable |
+| Structural Complexity | **1 DONE (via duplication), REST SKIPPED** | RestoreSession simplified. Others verified as already clean |
+| Verbose Patterns | **ALL SKIPPED** | Verified as false positives or not worth changing |
+| Tests/Benchmarks | **ALL DONE** | Test helper extraction, assertion helpers, benchmark setup |
