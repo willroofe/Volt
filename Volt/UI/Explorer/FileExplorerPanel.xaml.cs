@@ -31,6 +31,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
 
     public string PanelId => "file-explorer";
     public string Title => _title;
+    public string? IconGlyph => "\uE8B7";
     public new UIElement Content => this;
     public event Action? TitleChanged;
 

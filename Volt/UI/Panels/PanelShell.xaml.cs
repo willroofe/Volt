@@ -377,14 +377,24 @@ public partial class PanelShell : UserControl
         foreach (var panel in available)
         {
             var id = panel.PanelId;
-            menu.Items.Add(ContextMenuHelper.Item(panel.Title, () =>
-            {
-                if (_panels.TryGetValue(id, out var reg))
+            var item = panel.IconGlyph is { } glyph
+                ? ContextMenuHelper.Item(panel.Title, glyph, () =>
                 {
-                    reg.Placement = placement;
-                    ShowPanel(id);
-                }
-            }));
+                    if (_panels.TryGetValue(id, out var reg))
+                    {
+                        reg.Placement = placement;
+                        ShowPanel(id);
+                    }
+                })
+                : ContextMenuHelper.Item(panel.Title, () =>
+                {
+                    if (_panels.TryGetValue(id, out var reg))
+                    {
+                        reg.Placement = placement;
+                        ShowPanel(id);
+                    }
+                });
+            menu.Items.Add(item);
         }
         region.ContextMenu = menu;
         menu.IsOpen = true;
