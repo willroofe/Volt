@@ -205,12 +205,12 @@
                     </MenuItem>
                     <MenuItem Header="Save _As..." InputGestureText="Ctrl+Shift+S" Click="OnSaveAs"/>
                     <Separator/>
-                    <MenuItem Header="_Open File" InputGestureText="Ctrl+O" Click="OnOpen">
+                    <MenuItem Header="_Open File" InputGestureText="Ctrl+O" Click="OnOpen"/>
+                    <MenuItem Header="Open _Folder" InputGestureText="Ctrl+Shift+O" Click="OnOpenFolder">
                         <MenuItem.Icon>
                             <TextBlock Text="&#xE838;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
                         </MenuItem.Icon>
                     </MenuItem>
-                    <MenuItem Header="Open _Folder" InputGestureText="Ctrl+Shift+O" Click="OnOpenFolder"/>
                     <MenuItem x:Name="MenuAddFolderToWorkspace" Header="Add Folder to _Workspace" Click="OnAddFolderToWorkspace">
                         <MenuItem.Icon>
                             <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="12"
