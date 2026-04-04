@@ -38,6 +38,7 @@ public class EditorSettings
 {
     public int TabSize { get; set; } = 4;
     public bool WordWrap { get; set; }
+    public bool FixedWidthTabs { get; set; }
     public FontSettings Font { get; set; } = new();
     public CaretSettings Caret { get; set; } = new();
     public FindSettings Find { get; set; } = new();

@@ -6,7 +6,7 @@ public record SettingsSnapshot(
     int TabSize, bool BlockCaret, int CaretBlinkMs,
     string FontFamily, double FontSize, string FontWeight,
     double LineHeight, string ColorTheme, string FindBarPosition,
-    bool FindSeedWithSelection);
+    bool FindSeedWithSelection, bool FixedWidthTabs);
 
 public partial class SettingsWindow : Window
 {
@@ -20,8 +20,9 @@ public partial class SettingsWindow : Window
     public double SelectedLineHeight { get; private set; }
     public string FindBarPosition { get; private set; }
     public bool FindSeedWithSelection { get; private set; }
+    public bool FixedWidthTabs { get; private set; }
 
-    private enum SettingsSection { Theme, Font, Caret, Find, Explorer }
+    private enum SettingsSection { Theme, Font, Caret, Tabs, Find, Explorer }
 
     public event EventHandler? Applied;
 
@@ -50,6 +51,8 @@ public partial class SettingsWindow : Window
         FindBarPosBox.SelectedIndex = snapshot.FindBarPosition == "Top" ? 0 : 1;
         FindSeedWithSelection = snapshot.FindSeedWithSelection;
         FindSeedSelBox.SelectedIndex = snapshot.FindSeedWithSelection ? 0 : 1;
+        FixedWidthTabs = snapshot.FixedWidthTabs;
+        FixedWidthTabsBox.SelectedIndex = snapshot.FixedWidthTabs ? 0 : 1;
 
         // Populate font family dropdown
         _fontNames = FontManager.GetMonospaceFonts();
@@ -89,12 +92,14 @@ public partial class SettingsWindow : Window
         NavTheme.Style = (Style)FindResource(section == SettingsSection.Theme ? "NavButtonActive" : "NavButton");
         NavFont.Style = (Style)FindResource(section == SettingsSection.Font ? "NavButtonActive" : "NavButton");
         NavCaret.Style = (Style)FindResource(section == SettingsSection.Caret ? "NavButtonActive" : "NavButton");
+        NavTabs.Style = (Style)FindResource(section == SettingsSection.Tabs ? "NavButtonActive" : "NavButton");
         NavFind.Style = (Style)FindResource(section == SettingsSection.Find ? "NavButtonActive" : "NavButton");
         NavExplorer.Style = (Style)FindResource(section == SettingsSection.Explorer ? "NavButtonActive" : "NavButton");
 
         ThemeScroller.Visibility = section == SettingsSection.Theme ? Visibility.Visible : Visibility.Collapsed;
         FontScroller.Visibility = section == SettingsSection.Font ? Visibility.Visible : Visibility.Collapsed;
         CaretScroller.Visibility = section == SettingsSection.Caret ? Visibility.Visible : Visibility.Collapsed;
+        TabsScroller.Visibility = section == SettingsSection.Tabs ? Visibility.Visible : Visibility.Collapsed;
         FindScroller.Visibility = section == SettingsSection.Find ? Visibility.Visible : Visibility.Collapsed;
         ExplorerScroller.Visibility = section == SettingsSection.Explorer ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -102,6 +107,7 @@ public partial class SettingsWindow : Window
     private void OnNavTheme(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Theme);
     private void OnNavFont(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Font);
     private void OnNavCaret(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Caret);
+    private void OnNavTabs(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Tabs);
     private void OnNavFind(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Find);
     private void OnNavExplorer(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Explorer);
 
@@ -117,6 +123,7 @@ public partial class SettingsWindow : Window
         ColorThemeName = _themeNames[Math.Max(0, ColorThemeBox.SelectedIndex)];
         FindBarPosition = FindBarPosBox.SelectedIndex == 0 ? "Top" : "Bottom";
         FindSeedWithSelection = FindSeedSelBox.SelectedIndex == 0;
+        FixedWidthTabs = FixedWidthTabsBox.SelectedIndex == 0;
     }
 
     private void OnApply(object sender, RoutedEventArgs e)
