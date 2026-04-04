@@ -57,6 +57,21 @@
                                 Click="OnRegexClick">
                             <TextBlock Text=".*" FontFamily="Segoe UI" FontSize="12" FontWeight="SemiBold"/>
                         </Button>
+                        <Button x:Name="_wholeWordBtn"
+                                DockPanel.Dock="Right"
+                                Style="{StaticResource MatchCaseButton}"
+                                Width="24" Height="22"
+                                Margin="0,2,2,2" Padding="0"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                Focusable="False"
+                                ToolTip="Match whole word"
+                                Background="Transparent"
+                                Foreground="{DynamicResource ThemeTextFgMuted}"
+                                Click="OnWholeWordClick">
+                            <TextBlock Text="ab" FontFamily="Segoe UI" FontSize="12" FontWeight="SemiBold"
+                                       TextDecorations="Underline"/>
+                        </Button>
                         <Button x:Name="_matchCaseBtn"
                                 DockPanel.Dock="Right"
                                 Style="{StaticResource MatchCaseButton}"

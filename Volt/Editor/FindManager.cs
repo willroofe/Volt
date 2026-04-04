@@ -17,21 +17,30 @@ public class FindManager
     public string LastQuery { get; private set; } = "";
     public bool LastMatchCase { get; private set; }
     public bool LastUseRegex { get; private set; }
+    public bool LastWholeWord { get; private set; }
 
-    public void Search(TextBuffer buffer, string query, bool matchCase, int caretLine, int caretCol, bool useRegex = false)
+    public void Search(TextBuffer buffer, string query, bool matchCase, int caretLine, int caretCol,
+        bool useRegex = false, bool wholeWord = false)
     {
         LastQuery = query;
         LastMatchCase = matchCase;
         LastUseRegex = useRegex;
+        LastWholeWord = wholeWord;
         _matches.Clear();
         _currentIndex = -1;
 
         if (string.IsNullOrEmpty(query)) return;
 
-        if (useRegex)
-            SearchRegex(buffer, query, matchCase);
+        if (useRegex || wholeWord)
+        {
+            var pattern = useRegex ? query : Regex.Escape(query);
+            if (wholeWord) pattern = @"\b" + pattern + @"\b";
+            SearchRegex(buffer, pattern, matchCase);
+        }
         else
+        {
             SearchLiteral(buffer, query, matchCase);
+        }
 
         if (_matches.Count > 0)
         {

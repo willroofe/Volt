@@ -19,6 +19,7 @@ public partial class FindBar : UserControl
 
     private bool _matchCase;
     private bool _useRegex;
+    private bool _wholeWord;
     private EditorControl? _editor;
 
     public event EventHandler? Closed;
@@ -121,6 +122,16 @@ public partial class FindBar : UserControl
         UpdateSearch();
     }
 
+    private void OnWholeWordClick(object sender, RoutedEventArgs e)
+    {
+        _wholeWord = !_wholeWord;
+        _wholeWordBtn.SetResourceReference(ForegroundProperty,
+            _wholeWord ? ThemeResourceKeys.TextFg : ThemeResourceKeys.TextFgMuted);
+        _wholeWordBtn.SetResourceReference(BackgroundProperty,
+            _wholeWord ? ThemeResourceKeys.MenuItemHover : ThemeResourceKeys.MenuPopupBg);
+        UpdateSearch();
+    }
+
     private void OnToggleReplaceClick(object sender, RoutedEventArgs e)
     {
         bool show = _replaceRow.Visibility != Visibility.Visible;
@@ -166,7 +177,7 @@ public partial class FindBar : UserControl
             return;
         }
 
-        _editor.SetFindMatches(query, _matchCase, _useRegex);
+        _editor.SetFindMatches(query, _matchCase, _useRegex, _wholeWord);
         UpdateMatchCountLabel();
     }
 
@@ -190,7 +201,7 @@ public partial class FindBar : UserControl
     private void DoReplaceAll()
     {
         if (_editor == null || _editor.FindMatchCount == 0) return;
-        _editor.ReplaceAll(_input.Text, _replaceInput.Text, _matchCase, _useRegex);
+        _editor.ReplaceAll(_input.Text, _replaceInput.Text, _matchCase, _useRegex, _wholeWord);
         UpdateSearch();
     }
 
