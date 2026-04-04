@@ -43,6 +43,20 @@
                         SnapsToDevicePixels="True"
                         BorderBrush="{DynamicResource ThemeMenuPopupBorder}">
                     <DockPanel>
+                        <Button x:Name="_regexBtn"
+                                DockPanel.Dock="Right"
+                                Style="{StaticResource MatchCaseButton}"
+                                Width="24" Height="22"
+                                Margin="0,2,2,2" Padding="0"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                Focusable="False"
+                                ToolTip="Use regular expression"
+                                Background="Transparent"
+                                Foreground="{DynamicResource ThemeTextFgMuted}"
+                                Click="OnRegexClick">
+                            <TextBlock Text=".*" FontFamily="Segoe UI" FontSize="12" FontWeight="SemiBold"/>
+                        </Button>
                         <Button x:Name="_matchCaseBtn"
                                 DockPanel.Dock="Right"
                                 Style="{StaticResource MatchCaseButton}"
