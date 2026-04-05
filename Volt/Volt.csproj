@@ -11,6 +11,16 @@
         <ApplicationIcon>Resources\Volt.ico</ApplicationIcon>
     </PropertyGroup>
 
+    <PropertyGroup>
+        <StartupObject>Volt.App</StartupObject>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- Change App.xaml from ApplicationDefinition to Page so we can define a custom Main -->
+        <ApplicationDefinition Remove="App.xaml"/>
+        <Page Include="App.xaml"/>
+    </ItemGroup>
+
     <ItemGroup>
         <Using Remove="System.Drawing" />
         <Using Remove="System.Windows.Forms" />
@@ -27,6 +37,10 @@
 
     <ItemGroup>
         <InternalsVisibleTo Include="Volt.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Velopack" Version="0.0.1298" />
     </ItemGroup>
 
 </Project>

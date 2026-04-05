@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Threading;
+using Velopack;
 
 namespace Volt;
 
@@ -10,6 +11,18 @@ public partial class App : Application
     public AppSettings Settings { get; private set; } = null!;
 
     public static new App Current => (App)Application.Current;
+
+    [STAThread]
+    private static void Main(string[] args)
+    {
+        // Velopack must run before any WPF code — it handles
+        // install/uninstall/update hooks and may exit the process.
+        VelopackApp.Build().Run();
+
+        var app = new App();
+        app.InitializeComponent();
+        app.Run();
+    }
 
     protected override void OnStartup(StartupEventArgs e)
     {
