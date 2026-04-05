@@ -1603,6 +1603,9 @@ public partial class MainWindow
         MenuViewRight.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleRightPanel);
         MenuViewTop.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleTopPanel);
         MenuViewBottom.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleBottomPanel);
+
+        var newTabGesture = _keyBindingManager.GetGestureText(VoltCommand.NewTab);
+        NewTabButton.ToolTip = string.IsNullOrEmpty(newTabGesture) ? "New Tab" : $"New Tab ({newTabGesture})";
     }
 
     private void StepFontSize(int direction)

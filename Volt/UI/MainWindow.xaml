@@ -367,7 +367,7 @@
                             Background="Transparent" BorderThickness="0"
                             Focusable="False" Cursor="Hand"
                             Click="OnNewTab"
-                            ToolTip="New Tab (Ctrl+N)">
+                            ToolTip="New Tab">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
                                 <Border x:Name="Bd" Background="Transparent" CornerRadius="3">
