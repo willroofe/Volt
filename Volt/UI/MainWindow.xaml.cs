@@ -468,9 +468,9 @@ public partial class MainWindow
         ActivateTab(tab);
     }
 
-    private void OnExplorerFileOpen(string path)
+    private async void OnExplorerFileOpen(string path)
     {
-        var tab = OpenFileInTab(path, reuseUntitled: true);
+        var tab = await OpenFileInTabAsync(path, reuseUntitled: true);
         if (tab != null)
         {
             ActivateTab(tab);
@@ -515,9 +515,64 @@ public partial class MainWindow
     private void ForceCloseTab(TabInfo tab) => RemoveTab(tab);
 
     /// <summary>
-    /// Opens a file in a tab, reusing an existing tab if already open.
-    /// Returns the tab, or null if the file was too large or already active.
-    /// When <paramref name="reuseUntitled"/> is true and the active tab is untitled and clean, it is reused.
+    /// Opens a file in a tab asynchronously — file I/O and content parsing run on a
+    /// background thread so the UI stays responsive for large files.
+    /// </summary>
+    private async Task<TabInfo?> OpenFileInTabAsync(string path, bool reuseUntitled)
+    {
+        var fullPath = Path.GetFullPath(path);
+
+        // Switch to existing tab if already open
+        var existing = _tabs.FirstOrDefault(t =>
+            t.FilePath != null && string.Equals(Path.GetFullPath(t.FilePath), fullPath, StringComparison.OrdinalIgnoreCase));
+        if (existing != null)
+            return existing;
+
+        if (!File.Exists(fullPath))
+        {
+            ThemedMessageBox.Show(this, $"The file no longer exists:\n{fullPath}", "File Not Found");
+            return null;
+        }
+
+        if (!CheckFileSize(path)) return null;
+
+        // Reuse current tab if untitled and clean
+        TabInfo tab;
+        if (reuseUntitled && _activeTab != null && _activeTab.FilePath == null && !_activeTab.Editor.IsDirty)
+            tab = _activeTab;
+        else
+            tab = CreateTab();
+
+        tab.FilePath = path;
+        UpdateTabHeader(tab);
+
+        // Offload file I/O + content parsing to a background thread
+        int tabSize = tab.Editor.TabSize;
+        var (encoding, prepared, fileSize, tailBytes) = await Task.Run(() =>
+        {
+            var enc = FileHelper.DetectEncoding(path);
+            var text = FileHelper.ReadAllText(path, enc);
+            var prep = TextBuffer.PrepareContent(text, tabSize);
+            var size = new FileInfo(path).Length;
+            var tail = FileHelper.ReadTailVerifyBytes(path, size);
+            return (enc, prep, size, tail);
+        });
+
+        // Tab may have been closed while we were loading
+        if (!_tabs.Contains(tab)) return null;
+
+        tab.FileEncoding = encoding;
+        tab.Editor.SetPreparedContent(prepared);
+        tab.LastKnownFileSize = fileSize;
+        tab.TailVerifyBytes = tailBytes;
+        tab.StartWatching();
+        UpdateTabHeader(tab);
+        return tab;
+    }
+
+    /// <summary>
+    /// Opens a file in a tab synchronously. Used by session restore where async
+    /// isn't needed (files load before the window is shown).
     /// </summary>
     private TabInfo? OpenFileInTab(string path, bool reuseUntitled)
     {
@@ -1034,7 +1089,7 @@ public partial class MainWindow
 
     private void OnOpenFolder(object sender, RoutedEventArgs e) => OpenFolderInExplorer();
 
-    private void OnOpen(object sender, RoutedEventArgs e)
+    private async void OnOpen(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog
         {
@@ -1047,7 +1102,7 @@ public partial class MainWindow
         foreach (var fileName in dlg.FileNames)
         {
             // Only reuse untitled tab for the first file opened
-            var tab = OpenFileInTab(fileName, reuseUntitled: lastTab == null);
+            var tab = await OpenFileInTabAsync(fileName, reuseUntitled: lastTab == null);
             if (tab != null)
                 lastTab = tab;
         }
