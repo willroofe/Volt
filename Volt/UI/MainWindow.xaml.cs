@@ -1261,9 +1261,15 @@ public partial class MainWindow
         }
     }
 
+    private const int RecentItemsPreviewCount = 10;
+
     private void OnOpenRecentSubmenuOpened(object sender, RoutedEventArgs e)
     {
-        var menu = (MenuItem)sender;
+        PopulateRecentMenu((MenuItem)sender, showAll: false);
+    }
+
+    private void PopulateRecentMenu(MenuItem menu, bool showAll)
+    {
         menu.Items.Clear();
 
         var dropdownStyle = (Style)FindResource("MenuItemDropdownStyle");
@@ -1274,7 +1280,8 @@ public partial class MainWindow
             return;
         }
 
-        foreach (var recent in recentItems)
+        var visibleItems = showAll ? recentItems : recentItems.Take(RecentItemsPreviewCount);
+        foreach (var recent in visibleItems)
         {
             var kind = recent.Kind;
             var path = recent.Path;
@@ -1305,6 +1312,14 @@ public partial class MainWindow
         }
 
         menu.Items.Add(new Separator());
+
+        if (!showAll && recentItems.Count > RecentItemsPreviewCount)
+        {
+            var viewMore = new MenuItem { Header = "View More...", Style = dropdownStyle };
+            viewMore.Click += (_, _) => OpenRecentInCommandPalette();
+            menu.Items.Add(viewMore);
+        }
+
         var clearItem = new MenuItem { Header = "Clear Recent", Style = dropdownStyle };
         clearItem.Click += (_, _) =>
         {
@@ -1312,6 +1327,27 @@ public partial class MainWindow
             _settings.Save();
         };
         menu.Items.Add(clearItem);
+    }
+
+    private void OpenRecentInCommandPalette()
+    {
+        var options = _settings.Application.RecentItems.Select(recent =>
+        {
+            var kind = recent.Kind;
+            var path = recent.Path;
+            var label = kind switch
+            {
+                RecentItemKind.Folder => Path.GetFileName(path) + " (Folder) - " + Path.GetDirectoryName(path),
+                RecentItemKind.Workspace => Path.GetFileNameWithoutExtension(path) + " (Workspace) - " + Path.GetDirectoryName(path),
+                _ => Path.GetFileName(path) + " - " + Path.GetDirectoryName(path)
+            };
+            return new PaletteOption(label,
+                ApplyPreview: () => { },
+                Commit: () => OpenRecentItem(path, kind),
+                Revert: () => { });
+        }).ToList();
+
+        CmdPalette.OpenWithOptions("Recent: ", options);
     }
 
     private async void OpenRecentItem(string path, RecentItemKind kind)

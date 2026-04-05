@@ -54,6 +54,25 @@ public partial class CommandPalette : UserControl
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => Keyboard.Focus(_filterInput));
     }
 
+    /// <summary>
+    /// Opens the palette directly into a sub-list with the given options and prefix label.
+    /// </summary>
+    public void OpenWithOptions(string prefix, List<PaletteOption> options)
+    {
+        _commands = [];
+        _activeCommand = null;
+        _currentOptions = options;
+        _prefixText = prefix;
+        _filterPrefix.Text = prefix;
+        _filterInput.Text = "";
+        _selectedIndex = options.Count > 0 ? 0 : -1;
+        Visibility = Visibility.Visible;
+        RefreshList();
+        if (_selectedIndex >= 0)
+            UpdateListSelection();
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => Keyboard.Focus(_filterInput));
+    }
+
     public void Cancel()
     {
         if (_currentOptions != null)

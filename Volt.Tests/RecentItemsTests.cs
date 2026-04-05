@@ -40,15 +40,15 @@ public class RecentItemsTests
     }
 
     [Fact]
-    public void AddRecentItem_CapsAtTen()
+    public void AddRecentItem_CapsAtMax()
     {
         var settings = new AppSettings();
-        for (int i = 0; i < 15; i++)
+        for (int i = 0; i < 60; i++)
             settings.AddRecentItem($@"C:\file{i}.txt", RecentItemKind.File);
 
-        Assert.Equal(10, settings.Application.RecentItems.Count);
+        Assert.Equal(50, settings.Application.RecentItems.Count);
         // Most recent should be first
-        Assert.Equal(@"C:\file14.txt", settings.Application.RecentItems[0].Path);
+        Assert.Equal(@"C:\file59.txt", settings.Application.RecentItems[0].Path);
     }
 
     [Fact]

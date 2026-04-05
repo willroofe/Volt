@@ -167,7 +167,7 @@ public class AppSettings
     public SessionSettings Session { get; set; } = new();
     public Dictionary<string, SessionSettings> FolderSessions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    private const int MaxRecentItems = 10;
+    private const int MaxRecentItems = 50;
 
     public void AddRecentItem(string path, RecentItemKind kind)
     {
