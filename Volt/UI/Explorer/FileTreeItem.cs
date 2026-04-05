@@ -82,20 +82,14 @@ public class FileTreeItem : INotifyPropertyChanged
 
     private async void LoadChildren()
     {
+        await LoadChildrenCore();
+    }
+
+    private async Task LoadChildrenCore()
+    {
         try
         {
-            var (dirs, files) = await Task.Run(() =>
-            {
-                var d = Directory.GetDirectories(FullPath)
-                    .Where(dp => !IsIgnored(dp))
-                    .OrderBy(dp => Path.GetFileName(dp), StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
-                var f = Directory.GetFiles(FullPath)
-                    .Where(fp => !IsHidden(fp))
-                    .OrderBy(fp => Path.GetFileName(fp), StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
-                return (d, f);
-            });
+            var (dirs, files) = await Task.Run(() => LoadDirectoryEntries(FullPath));
 
             _hasPlaceholder = false;
             Children.Clear();
@@ -115,6 +109,18 @@ public class FileTreeItem : INotifyPropertyChanged
         catch (UnauthorizedAccessException) { _hasPlaceholder = false; Children.Clear(); }
         catch (IOException) { _hasPlaceholder = false; Children.Clear(); }
         catch (Exception) { }
+    }
+
+    /// <summary>
+    /// Loads children and expands in one shot, awaitable so callers can
+    /// wait for the tree to be populated before displaying it.
+    /// </summary>
+    public async Task ExpandAsync()
+    {
+        if (!IsDirectory) return;
+        _isExpanded = true;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsExpanded)));
+        await LoadChildrenCore();
     }
 
     private void StartWatching()
@@ -192,11 +198,7 @@ public class FileTreeItem : INotifyPropertyChanged
         {
             if (!_isExpanded || _hasPlaceholder) return;
 
-            // Stop watchers on old children before replacing them
-            foreach (var child in Children)
-                child.StopWatchingRecursive();
-
-            // Capture which subdirectories were expanded
+            // Capture which subdirectories were expanded before loading
             var expandedDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var child in Children)
             {
@@ -204,20 +206,13 @@ public class FileTreeItem : INotifyPropertyChanged
                     expandedDirs.Add(child.FullPath);
             }
 
-            Children.Clear();
+            // Load from disk in the background — keep old children visible during I/O
+            var (dirs, files) = await Task.Run(() => LoadDirectoryEntries(FullPath));
 
-            var (dirs, files) = await Task.Run(() =>
-            {
-                var d = Directory.GetDirectories(FullPath)
-                    .Where(dp => !IsIgnored(dp))
-                    .OrderBy(dp => Path.GetFileName(dp), StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
-                var f = Directory.GetFiles(FullPath)
-                    .Where(fp => !IsHidden(fp))
-                    .OrderBy(fp => Path.GetFileName(fp), StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
-                return (d, f);
-            });
+            // Now swap atomically on the UI thread — no gap where the tree is empty
+            foreach (var child in Children)
+                child.StopWatchingRecursive();
+            Children.Clear();
 
             foreach (var dir in dirs)
             {
@@ -240,6 +235,19 @@ public class FileTreeItem : INotifyPropertyChanged
     private void OnChildTreeChanged(FileTreeItem child)
     {
         TreeChanged?.Invoke(child);
+    }
+
+    private static (string[] dirs, string[] files) LoadDirectoryEntries(string path)
+    {
+        var d = Directory.GetDirectories(path)
+            .Where(dp => !IsIgnored(dp))
+            .OrderBy(dp => Path.GetFileName(dp), StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var f = Directory.GetFiles(path)
+            .Where(fp => !IsHidden(fp))
+            .OrderBy(fp => Path.GetFileName(fp), StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return (d, f);
     }
 
     private static bool IsIgnored(string dirPath)
