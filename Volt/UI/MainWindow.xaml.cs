@@ -516,12 +516,9 @@ public partial class MainWindow
 
     private async void OnExplorerFileOpen(string path)
     {
-        var tab = await OpenFileInTabAsync(path, reuseUntitled: true);
+        var tab = await OpenFileInTabAsync(path, reuseUntitled: true, activate: true);
         if (tab != null)
-        {
-            ActivateTab(tab);
             FindBarControl.RefreshSearch();
-        }
     }
 
     private void OnExplorerFileRenamed(string oldPath, string newPath)
@@ -564,7 +561,7 @@ public partial class MainWindow
     /// Opens a file in a tab asynchronously — file I/O and content parsing run on a
     /// background thread so the UI stays responsive for large files.
     /// </summary>
-    private async Task<TabInfo?> OpenFileInTabAsync(string path, bool reuseUntitled)
+    private async Task<TabInfo?> OpenFileInTabAsync(string path, bool reuseUntitled, bool activate = false)
     {
         var fullPath = Path.GetFullPath(path);
 
@@ -572,7 +569,10 @@ public partial class MainWindow
         var existing = _tabs.FirstOrDefault(t =>
             t.FilePath != null && string.Equals(Path.GetFullPath(t.FilePath), fullPath, StringComparison.OrdinalIgnoreCase));
         if (existing != null)
+        {
+            if (activate) ActivateTab(existing);
             return existing;
+        }
 
         if (!File.Exists(fullPath))
         {
@@ -593,6 +593,7 @@ public partial class MainWindow
         tab.IsLoading = true;
         UpdateTabHeader(tab);
         ShowTabSpinner(tab);
+        if (activate) ActivateTab(tab);
 
         // Offload file I/O + content parsing to a background thread
         int tabSize = tab.Editor.TabSize;
@@ -1153,16 +1154,14 @@ public partial class MainWindow
         foreach (var fileName in dlg.FileNames)
         {
             // Only reuse untitled tab for the first file opened
-            var tab = await OpenFileInTabAsync(fileName, reuseUntitled: lastTab == null);
+            bool isFirst = lastTab == null;
+            var tab = await OpenFileInTabAsync(fileName, reuseUntitled: isFirst, activate: isFirst);
             if (tab != null)
                 lastTab = tab;
         }
 
         if (lastTab != null)
-        {
-            ActivateTab(lastTab);
             FindBarControl.RefreshSearch();
-        }
     }
 
     private void OnSave(object sender, RoutedEventArgs e)
