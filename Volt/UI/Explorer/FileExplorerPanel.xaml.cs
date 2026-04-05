@@ -305,6 +305,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
             {
                 File.Create(fullPath).Dispose();
                 PushUndo(new FileOperation(FileOperationKind.CreateFile, fullPath, null));
+                FileOpenRequested?.Invoke(fullPath);
             }
         }
         catch (Exception ex) { ThemedMessageBox.Show(owner, ex.Message, "Error"); }
