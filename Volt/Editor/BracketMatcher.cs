@@ -9,7 +9,7 @@ namespace Volt;
 public static class BracketMatcher
 {
     public const int MaxScanLines = 500;
-    private const int MaxScanChars = 500_000;
+    private const int MaxScanChars = 100_000;
 
     public static readonly Dictionary<char, char> Pairs = new()
     {
@@ -72,19 +72,21 @@ public static class BracketMatcher
         int col = caretCol - 1;
         int minLine = Math.Max(0, caretLine - MaxScanLines);
         int budget = MaxScanChars;
+        string curLine = buffer[line];
 
         while (line >= minLine)
         {
-            while (col < 0 || buffer[line].Length == 0)
+            while (col < 0 || curLine.Length == 0)
             {
                 line--;
                 if (line < minLine) return null;
-                col = buffer[line].Length - 1;
+                curLine = buffer[line];
+                col = curLine.Length - 1;
             }
 
             if (skip == null || !skip(line, col))
             {
-                char ch = buffer[line][col];
+                char ch = curLine[col];
 
                 if (ClosingBrackets.Contains(ch))
                 {
@@ -194,19 +196,21 @@ public static class BracketMatcher
         int col = fromCol - 1;
         int minLine = Math.Max(0, fromLine - MaxScanLines);
         int budget = MaxScanChars;
+        string curLine = buffer[line];
 
         while (line >= minLine)
         {
-            while (col < 0 || buffer[line].Length == 0)
+            while (col < 0 || curLine.Length == 0)
             {
                 line--;
                 if (line < minLine) return null;
-                col = buffer[line].Length - 1;
+                curLine = buffer[line];
+                col = curLine.Length - 1;
             }
 
             if (skip == null || !skip(line, col))
             {
-                char ch = buffer[line][col];
+                char ch = curLine[col];
                 if (ch == '}') depth++;
                 else if (ch == '{')
                 {
@@ -231,33 +235,36 @@ public static class BracketMatcher
         int maxLine = Math.Min(buffer.Count - 1, startLine + MaxScanLines);
         int minLine = Math.Max(0, startLine - MaxScanLines);
         int budget = MaxScanChars;
+        string curLine = buffer[line];
 
         while (line >= minLine && line <= maxLine)
         {
             if (forward)
             {
                 col++;
-                while (col >= buffer[line].Length)
+                while (col >= curLine.Length)
                 {
                     line++;
                     if (line > maxLine) return null;
+                    curLine = buffer[line];
                     col = 0;
                 }
             }
             else
             {
                 col--;
-                while (col < 0 || buffer[line].Length == 0)
+                while (col < 0 || curLine.Length == 0)
                 {
                     line--;
                     if (line < minLine) return null;
-                    col = buffer[line].Length - 1;
+                    curLine = buffer[line];
+                    col = curLine.Length - 1;
                 }
             }
 
             if (skip != null && skip(line, col)) continue;
 
-            char ch = buffer[line][col];
+            char ch = curLine[col];
             if (ch == bracket) depth++;
             else if (ch == target) depth--;
 
