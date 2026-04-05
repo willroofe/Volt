@@ -37,18 +37,41 @@ public class RecentItemsTests
         settings.AddRecentItem(@"C:\folder\FILE.TXT", RecentItemKind.File);
 
         Assert.Single(settings.Application.RecentItems);
+        Assert.Single(settings.Application.RecentHistory);
     }
 
     [Fact]
-    public void AddRecentItem_CapsAtMax()
+    public void AddRecentItem_MenuCapsAt10()
     {
         var settings = new AppSettings();
-        for (int i = 0; i < 60; i++)
+        for (int i = 0; i < 15; i++)
             settings.AddRecentItem($@"C:\file{i}.txt", RecentItemKind.File);
 
-        Assert.Equal(50, settings.Application.RecentItems.Count);
-        // Most recent should be first
-        Assert.Equal(@"C:\file59.txt", settings.Application.RecentItems[0].Path);
+        Assert.Equal(10, settings.Application.RecentItems.Count);
+        Assert.Equal(@"C:\file14.txt", settings.Application.RecentItems[0].Path);
+    }
+
+    [Fact]
+    public void AddRecentItem_HistoryCapsAt200()
+    {
+        var settings = new AppSettings();
+        for (int i = 0; i < 210; i++)
+            settings.AddRecentItem($@"C:\file{i}.txt", RecentItemKind.File);
+
+        Assert.Equal(10, settings.Application.RecentItems.Count);
+        Assert.Equal(200, settings.Application.RecentHistory.Count);
+        Assert.Equal(@"C:\file209.txt", settings.Application.RecentHistory[0].Path);
+    }
+
+    [Fact]
+    public void AddRecentItem_BothListsPopulated()
+    {
+        var settings = new AppSettings();
+        settings.AddRecentItem(@"C:\a.txt", RecentItemKind.File);
+
+        Assert.Single(settings.Application.RecentItems);
+        Assert.Single(settings.Application.RecentHistory);
+        Assert.Equal(@"C:\a.txt", settings.Application.RecentHistory[0].Path);
     }
 
     [Fact]
@@ -84,5 +107,31 @@ public class RecentItemsTests
 
         Assert.Equal(2, settings.Application.RecentItems.Count);
         Assert.Equal(RecentItemKind.Workspace, settings.Application.RecentItems[0].Kind);
+    }
+
+    [Fact]
+    public void ClearMenuDoesNotAffectHistory()
+    {
+        var settings = new AppSettings();
+        settings.AddRecentItem(@"C:\a.txt", RecentItemKind.File);
+        settings.AddRecentItem(@"C:\b.txt", RecentItemKind.File);
+
+        settings.Application.RecentItems.Clear();
+
+        Assert.Empty(settings.Application.RecentItems);
+        Assert.Equal(2, settings.Application.RecentHistory.Count);
+    }
+
+    [Fact]
+    public void ClearHistoryDoesNotAffectMenu()
+    {
+        var settings = new AppSettings();
+        settings.AddRecentItem(@"C:\a.txt", RecentItemKind.File);
+        settings.AddRecentItem(@"C:\b.txt", RecentItemKind.File);
+
+        settings.Application.RecentHistory.Clear();
+
+        Assert.Equal(2, settings.Application.RecentItems.Count);
+        Assert.Empty(settings.Application.RecentHistory);
     }
 }

@@ -17,6 +17,7 @@ public class ApplicationSettings
     public string ColorTheme { get; set; } = "Dark";
     public string CommandPalettePosition { get; set; } = "Top";
     public List<RecentItem> RecentItems { get; set; } = [];
+    public List<RecentItem> RecentHistory { get; set; } = [];
 }
 
 public class FontSettings
@@ -167,17 +168,23 @@ public class AppSettings
     public SessionSettings Session { get; set; } = new();
     public Dictionary<string, SessionSettings> FolderSessions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    private const int MaxRecentItems = 50;
+    private const int MaxRecentMenuItems = 10;
+    private const int MaxRecentHistory = 200;
 
     public void AddRecentItem(string path, RecentItemKind kind)
     {
         var fullPath = System.IO.Path.GetFullPath(path);
-        var list = Application.RecentItems;
+        AddToList(Application.RecentItems, fullPath, kind, MaxRecentMenuItems);
+        AddToList(Application.RecentHistory, fullPath, kind, MaxRecentHistory);
+    }
+
+    private static void AddToList(List<RecentItem> list, string fullPath, RecentItemKind kind, int max)
+    {
         list.RemoveAll(r =>
             string.Equals(r.Path, fullPath, StringComparison.OrdinalIgnoreCase) && r.Kind == kind);
         list.Insert(0, new RecentItem { Path = fullPath, Kind = kind });
-        if (list.Count > MaxRecentItems)
-            list.RemoveRange(MaxRecentItems, list.Count - MaxRecentItems);
+        if (list.Count > max)
+            list.RemoveRange(max, list.Count - max);
     }
 
     public static readonly string[] FindBarPositionOptions = ["Top", "Bottom"];
