@@ -21,6 +21,7 @@ public partial class MainWindow
     private readonly TabHeaderFactory _tabHeaderFactory = new();
     private readonly FileExplorerPanel _explorerPanel = new();
     private readonly KeyBindingManager _keyBindingManager = new();
+    internal string? _startupFilePath;
 
     private EditorControl? Editor => _activeTab?.Editor;
 
@@ -112,6 +113,10 @@ public partial class MainWindow
     {
         ContentRendered -= OnFirstContentRendered;
         RestoreSession();
+
+        // If a file was passed on the command line (e.g. "Open with"), open it now
+        if (_startupFilePath != null)
+            _ = OpenFileInTabAsync(_startupFilePath, reuseUntitled: true, activate: true);
 
         // Silent background update check after startup settles
         _ = AppUpdateManager.CheckForUpdatesAsync(this);
