@@ -7,6 +7,7 @@ namespace Volt;
 public class ApplicationSettings
 {
     public string ColorTheme { get; set; } = "Dark";
+    public string CommandPalettePosition { get; set; } = "Top";
 }
 
 public class FontSettings
@@ -131,6 +132,11 @@ public class SessionSettings
     }
 }
 
+public class KeyBindingSettings
+{
+    public Dictionary<string, string> CustomBindings { get; set; } = new();
+}
+
 public class AppSettings
 {
     private static readonly string SettingsPath = AppPaths.SettingsPath;
@@ -148,10 +154,12 @@ public class AppSettings
     public string? LastOpenWorkspacePath { get; set; }
     public List<string>? UnsavedWorkspaceFolders { get; set; }
     public WorkspaceSession? UnsavedWorkspaceSession { get; set; }
+    public KeyBindingSettings KeyBindings { get; set; } = new();
     public SessionSettings Session { get; set; } = new();
     public Dictionary<string, SessionSettings> FolderSessions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public static readonly string[] FindBarPositionOptions = ["Top", "Bottom"];
+    public static readonly string[] CommandPalettePositionOptions = ["Top", "Center"];
     public static readonly double[] FontSizeOptions = [8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 36];
     public static readonly int[] TabSizeOptions = [2, 4, 8];
     public static readonly string[] FontWeightOptions = ["Thin", "ExtraLight", "Light", "Normal", "Medium", "SemiBold", "Bold", "ExtraBold", "Black"];

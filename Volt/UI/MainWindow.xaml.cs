@@ -19,6 +19,7 @@ public partial class MainWindow
 
     private readonly TabHeaderFactory _tabHeaderFactory = new();
     private readonly FileExplorerPanel _explorerPanel = new();
+    private readonly KeyBindingManager _keyBindingManager = new();
 
     private EditorControl? Editor => _activeTab?.Editor;
 
@@ -56,7 +57,9 @@ public partial class MainWindow
         // Restore session or create initial tab
         RestoreSession();
 
+        _keyBindingManager.Load(_settings.KeyBindings);
         ApplySettings();
+        UpdateMenuGestureText();
         UpdateTabOverflowBrushes();
         RestoreWindowPosition();
 
@@ -365,6 +368,7 @@ public partial class MainWindow
             ApplySettingsToEditor(tab.Editor);
         FindBarControl.SetPosition(_settings.Editor.Find.BarPosition);
         FindBarControl.SeedWithSelection = _settings.Editor.Find.SeedWithSelection;
+        CmdPalette.SetPosition(_settings.Application.CommandPalettePosition);
         MenuWordWrap.IsChecked = _settings.Editor.WordWrap;
         _tabHeaderFactory.FixedWidth = _settings.Editor.FixedWidthTabs;
         foreach (var tab in _tabs)
@@ -1146,7 +1150,8 @@ public partial class MainWindow
             editor.LineHeightMultiplier, _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition,
             _settings.Editor.Find.SeedWithSelection, _settings.Editor.FixedWidthTabs,
             _settings.Editor.WordWrap, _settings.Editor.WordWrapAtWords, _settings.Editor.WordWrapIndent,
-            _settings.Editor.IndentGuides);
+            _settings.Editor.IndentGuides, _settings.Application.CommandPalettePosition,
+            _keyBindingManager.GetAllBindings());
         var dlg = new SettingsWindow(ThemeManager, snapshot) { Owner = this };
         dlg.Applied += (_, _) => ApplySettingsFromDialog(dlg);
         if (dlg.ShowDialog() == true)
@@ -1163,6 +1168,7 @@ public partial class MainWindow
         _settings.Editor.Font.Weight = dlg.SelectedFontWeight;
         _settings.Editor.Font.LineHeight = dlg.SelectedLineHeight;
         _settings.Application.ColorTheme = dlg.ColorThemeName;
+        _settings.Application.CommandPalettePosition = dlg.CommandPalettePosition;
         _settings.Editor.Find.BarPosition = dlg.FindBarPosition;
         _settings.Editor.Find.SeedWithSelection = dlg.FindSeedWithSelection;
         _settings.Editor.FixedWidthTabs = dlg.FixedWidthTabs;
@@ -1170,7 +1176,10 @@ public partial class MainWindow
         _settings.Editor.WordWrapAtWords = dlg.WordWrapAtWords;
         _settings.Editor.WordWrapIndent = dlg.WordWrapIndent;
         _settings.Editor.IndentGuides = dlg.IndentGuides;
+        _keyBindingManager.SetAll(dlg.KeyBindings);
+        _settings.KeyBindings = _keyBindingManager.GetSaveState();
         _settings.Save();
+        UpdateMenuGestureText();
         ApplySettings();
         ThemeManager.Apply(dlg.ColorThemeName);
     }
@@ -1196,38 +1205,72 @@ public partial class MainWindow
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
-        bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
-        bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        var mods = Keyboard.Modifiers;
 
-        // Intercept Ctrl+Tab before WPF's built-in tab navigation
-        if (ctrl && !shift && e.Key == Key.Tab) { SwitchTab(+1); e.Handled = true; return; }
-        if (ctrl && shift && e.Key == Key.Tab) { SwitchTab(-1); e.Handled = true; return; }
+        if (_keyBindingManager.TryGetCommand(key, mods, out var cmd) &&
+            KeyBindingManager.IsPreviewBinding(cmd))
+        {
+            ExecuteCommand(cmd);
+            e.Handled = true;
+            return;
+        }
 
         base.OnPreviewKeyDown(e);
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
-        bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        var mods = Keyboard.Modifiers;
 
-        if (ctrl && !shift && e.Key == Key.N) { OnNewTab(this, new RoutedEventArgs()); e.Handled = true; }
-        else if (ctrl && !shift && e.Key == Key.O) { OnOpen(this, new RoutedEventArgs()); e.Handled = true; }
-        else if (ctrl && !shift && e.Key == Key.F) { FindBarControl.Open(); e.Handled = true; }
-        else if (ctrl && !shift && e.Key == Key.H) { FindBarControl.ToggleReplace(); e.Handled = true; }
-        else if (ctrl && shift && e.Key == Key.P) { OpenCommandPalette(); e.Handled = true; }
-        else if (ctrl && shift && e.Key == Key.O) { OpenFolderInExplorer(); e.Handled = true; }
-        else if (ctrl && shift && e.Key == Key.S) { OnSaveAs(this, new RoutedEventArgs()); e.Handled = true; }
-        else if (ctrl && (Keyboard.Modifiers & ModifierKeys.Alt) != 0 && (e.Key == Key.S || e.SystemKey == Key.S)) { OnSettings(this, new RoutedEventArgs()); e.Handled = true; }
-        else if (ctrl && !shift && e.Key == Key.S) { OnSave(this, new RoutedEventArgs()); e.Handled = true; }
-        else if (ctrl && !shift && e.Key == Key.W) { if (_activeTab != null) CloseTab(_activeTab); e.Handled = true; }
-        else if (ctrl && (e.Key == Key.OemPlus || e.Key == Key.Add)) { StepFontSize(1); e.Handled = true; }
-        else if (ctrl && (e.Key == Key.OemMinus || e.Key == Key.Subtract)) { StepFontSize(-1); e.Handled = true; }
-        else if (ctrl && (Keyboard.Modifiers & ModifierKeys.Alt) != 0 && (e.Key == Key.B || e.SystemKey == Key.B)) { Shell.ToggleRegion(PanelPlacement.Right); SyncViewMenuChecks(); e.Handled = true; }
-        else if (ctrl && !shift && e.Key == Key.B) { Shell.ToggleRegion(PanelPlacement.Left); SyncViewMenuChecks(); e.Handled = true; }
-        else if (ctrl && (Keyboard.Modifiers & ModifierKeys.Alt) != 0 && (e.Key == Key.J || e.SystemKey == Key.J)) { Shell.ToggleRegion(PanelPlacement.Top); SyncViewMenuChecks(); e.Handled = true; }
-        else if (ctrl && !shift && e.Key == Key.J) { Shell.ToggleRegion(PanelPlacement.Bottom); SyncViewMenuChecks(); e.Handled = true; }
-        else base.OnKeyDown(e);
+        if (_keyBindingManager.TryGetCommand(key, mods, out var cmd) &&
+            !KeyBindingManager.IsPreviewBinding(cmd))
+        {
+            ExecuteCommand(cmd);
+            e.Handled = true;
+            return;
+        }
+
+        base.OnKeyDown(e);
+    }
+
+    private void ExecuteCommand(VoltCommand command)
+    {
+        switch (command)
+        {
+            case VoltCommand.NewTab: OnNewTab(this, new RoutedEventArgs()); break;
+            case VoltCommand.OpenFile: OnOpen(this, new RoutedEventArgs()); break;
+            case VoltCommand.Save: OnSave(this, new RoutedEventArgs()); break;
+            case VoltCommand.SaveAs: OnSaveAs(this, new RoutedEventArgs()); break;
+            case VoltCommand.CloseTab: if (_activeTab != null) CloseTab(_activeTab); break;
+            case VoltCommand.OpenFind: FindBarControl.Open(); break;
+            case VoltCommand.ToggleReplace: FindBarControl.ToggleReplace(); break;
+            case VoltCommand.CommandPalette: OpenCommandPalette(); break;
+            case VoltCommand.OpenFolder: OpenFolderInExplorer(); break;
+            case VoltCommand.Settings: OnSettings(this, new RoutedEventArgs()); break;
+            case VoltCommand.ZoomIn: StepFontSize(1); break;
+            case VoltCommand.ZoomOut: StepFontSize(-1); break;
+            case VoltCommand.ToggleLeftPanel: Shell.ToggleRegion(PanelPlacement.Left); SyncViewMenuChecks(); break;
+            case VoltCommand.ToggleRightPanel: Shell.ToggleRegion(PanelPlacement.Right); SyncViewMenuChecks(); break;
+            case VoltCommand.ToggleTopPanel: Shell.ToggleRegion(PanelPlacement.Top); SyncViewMenuChecks(); break;
+            case VoltCommand.ToggleBottomPanel: Shell.ToggleRegion(PanelPlacement.Bottom); SyncViewMenuChecks(); break;
+            case VoltCommand.SwitchTabForward: SwitchTab(+1); break;
+            case VoltCommand.SwitchTabBackward: SwitchTab(-1); break;
+        }
+    }
+
+    private void UpdateMenuGestureText()
+    {
+        MenuSettings.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.Settings);
+        MenuSave.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.Save);
+        MenuSaveAs.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.SaveAs);
+        MenuOpenFile.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.OpenFile);
+        MenuOpenFolder.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.OpenFolder);
+        MenuViewLeft.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleLeftPanel);
+        MenuViewRight.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleRightPanel);
+        MenuViewTop.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleTopPanel);
+        MenuViewBottom.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleBottomPanel);
     }
 
     private void StepFontSize(int direction)
@@ -1249,7 +1292,7 @@ public partial class MainWindow
     {
         if (Editor is not { } editor) return;
         var commands = CommandPaletteCommands.Build(new CommandPaletteContext(
-            _tabs, _settings, ThemeManager, editor, FindBarControl, () => _settings.Save(),
+            _tabs, _settings, ThemeManager, editor, FindBarControl, CmdPalette, () => _settings.Save(),
             new ExplorerActions(ToggleExplorer, OpenFolderInExplorer, CloseFolderInExplorer),
             new WorkspaceActions(
                 () => OnNewWorkspace(this, new RoutedEventArgs()),
