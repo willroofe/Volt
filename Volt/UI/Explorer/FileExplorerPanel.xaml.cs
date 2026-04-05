@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using Microsoft.VisualBasic.FileIO;
 
 namespace Volt;
@@ -23,6 +24,10 @@ public partial class FileExplorerPanel : UserControl, IPanel
     private FileTreeItem? _folderRoot; // kept alive for watcher cleanup
     private ObservableCollection<FileTreeItem>? _currentRootItems;
     private HashSet<string>? _pendingExpandPaths;
+
+    // Debounce flat list refreshes so multiple watcher events (e.g. source + target
+    // directories during a move) coalesce into a single visual update.
+    private DispatcherTimer? _flatListRefreshTimer;
 
     // File operation undo/redo
     private readonly Stack<FileOperation> _undoStack = new();
@@ -60,16 +65,20 @@ public partial class FileExplorerPanel : UserControl, IPanel
         _workspaceManager = manager;
     }
 
-    public void OpenFolder(string path)
+    public async void OpenFolder(string path)
     {
         if (!Directory.Exists(path)) return;
         StopAllWatchers();
         _openFolderPath = path;
         SetTitle("Explorer");
         var root = new FileTreeItem(path, true);
-        root.TreeChanged += OnTreeChanged;
-        root.IsExpanded = true;
         _folderRoot = root;
+
+        // Pre-load children so the tree appears fully populated (no placeholder flash)
+        await root.ExpandAsync();
+
+        // Subscribe after loading so the initial expand doesn't trigger a premature refresh
+        root.TreeChanged += OnTreeChanged;
         _currentRootItems = new ObservableCollection<FileTreeItem> { root };
         ExplorerTree.SetRootItems(_currentRootItems);
     }
@@ -170,7 +179,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
         }
     }
 
-    private void RebuildWorkspaceTree(Workspace workspace)
+    private async void RebuildWorkspaceTree(Workspace workspace)
     {
         StopAllWatchers();
 
@@ -187,11 +196,14 @@ public partial class FileExplorerPanel : UserControl, IPanel
             if (!Directory.Exists(folderPath)) continue;
 
             var dirItem = FileTreeItem.CreateRootItem(folderPath);
-            dirItem.TreeChanged += OnTreeChanged;
             if (expandedPaths.Contains(folderPath))
-                dirItem.IsExpanded = true;
+                await dirItem.ExpandAsync();
             items.Add(dirItem);
         }
+
+        // Subscribe after loading so initial expands don't trigger premature refreshes
+        foreach (var item in items)
+            item.TreeChanged += OnTreeChanged;
 
         _currentRootItems = items;
         ExplorerTree.SetRootItems(items);
@@ -544,7 +556,19 @@ public partial class FileExplorerPanel : UserControl, IPanel
     private void OnTreeChanged(FileTreeItem item)
     {
         TryExpandPendingPaths(item);
-        ExplorerTree.RefreshFlatList();
+        // Debounce: multiple watcher-triggered TreeChanged events (e.g. source + target
+        // dirs during a move) arrive in a burst — coalesce into one flat list rebuild.
+        if (_flatListRefreshTimer == null)
+        {
+            _flatListRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(30) };
+            _flatListRefreshTimer.Tick += (_, _) =>
+            {
+                _flatListRefreshTimer.Stop();
+                ExplorerTree.RefreshFlatList();
+            };
+        }
+        _flatListRefreshTimer.Stop();
+        _flatListRefreshTimer.Start();
     }
 
     private void StopAllWatchers()
