@@ -10,8 +10,16 @@ A lightweight text editor for Windows, built from scratch with WPF and .NET 10. 
 - **Command palette** (Ctrl+Shift+P) -- VS Code-style palette with live preview for theme, font, and editor settings
 - **Find and replace** (Ctrl+F) -- match highlighting, case sensitivity toggle, match count, keyboard navigation
 - **Smart editing** -- auto-close brackets/quotes, smart indent after `{`/`(`/`[`, tab-stop-aware backspace, double-click word selection
+- **Code folding** -- collapse and expand blocks at the gutter or via keyboard shortcuts
+- **Word wrap** -- toggleable with word-boundary and indent-preserving modes
+- **File explorer** -- side panel with folder/workspace browsing, drag-and-drop file moving, rename, delete with undo support
+- **Workspaces** -- multi-root folder workspaces with session persistence (open tabs, caret positions, scroll state)
+- **Dockable panels** -- four-region panel system (left, right, top, bottom) with tab strips, resize, and layout persistence
+- **Open Recent** -- tracks recently opened files, folders, and workspaces with a searchable command palette view
 - **Region-based undo/redo** -- captures only affected lines, scales to large files
-- **Settings window** -- configurable font family/size/weight, tab size, caret style (bar/block) and blink rate, colour theme
+- **Customizable keybinds** -- all keyboard shortcuts configurable via Settings
+- **Auto-updates** -- checks for updates on startup via GitHub Releases (Velopack)
+- **Settings window** -- configurable font family/size/weight, line height, tab size, caret style (bar/block) and blink rate, colour theme
 - **Custom window chrome** -- dark mode title bar with DWM integration, themed scrollbars, no white flash on resize
 
 ## Requirements
@@ -26,42 +34,10 @@ dotnet build Volt.sln
 dotnet run --project Volt/Volt.csproj
 ```
 
-## Keyboard Shortcuts
+## Install
 
-| Shortcut | Action |
-|---|---|
-| Ctrl+N | New file |
-| Ctrl+O | Open file |
-| Ctrl+Shift+O | Open folder in explorer panel |
-| Ctrl+S | Save |
-| Ctrl+Shift+S | Save As |
-| Ctrl+Alt+S | Settings |
-| Ctrl+W | Close tab |
-| Ctrl+Tab / Ctrl+Shift+Tab | Next / Previous tab |
-| Ctrl+F | Find |
-| Ctrl+H | Toggle replace |
-| Ctrl+Shift+P | Command palette |
-| Ctrl+B | Toggle file explorer |
-| Ctrl+Z | Undo |
-| Ctrl+Y | Redo |
-| Ctrl+A | Select all |
-| Ctrl+C / Ctrl+X / Ctrl+V | Copy / Cut / Paste |
-| Tab / Shift+Tab | Indent / Unindent selection |
-| Ctrl+Plus / Ctrl+Minus | Increase / Decrease font size |
-
-## Project Structure
-
-```
-Volt/
-  Editor/       Core editor: EditorControl, TextBuffer, UndoManager, SelectionManager, 
-                FontManager, FindManager, BracketMatcher, SyntaxManager, WrapLayout
-  Theme/        ThemeManager, ColorTheme, ThemeResourceKeys
-  UI/           MainWindow, FindBar, CommandPalette, SettingsWindow, FileExplorerPanel,
-                ExplorerTreeControl, TabHeaderFactory, SessionManager, WorkspaceManager
-  UI/Panels/    PanelShell, TabRegion, PanelContainer, IPanel
-  Resources/    Embedded default themes and grammars (JSON)
-```
+Download the latest installer from [GitHub Releases](https://github.com/willroofe/Volt/releases). The app auto-updates when new versions are published.
 
 ## License
 
-This project is not currently published under a specific license.
+[MIT](LICENSE)
