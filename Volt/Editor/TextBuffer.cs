@@ -282,17 +282,20 @@ public class TextBuffer
     private static string DetectLineEnding(string text)
     {
         int crlf = 0, lf = 0;
-        for (int i = 0; i < text.Length; i++)
+        var span = text.AsSpan();
+        int pos = 0;
+        while (pos < span.Length)
         {
-            if (text[i] == '\r' && i + 1 < text.Length && text[i + 1] == '\n')
-            {
+            int idx = span.Slice(pos).IndexOf('\n');
+            if (idx < 0) break;
+            int absIdx = pos + idx;
+            if (absIdx > 0 && span[absIdx - 1] == '\r')
                 crlf++;
-                i++;
-            }
-            else if (text[i] == '\n')
-            {
+            else
                 lf++;
-            }
+            pos = absIdx + 1;
+            // Once we have a clear winner with enough samples, stop early
+            if ((crlf | lf) >= 100) break;
         }
         if (crlf == 0 && lf == 0) return Environment.NewLine;
         return lf > crlf ? "\n" : "\r\n";
