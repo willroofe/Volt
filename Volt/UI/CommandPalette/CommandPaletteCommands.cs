@@ -10,10 +10,10 @@ internal record ExplorerActions(
 
 /// <summary>Workspace-related actions for the command palette.</summary>
 internal record WorkspaceActions(
-    Action New,
     Action Open,
     Action Close,
-    Action AddFolder);
+    Action AddFolder,
+    Action SaveAs);
 
 /// <summary>Groups the dependencies needed to build the command palette list.</summary>
 internal record CommandPaletteContext(
@@ -166,13 +166,13 @@ internal static class CommandPaletteCommands
 
             new("Explorer: Close Folder", Action: explorer.CloseFolder),
 
-            new("Workspace: New Workspace", Action: workspace.New),
-
             new("Workspace: Open Workspace", Action: workspace.Open),
 
             new("Workspace: Close Workspace", Action: workspace.Close),
 
             new("Workspace: Add Folder to Workspace", Action: workspace.AddFolder),
+
+            new("Workspace: Save Workspace As...", Action: workspace.SaveAs),
 
             new("Check for Updates", Action: ctx.CheckForUpdates),
 

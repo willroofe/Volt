@@ -1632,10 +1632,10 @@ public partial class MainWindow
             _tabs, _settings, ThemeManager, editor, FindBarControl, CmdPalette, () => _settings.Save(),
             new ExplorerActions(ToggleExplorer, OpenFolderInExplorer, CloseFolderInExplorer),
             new WorkspaceActions(
-                () => OnNewWorkspace(this, new RoutedEventArgs()),
                 () => OnOpenWorkspace(this, new RoutedEventArgs()),
                 CloseCurrentWorkspace,
-                () => OnAddFolderToWorkspace(this, new RoutedEventArgs())),
+                () => OnAddFolderToWorkspace(this, new RoutedEventArgs()),
+                () => OnSaveWorkspaceAs(this, new RoutedEventArgs())),
             () => OnToggleWordWrap(this, new RoutedEventArgs()),
             ToggleWordWrapAtWords,
             ToggleWordWrapIndent,
@@ -1648,39 +1648,27 @@ public partial class MainWindow
 
     // ── Workspace menu handlers ─────────────────────────────────────────────
 
-    private void OnNewWorkspace(object sender, RoutedEventArgs e)
+    private void OnSaveWorkspaceAs(object sender, RoutedEventArgs e)
     {
+        if (_workspaceManager.CurrentWorkspace == null) return;
+
         var dlg = new SaveFileDialog
         {
             Filter = "Workspace Files (*.volt-workspace)|*.volt-workspace",
             DefaultExt = ".volt-workspace",
-            FileName = "MyWorkspace.volt-workspace"
+            FileName = (_workspaceManager.CurrentWorkspace.Name ?? "MyWorkspace") + ".volt-workspace"
         };
         if (dlg.ShowDialog() != true) return;
 
-        if (_workspaceManager.CurrentWorkspace != null)
-        {
-            if (!PromptCloseUnsavedWorkspace()) return;
-            CloseCurrentWorkspace();
-        }
-        else if (_explorerPanel.OpenFolderPath != null)
-            CloseFolderInExplorer();
-
-        CloseAllTabs();
-
-        _workspaceManager.NewWorkspace(Path.GetFileNameWithoutExtension(dlg.FileName));
-        _workspaceManager.CurrentWorkspace!.FilePath = dlg.FileName;
+        _workspaceManager.CurrentWorkspace.Name = Path.GetFileNameWithoutExtension(dlg.FileName);
+        _workspaceManager.CurrentWorkspace.FilePath = dlg.FileName;
+        CaptureWorkspaceSession();
         _workspaceManager.SaveWorkspace();
 
-        _explorerPanel.OpenWorkspace(_workspaceManager.CurrentWorkspace);
-        Shell.ShowPanel("file-explorer");
-        UpdateWorkspaceMenuState(true);
-
         _settings.LastOpenWorkspacePath = dlg.FileName;
+        _settings.UnsavedWorkspaceFolders = null;
+        _settings.UnsavedWorkspaceSession = null;
         _settings.Save();
-
-        CreateTab();
-        ActivateTab(_tabs[0]);
     }
 
     private void OnOpenWorkspace(object sender, RoutedEventArgs e)
@@ -1834,7 +1822,8 @@ public partial class MainWindow
 
     private void UpdateWorkspaceMenuState(bool workspaceOpen)
     {
-        MenuCloseWorkspace.IsEnabled = workspaceOpen;
+        MenuCloseWorkspace.Visibility = workspaceOpen ? Visibility.Visible : Visibility.Collapsed;
+        MenuSaveWorkspaceAs.IsEnabled = workspaceOpen;
     }
 
     private void CloseAllTabs()

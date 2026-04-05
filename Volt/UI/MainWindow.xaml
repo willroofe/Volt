@@ -269,6 +269,7 @@
                             <TextBlock Text="&#xE838;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
                         </MenuItem.Icon>
                     </MenuItem>
+                    <MenuItem x:Name="MenuOpenWorkspace" Header="Open _Workspace" Click="OnOpenWorkspace"/>
                     <MenuItem x:Name="MenuOpenRecent" Header="Open _Recent"
                               Style="{StaticResource MenuItemSubmenuStyle}"
                               SubmenuOpened="OnOpenRecentSubmenuOpened">
@@ -282,6 +283,8 @@
                                        VerticalAlignment="Center" HorizontalAlignment="Center"/>
                         </MenuItem.Icon>
                     </MenuItem>
+                    <MenuItem x:Name="MenuSaveWorkspaceAs" Header="Save Workspace As..." Click="OnSaveWorkspaceAs" IsEnabled="False"/>
+                    <MenuItem x:Name="MenuCloseWorkspace" Header="Close Workspace" Click="OnCloseWorkspace" Visibility="Collapsed"/>
                 </MenuItem>
                 <MenuItem Header="_Edit" Style="{StaticResource TopLevelMenuItem}"
                          ItemContainerStyle="{StaticResource MenuItemCheckableStyle}">
@@ -293,18 +296,6 @@
                     <MenuItem x:Name="MenuViewRight" Header="_Right Panel" IsCheckable="True" Click="OnToggleRightPanel"/>
                     <MenuItem x:Name="MenuViewTop" Header="_Top Panel" IsCheckable="True" Click="OnToggleTopPanel"/>
                     <MenuItem x:Name="MenuViewBottom" Header="_Bottom Panel" IsCheckable="True" Click="OnToggleBottomPanel"/>
-                </MenuItem>
-                <MenuItem Header="_Workspace" Style="{StaticResource TopLevelMenuItem}"
-                         ItemContainerStyle="{StaticResource MenuItemDropdownStyle}">
-                    <MenuItem Header="_New Workspace" Click="OnNewWorkspace"/>
-                    <MenuItem Header="_Open Workspace" Click="OnOpenWorkspace"/>
-                    <MenuItem x:Name="MenuCloseWorkspace" Header="_Close Workspace" Click="OnCloseWorkspace" IsEnabled="False">
-                        <MenuItem.Icon>
-                            <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="12"
-                                       Foreground="{DynamicResource ThemeTextFg}"
-                                       VerticalAlignment="Center" HorizontalAlignment="Center"/>
-                        </MenuItem.Icon>
-                    </MenuItem>
                 </MenuItem>
             </Menu>
 
