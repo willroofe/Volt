@@ -1257,15 +1257,15 @@ public class EditorControl : FrameworkElement, IScrollInfo
         int depth = 0;
         for (int i = _caretLine - 1; i >= Math.Max(0, _caretLine - BracketMatcher.MaxScanLines); i--)
         {
-            if (IsBlockCloser(_buffer[i])) depth++;
-            if (IsBlockOpener(_buffer[i]))
+            depth += BraceBalance(_buffer[i]);
+            if (depth < 0 && IsBlockOpener(_buffer[i]))
             {
-                if (depth > 0) { depth--; continue; }
                 if (!_foldedLines.Contains(i))
                 {
                     ToggleFold(i);
                     return;
                 }
+                depth = 0; // reset, keep looking further up
             }
         }
     }
@@ -1283,15 +1283,15 @@ public class EditorControl : FrameworkElement, IScrollInfo
         int depth = 0;
         for (int i = _caretLine - 1; i >= Math.Max(0, _caretLine - BracketMatcher.MaxScanLines); i--)
         {
-            if (IsBlockCloser(_buffer[i])) depth++;
-            if (IsBlockOpener(_buffer[i]))
+            depth += BraceBalance(_buffer[i]);
+            if (depth < 0 && IsBlockOpener(_buffer[i]))
             {
-                if (depth > 0) { depth--; continue; }
                 if (_foldedLines.Contains(i))
                 {
                     ToggleFold(i);
                     return;
                 }
+                depth = 0;
             }
         }
     }
@@ -1352,7 +1352,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
     /// </summary>
     internal static bool IsBlockOpener(string line)
     {
+        // Last non-whitespace is '{' (e.g. "if (x) {", "} else {")
         for (int i = line.Length - 1; i >= 0; i--)
+        {
+            if (line[i] == ' ' || line[i] == '\t') continue;
+            if (line[i] == '{') return true;
+            break;
+        }
+        // OR first non-whitespace is '{' (e.g. "{    #{ vi" — brace on own line
+        // with trailing content). Mirrors IsBlockCloser for depth balance.
+        for (int i = 0; i < line.Length; i++)
         {
             if (line[i] == ' ' || line[i] == '\t') continue;
             return line[i] == '{';
@@ -1374,19 +1383,32 @@ public class EditorControl : FrameworkElement, IScrollInfo
     }
 
     /// <summary>
+    /// Counts the net brace balance of a line: +1 per '{', -1 per '}'.
+    /// </summary>
+    internal static int BraceBalance(string line)
+    {
+        int depth = 0;
+        for (int i = 0; i < line.Length; i++)
+        {
+            if (line[i] == '{') depth++;
+            else if (line[i] == '}') depth--;
+        }
+        return depth;
+    }
+
+    /// <summary>
     /// Scans forward from an opener line to find the matching structural closer.
-    /// Only considers '{' at end of line and '}' at start of line for depth counting,
-    /// which naturally ignores braces inside comments, strings, and hash accesses.
+    /// Uses per-line brace balance to handle all brace styles generically,
+    /// including braces with trailing comments ("{ #{ vi") and "} else {" lines.
     /// </summary>
     private int? FindStructuralCloser(int openLine)
     {
-        int depth = 1;
+        int depth = BraceBalance(_buffer[openLine]);
         int maxLine = Math.Min(_buffer.Count - 1, openLine + BracketMatcher.MaxScanLines);
         for (int i = openLine + 1; i <= maxLine; i++)
         {
             var line = _buffer[i];
-            if (IsBlockOpener(line)) depth++;
-            if (IsBlockCloser(line)) depth--;
+            depth += BraceBalance(line);
             if (depth == 0) return i;
         }
         return null;
@@ -1433,43 +1455,41 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
 
         // Find guides that start above the draw range but pass through it.
-        int depth = 0;
+        int scanDepth = 0;
         int scanMin = Math.Max(0, drawFirst - BracketMatcher.MaxScanLines);
         for (int i = drawFirst - 1; i >= scanMin; i--)
         {
             var line = _buffer[i];
-            if (IsBlockCloser(line)) depth++;
-            if (IsBlockOpener(line))
+            scanDepth += BraceBalance(line);
+            if (scanDepth >= 0 || !IsBlockOpener(line)) continue;
+            scanDepth = 0; // reset for next enclosing block
+
+            int? closeLineN = FindStructuralCloser(i);
+            if (closeLineN == null) continue;
+            int closeLine = closeLineN.Value;
+            if (closeLine < drawFirst) continue;
+
+            int indentCol = MeasureIndentColumns(_buffer[closeLine], TabSize);
+            if (indentCol == 0) continue;
+
+            int guideFirst = i + 1;
+            int guideLast = closeLine - 1;
+            if (guideLast < guideFirst) continue;
+
+            double x = baseX + indentCol * _font.CharWidth;
+            double yTop, yBot;
+            if (!_wordWrap && !HasFoldLayout)
             {
-                if (depth > 0) { depth--; continue; }
-
-                int? closeLineN = FindStructuralCloser(i);
-                if (closeLineN == null) continue;
-                int closeLine = closeLineN.Value;
-                if (closeLine < drawFirst) continue;
-
-                int indentCol = MeasureIndentColumns(_buffer[closeLine], TabSize);
-                if (indentCol == 0) continue;
-
-                int guideFirst = i + 1;
-                int guideLast = closeLine - 1;
-                if (guideLast < guideFirst) continue;
-
-                double x = baseX + indentCol * _font.CharWidth;
-                double yTop, yBot;
-                if (!_wordWrap && !HasFoldLayout)
-                {
-                    yTop = guideFirst * _font.LineHeight;
-                    yBot = (guideLast + 1) * _font.LineHeight;
-                }
-                else
-                {
-                    yTop = _wrap.CumulOffset(guideFirst) * _font.LineHeight;
-                    yBot = (_wrap.CumulOffset(guideLast) + VisualLineCount(guideLast)) * _font.LineHeight;
-                }
-
-                dc.DrawLine(pen, new Point(x, yTop), new Point(x, yBot));
+                yTop = guideFirst * _font.LineHeight;
+                yBot = (guideLast + 1) * _font.LineHeight;
             }
+            else
+            {
+                yTop = _wrap.CumulOffset(guideFirst) * _font.LineHeight;
+                yBot = (_wrap.CumulOffset(guideLast) + VisualLineCount(guideLast)) * _font.LineHeight;
+            }
+
+            dc.DrawLine(pen, new Point(x, yTop), new Point(x, yBot));
         }
     }
 

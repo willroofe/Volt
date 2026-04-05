@@ -48,7 +48,11 @@ public class IndentGuideTests
     [InlineData("}", false)]
     [InlineData("", false)]
     [InlineData("$main::{ '_<' . $file }", false)]
-    public void IsBlockOpener_DetectsLastNonWhitespace(string line, bool expected)
+    [InlineData("{    #{ vi", true)]            // first non-ws is '{'
+    [InlineData("if (x) { # comment", false)]  // last non-ws is 't', first non-ws is 'i'
+    [InlineData("foo(); // comment", false)]    // no brace at end or start
+    [InlineData("bar() { // start", false)]     // last non-ws is 't', first non-ws is 'b'
+    public void IsBlockOpener_DetectsLastOrFirstNonWhitespace(string line, bool expected)
     {
         Assert.Equal(expected, EditorControl.IsBlockOpener(line));
     }
