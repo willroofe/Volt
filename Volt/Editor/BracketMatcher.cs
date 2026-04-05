@@ -3,6 +3,8 @@ namespace Volt;
 /// <summary>
 /// Bracket pair data and matching algorithms, extracted from EditorControl.
 /// All methods are static — takes buffer + position, returns match results.
+/// An optional skip predicate allows callers to exclude positions inside
+/// strings or comments from bracket matching.
 /// </summary>
 public static class BracketMatcher
 {
@@ -22,8 +24,9 @@ public static class BracketMatcher
 
     public static readonly HashSet<char> AutoCloseQuotes = ['\'', '"', '`'];
 
+    /// <param name="skip">Optional predicate: returns true for (line, col) positions to ignore (e.g. inside strings/comments).</param>
     public static (int line, int col, int matchLine, int matchCol)? FindMatch(
-        TextBuffer buffer, int caretLine, int caretCol)
+        TextBuffer buffer, int caretLine, int caretCol, Func<int, int, bool>? skip = null)
     {
         caretLine = Math.Clamp(caretLine, 0, Math.Max(0, buffer.Count - 1));
         caretCol = Math.Clamp(caretCol, 0, buffer[caretLine].Length);
@@ -38,27 +41,28 @@ public static class BracketMatcher
 
         foreach (int checkCol in colsToCheck)
         {
+            if (skip != null && skip(caretLine, checkCol)) continue;
             char ch = buffer[caretLine][checkCol];
 
             if (Pairs.TryGetValue(ch, out char closer))
             {
-                var match = ScanForBracket(buffer, ch, closer, caretLine, checkCol, forward: true);
+                var match = ScanForBracket(buffer, ch, closer, caretLine, checkCol, forward: true, skip);
                 if (match != null)
                     return (caretLine, checkCol, match.Value.line, match.Value.col);
             }
             else if (ReversePairs.TryGetValue(ch, out char opener))
             {
-                var match = ScanForBracket(buffer, ch, opener, caretLine, checkCol, forward: false);
+                var match = ScanForBracket(buffer, ch, opener, caretLine, checkCol, forward: false, skip);
                 if (match != null)
                     return (caretLine, checkCol, match.Value.line, match.Value.col);
             }
         }
 
-        return FindEnclosing(buffer, caretLine, caretCol);
+        return FindEnclosing(buffer, caretLine, caretCol, skip);
     }
 
     private static (int line, int col, int matchLine, int matchCol)? FindEnclosing(
-        TextBuffer buffer, int caretLine, int caretCol)
+        TextBuffer buffer, int caretLine, int caretCol, Func<int, int, bool>? skip)
     {
         // depths[0] = '(', depths[1] = '{', depths[2] = '['
         var depths = new int[3];
@@ -76,23 +80,26 @@ public static class BracketMatcher
                 col = buffer[line].Length - 1;
             }
 
-            char ch = buffer[line][col];
+            if (skip == null || !skip(line, col))
+            {
+                char ch = buffer[line][col];
 
-            if (ClosingBrackets.Contains(ch))
-            {
-                var opener = ReversePairs[ch];
-                depths[BracketIndex(opener)]++;
-            }
-            else if (Pairs.TryGetValue(ch, out char closer))
-            {
-                int bi = BracketIndex(ch);
-                depths[bi]--;
-                if (depths[bi] < 0)
+                if (ClosingBrackets.Contains(ch))
                 {
-                    var match = ScanForBracket(buffer, ch, closer, line, col, forward: true);
-                    if (match != null)
-                        return (line, col, match.Value.line, match.Value.col);
-                    depths[bi] = 0;
+                    var opener = ReversePairs[ch];
+                    depths[BracketIndex(opener)]++;
+                }
+                else if (Pairs.TryGetValue(ch, out char closer))
+                {
+                    int bi = BracketIndex(ch);
+                    depths[bi]--;
+                    if (depths[bi] < 0)
+                    {
+                        var match = ScanForBracket(buffer, ch, closer, line, col, forward: true, skip);
+                        if (match != null)
+                            return (line, col, match.Value.line, match.Value.col);
+                        depths[bi] = 0;
+                    }
                 }
             }
 
@@ -112,7 +119,8 @@ public static class BracketMatcher
         => ScanForBracket(buffer, opener, closer, startLine, startCol, forward: true);
 
     private static (int line, int col)? ScanForBracket(
-        TextBuffer buffer, char bracket, char target, int startLine, int startCol, bool forward)
+        TextBuffer buffer, char bracket, char target, int startLine, int startCol, bool forward,
+        Func<int, int, bool>? skip = null)
     {
         int depth = 1;
         int line = startLine;
@@ -142,6 +150,8 @@ public static class BracketMatcher
                     col = buffer[line].Length - 1;
                 }
             }
+
+            if (skip != null && skip(line, col)) continue;
 
             char ch = buffer[line][col];
             if (ch == bracket) depth++;
