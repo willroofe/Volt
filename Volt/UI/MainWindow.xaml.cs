@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using Microsoft.Win32;
 
 namespace Volt;
@@ -265,6 +266,51 @@ public partial class MainWindow
         }
         // Also update window title if this is the active tab
         if (tab == _activeTab) UpdateTitle();
+    }
+
+    private const string SpinnerTag = "LoadingSpinner";
+
+    private static void ShowTabSpinner(TabInfo tab)
+    {
+        if (tab.HeaderElement?.Child is not DockPanel panel) return;
+
+        var spinner = new TextBlock
+        {
+            Text = "\uE117",  // Refresh/sync glyph
+            FontFamily = new FontFamily("Segoe MDL2 Assets"),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(4, 0, 2, 0),
+            RenderTransformOrigin = new Point(0.5, 0.5),
+            RenderTransform = new RotateTransform(),
+            Tag = SpinnerTag,
+            Opacity = 0.7
+        };
+        spinner.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFgMuted);
+
+        DockPanel.SetDock(spinner, Dock.Right);
+        // Insert after close button (index 0) but before the TextBlock (fill),
+        // so it appears between the filename and the close button.
+        panel.Children.Insert(1, spinner);
+
+        var anim = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(1))
+        {
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+        ((RotateTransform)spinner.RenderTransform).BeginAnimation(RotateTransform.AngleProperty, anim);
+    }
+
+    private static void HideTabSpinner(TabInfo tab)
+    {
+        if (tab.HeaderElement?.Child is not DockPanel panel) return;
+        for (int i = panel.Children.Count - 1; i >= 0; i--)
+        {
+            if (panel.Children[i] is FrameworkElement { Tag: SpinnerTag })
+            {
+                panel.Children.RemoveAt(i);
+                break;
+            }
+        }
     }
 
     private void UpdateAllTabHeaders()
@@ -544,7 +590,9 @@ public partial class MainWindow
             tab = CreateTab();
 
         tab.FilePath = path;
+        tab.IsLoading = true;
         UpdateTabHeader(tab);
+        ShowTabSpinner(tab);
 
         // Offload file I/O + content parsing to a background thread
         int tabSize = tab.Editor.TabSize;
@@ -557,6 +605,9 @@ public partial class MainWindow
             var tail = FileHelper.ReadTailVerifyBytes(path, size);
             return (enc, prep, size, tail);
         });
+
+        tab.IsLoading = false;
+        HideTabSpinner(tab);
 
         // Tab may have been closed while we were loading
         if (!_tabs.Contains(tab)) return null;
