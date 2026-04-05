@@ -99,6 +99,64 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="MenuItemSubmenuStyle" TargetType="MenuItem">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTextFg}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Grid>
+                            <Border x:Name="Bd" Background="Transparent"
+                                    CornerRadius="4" Margin="4,1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" SharedSizeGroup="Icon"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ContentPresenter Grid.Column="0" ContentSource="Icon"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"
+                                                      Width="16" Height="16"/>
+                                    <ContentPresenter Grid.Column="1" ContentSource="Header"
+                                                      Margin="6,4,12,4"
+                                                      VerticalAlignment="Center"
+                                                      RecognizesAccessKey="True"/>
+                                    <TextBlock Grid.Column="2" Text="&#xE76C;"
+                                               FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                               Margin="0,0,8,0"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource ThemeTextFg}"/>
+                                </Grid>
+                            </Border>
+                            <Popup x:Name="PART_Popup"
+                                   IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                                   Placement="Right"
+                                   HorizontalOffset="-2"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   PopupAnimation="None">
+                                <Border Background="{DynamicResource ThemeMenuPopupBg}"
+                                        BorderBrush="{DynamicResource ThemeMenuPopupBorder}" BorderThickness="1"
+                                        CornerRadius="3" Margin="0,0,6,6">
+                                    <Border.Effect>
+                                        <DropShadowEffect ShadowDepth="2" Opacity="0.4" BlurRadius="8"/>
+                                    </Border.Effect>
+                                    <StackPanel IsItemsHost="True" Margin="0,3"
+                                                KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeMenuItemHover}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="MenuItemCheckableStyle" TargetType="MenuItem" BasedOn="{StaticResource MenuItemBaseStyle}">
             <Setter Property="Template">
                 <Setter.Value>
@@ -211,6 +269,12 @@
                             <TextBlock Text="&#xE838;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
                         </MenuItem.Icon>
                     </MenuItem>
+                    <MenuItem x:Name="MenuOpenRecent" Header="Open _Recent"
+                              Style="{StaticResource MenuItemSubmenuStyle}"
+                              SubmenuOpened="OnOpenRecentSubmenuOpened">
+                        <MenuItem Header="(empty)" IsEnabled="False"/>
+                    </MenuItem>
+                    <Separator/>
                     <MenuItem x:Name="MenuAddFolderToWorkspace" Header="Add Folder to _Workspace" Click="OnAddFolderToWorkspace">
                         <MenuItem.Icon>
                             <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="12"

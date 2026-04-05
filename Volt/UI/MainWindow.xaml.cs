@@ -500,6 +500,7 @@ public partial class MainWindow
             CloseCurrentWorkspace();
         }
 
+        _settings.AddRecentItem(dlg.SelectedPath, RecentItemKind.Folder);
         SwitchToFolder(dlg.SelectedPath);
     }
 
@@ -1247,11 +1248,111 @@ public partial class MainWindow
             bool isFirst = lastTab == null;
             var tab = await OpenFileInTabAsync(fileName, reuseUntitled: isFirst, activate: isFirst);
             if (tab != null)
+            {
+                _settings.AddRecentItem(fileName, RecentItemKind.File);
                 lastTab = tab;
+            }
         }
 
         if (lastTab != null)
+        {
+            _settings.Save();
             FindBarControl.RefreshSearch();
+        }
+    }
+
+    private void OnOpenRecentSubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        var menu = (MenuItem)sender;
+        menu.Items.Clear();
+
+        var dropdownStyle = (Style)FindResource("MenuItemDropdownStyle");
+        var recentItems = _settings.Application.RecentItems;
+        if (recentItems.Count == 0)
+        {
+            menu.Items.Add(new MenuItem { Header = "(empty)", IsEnabled = false, Style = dropdownStyle });
+            return;
+        }
+
+        foreach (var recent in recentItems)
+        {
+            var kind = recent.Kind;
+            var path = recent.Path;
+            var header = kind switch
+            {
+                RecentItemKind.Folder => Path.GetFileName(path) + " - " + Path.GetDirectoryName(path),
+                RecentItemKind.Workspace => Path.GetFileNameWithoutExtension(path) + " - " + Path.GetDirectoryName(path),
+                _ => Path.GetFileName(path) + " - " + Path.GetDirectoryName(path)
+            };
+            var iconGlyph = kind switch
+            {
+                RecentItemKind.Folder => "\uE838",
+                RecentItemKind.Workspace => "\uE821",
+                _ => "\uE8A5"
+            };
+            var item = new MenuItem { Header = header, Style = dropdownStyle };
+            item.Icon = new System.Windows.Controls.TextBlock
+            {
+                Text = iconGlyph,
+                FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"),
+                FontSize = 14,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var capturedPath = path;
+            var capturedKind = kind;
+            item.Click += (_, _) => OpenRecentItem(capturedPath, capturedKind);
+            menu.Items.Add(item);
+        }
+
+        menu.Items.Add(new Separator());
+        var clearItem = new MenuItem { Header = "Clear Recent", Style = dropdownStyle };
+        clearItem.Click += (_, _) =>
+        {
+            _settings.Application.RecentItems.Clear();
+            _settings.Save();
+        };
+        menu.Items.Add(clearItem);
+    }
+
+    private async void OpenRecentItem(string path, RecentItemKind kind)
+    {
+        switch (kind)
+        {
+            case RecentItemKind.File:
+                if (!File.Exists(path))
+                {
+                    ThemedMessageBox.Show(this, $"The file no longer exists:\n{path}", "File Not Found");
+                    _settings.Application.RecentItems.RemoveAll(r =>
+                        string.Equals(r.Path, path, StringComparison.OrdinalIgnoreCase) && r.Kind == kind);
+                    _settings.Save();
+                    return;
+                }
+                var tab = await OpenFileInTabAsync(path, reuseUntitled: true, activate: true);
+                if (tab != null)
+                    FindBarControl.RefreshSearch();
+                break;
+
+            case RecentItemKind.Folder:
+                if (!Directory.Exists(path))
+                {
+                    ThemedMessageBox.Show(this, $"The folder no longer exists:\n{path}", "Folder Not Found");
+                    _settings.Application.RecentItems.RemoveAll(r =>
+                        string.Equals(r.Path, path, StringComparison.OrdinalIgnoreCase) && r.Kind == kind);
+                    _settings.Save();
+                    return;
+                }
+                if (_workspaceManager.CurrentWorkspace != null)
+                {
+                    if (!PromptCloseUnsavedWorkspace()) return;
+                    CloseCurrentWorkspace();
+                }
+                SwitchToFolder(path);
+                break;
+
+            case RecentItemKind.Workspace:
+                OpenWorkspaceFromPath(path);
+                break;
+        }
     }
 
     private void OnSave(object sender, RoutedEventArgs e)
@@ -1626,6 +1727,7 @@ public partial class MainWindow
         Shell.ShowPanel("file-explorer");
         UpdateWorkspaceMenuState(true);
 
+        _settings.AddRecentItem(workspacePath, RecentItemKind.Workspace);
         _settings.LastOpenWorkspacePath = workspacePath;
         _settings.Save();
 
