@@ -52,6 +52,9 @@ public class IndentGuideTests
     [InlineData("if (x) { # comment", false)]  // last non-ws is 't', first non-ws is 'i'
     [InlineData("foo(); // comment", false)]    // no brace at end or start
     [InlineData("bar() { // start", false)]     // last non-ws is 't', first non-ws is 'b'
+    [InlineData("} else {", false)]             // continuation, not standalone opener
+    [InlineData("    } else {", false)]         // indented continuation
+    [InlineData("} elsif ($x) {", false)]       // Perl continuation
     public void IsBlockOpener_DetectsLastOrFirstNonWhitespace(string line, bool expected)
     {
         Assert.Equal(expected, EditorControl.IsBlockOpener(line));

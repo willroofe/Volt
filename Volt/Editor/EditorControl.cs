@@ -1352,7 +1352,15 @@ public class EditorControl : FrameworkElement, IScrollInfo
     /// </summary>
     internal static bool IsBlockOpener(string line)
     {
-        // Last non-whitespace is '{' (e.g. "if (x) {", "} else {")
+        // Reject lines that start with '}' — continuations like "} else {"
+        // are not standalone block openers (they're part of the parent block).
+        for (int i = 0; i < line.Length; i++)
+        {
+            if (line[i] == ' ' || line[i] == '\t') continue;
+            if (line[i] == '}') return false;
+            break;
+        }
+        // Last non-whitespace is '{' (e.g. "if (x) {")
         for (int i = line.Length - 1; i >= 0; i--)
         {
             if (line[i] == ' ' || line[i] == '\t') continue;
@@ -1360,7 +1368,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             break;
         }
         // OR first non-whitespace is '{' (e.g. "{    #{ vi" — brace on own line
-        // with trailing content). Mirrors IsBlockCloser for depth balance.
+        // with trailing content).
         for (int i = 0; i < line.Length; i++)
         {
             if (line[i] == ' ' || line[i] == '\t') continue;
