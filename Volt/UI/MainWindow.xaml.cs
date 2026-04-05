@@ -55,8 +55,13 @@ public partial class MainWindow
         _tabHeaderFactory.TabClosed += tab => CloseTab(tab);
         _tabHeaderFactory.TabReordered += CommitTabReorder;
 
-        // Restore session or create initial tab
-        RestoreSession();
+        // Create a placeholder tab only if there's no session to restore.
+        // Full session restore is deferred to ContentRendered.
+        if (!HasSessionToRestore())
+        {
+            var initialTab = CreateTab();
+            ActivateTab(initialTab);
+        }
 
         _keyBindingManager.Load(_settings.KeyBindings);
         ApplySettings();
@@ -98,6 +103,15 @@ public partial class MainWindow
             if (PresentationSource.FromVisual(this) is HwndSource source)
                 source.AddHook(WndProc);
         };
+
+        // Defer session restore until the window is painted on screen
+        ContentRendered += OnFirstContentRendered;
+    }
+
+    private void OnFirstContentRendered(object? sender, EventArgs e)
+    {
+        ContentRendered -= OnFirstContentRendered;
+        RestoreSession();
     }
 
     private TabInfo CreateTab(string? filePath = null)
@@ -274,30 +288,41 @@ public partial class MainWindow
     {
         if (tab.HeaderElement?.Child is not DockPanel panel) return;
 
-        var spinner = new TextBlock
+        var glyph = new TextBlock
         {
             Text = "\uE117",  // Refresh/sync glyph
             FontFamily = new FontFamily("Segoe MDL2 Assets"),
             FontSize = 12,
+            HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(4, 0, 2, 0),
             RenderTransformOrigin = new Point(0.5, 0.5),
             RenderTransform = new RotateTransform(),
-            Tag = SpinnerTag,
             Opacity = 0.7
         };
-        spinner.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFgMuted);
+        glyph.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFgMuted);
 
-        DockPanel.SetDock(spinner, Dock.Right);
+        // Wrap in a fixed-size container with clipping to prevent rotation artifacts
+        var container = new Border
+        {
+            Width = 14,
+            Height = 14,
+            ClipToBounds = true,
+            Margin = new Thickness(4, 0, 2, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = glyph,
+            Tag = SpinnerTag
+        };
+
+        DockPanel.SetDock(container, Dock.Right);
         // Insert after close button (index 0) but before the TextBlock (fill),
         // so it appears between the filename and the close button.
-        panel.Children.Insert(1, spinner);
+        panel.Children.Insert(1, container);
 
         var anim = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(1))
         {
             RepeatBehavior = RepeatBehavior.Forever
         };
-        ((RotateTransform)spinner.RenderTransform).BeginAnimation(RotateTransform.AngleProperty, anim);
+        ((RotateTransform)glyph.RenderTransform).BeginAnimation(RotateTransform.AngleProperty, anim);
     }
 
     private static void HideTabSpinner(TabInfo tab)
@@ -557,6 +582,21 @@ public partial class MainWindow
 
     private void ForceCloseTab(TabInfo tab) => RemoveTab(tab);
 
+    /// <summary>Checks whether any session data exists that RestoreSession will act on.</summary>
+    private bool HasSessionToRestore()
+    {
+        if (_settings.LastOpenWorkspacePath is string wsPath && File.Exists(wsPath))
+            return true;
+        if (_settings.UnsavedWorkspaceFolders is { Count: > 0 })
+            return true;
+        var folderPath = _settings.Editor.Explorer.OpenFolderPath;
+        if (folderPath != null && Directory.Exists(folderPath))
+            return true;
+        if (_settings.Session.Tabs.Count > 0)
+            return true;
+        return false;
+    }
+
     /// <summary>
     /// Opens a file in a tab asynchronously — file I/O and content parsing run on a
     /// background thread so the UI stays responsive for large files.
@@ -765,6 +805,8 @@ public partial class MainWindow
         }
 
         TabInfo? activeTab = null;
+        var asyncLoads = new List<(TabInfo tab, RestoredTab rt)>();
+
         for (int i = 0; i < restored.Tabs.Count; i++)
         {
             var rt = restored.Tabs[i];
@@ -773,21 +815,24 @@ public partial class MainWindow
             if (rt.FilePath != null)
             {
                 tab.FilePath = rt.FilePath;
-                tab.FileEncoding = FileHelper.DetectEncoding(rt.FilePath);
 
-                if (rt.IsDirty)
+                if (rt.IsDirty && rt.SavedContent != null)
                 {
-                    tab.Editor.SetContent(rt.SavedContent ?? FileHelper.ReadAllText(rt.FilePath, tab.FileEncoding));
+                    // Dirty tab with saved content — load inline (it's already in memory)
+                    tab.Editor.SetContent(rt.SavedContent);
                     tab.Editor.MarkDirty();
+                    tab.FileEncoding = FileHelper.DetectEncoding(rt.FilePath);
+                    tab.LastKnownFileSize = new FileInfo(rt.FilePath).Length;
+                    tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(rt.FilePath, tab.LastKnownFileSize);
+                    tab.StartWatching();
                 }
                 else
                 {
-                    tab.Editor.SetContent(FileHelper.ReadAllText(rt.FilePath, tab.FileEncoding));
+                    // File needs reading from disk — defer to async
+                    tab.IsLoading = true;
+                    ShowTabSpinner(tab);
+                    asyncLoads.Add((tab, rt));
                 }
-
-                tab.LastKnownFileSize = new FileInfo(rt.FilePath).Length;
-                tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(rt.FilePath, tab.LastKnownFileSize);
-                tab.StartWatching();
             }
             else if (rt.SavedContent != null)
             {
@@ -802,10 +847,13 @@ public partial class MainWindow
             onLoaded = (_, _) =>
             {
                 tab.Editor.Loaded -= onLoaded;
-                tab.Editor.SetCaretPosition(restoredTab.CaretLine, restoredTab.CaretCol);
-                tab.Editor.SetVerticalOffset(restoredTab.ScrollVertical);
-                tab.Editor.SetHorizontalOffset(restoredTab.ScrollHorizontal);
-                tab.Editor.InvalidateVisual();
+                if (!tab.IsLoading)
+                {
+                    tab.Editor.SetCaretPosition(restoredTab.CaretLine, restoredTab.CaretCol);
+                    tab.Editor.SetVerticalOffset(restoredTab.ScrollVertical);
+                    tab.Editor.SetHorizontalOffset(restoredTab.ScrollHorizontal);
+                    tab.Editor.InvalidateVisual();
+                }
             };
             tab.Editor.Loaded += onLoaded;
 
@@ -822,6 +870,45 @@ public partial class MainWindow
         {
             ActivateTab(activeTab ?? _tabs[0]);
         }
+
+        // Kick off async file loads (window is already visible at this point)
+        foreach (var (t, r) in asyncLoads)
+            _ = LoadTabContentAsync(t, r);
+    }
+
+    private async Task LoadTabContentAsync(TabInfo tab, RestoredTab rt)
+    {
+        var path = rt.FilePath!;
+        int tabSize = tab.Editor.TabSize;
+        bool isDirty = rt.IsDirty;
+
+        var (encoding, prepared, fileSize, tailBytes) = await Task.Run(() =>
+        {
+            var enc = FileHelper.DetectEncoding(path);
+            var text = FileHelper.ReadAllText(path, enc);
+            var prep = TextBuffer.PrepareContent(text, tabSize);
+            var size = new FileInfo(path).Length;
+            var tail = FileHelper.ReadTailVerifyBytes(path, size);
+            return (enc, prep, size, tail);
+        });
+
+        if (!_tabs.Contains(tab)) return;
+
+        tab.IsLoading = false;
+        HideTabSpinner(tab);
+        tab.FileEncoding = encoding;
+        tab.Editor.SetPreparedContent(prepared);
+        if (isDirty) tab.Editor.MarkDirty();
+        tab.LastKnownFileSize = fileSize;
+        tab.TailVerifyBytes = tailBytes;
+        tab.StartWatching();
+        UpdateTabHeader(tab);
+
+        // Restore caret/scroll position now that content is loaded
+        tab.Editor.SetCaretPosition(rt.CaretLine, rt.CaretCol);
+        tab.Editor.SetVerticalOffset(rt.ScrollVertical);
+        tab.Editor.SetHorizontalOffset(rt.ScrollHorizontal);
+        tab.Editor.InvalidateVisual();
     }
 
     private void RestoreWindowPosition()
@@ -1670,6 +1757,8 @@ public partial class MainWindow
         }
 
         TabInfo? activeTab = null;
+        var asyncLoads = new List<(TabInfo tab, WorkspaceSessionTab st)>();
+
         for (int i = 0; i < workspace.Session.Tabs.Count; i++)
         {
             var st = workspace.Session.Tabs[i];
@@ -1681,11 +1770,9 @@ public partial class MainWindow
             if (st.FilePath != null)
             {
                 tab.FilePath = st.FilePath;
-                tab.FileEncoding = FileHelper.DetectEncoding(st.FilePath);
-                tab.Editor.SetContent(FileHelper.ReadAllText(st.FilePath, tab.FileEncoding));
-                tab.LastKnownFileSize = new FileInfo(st.FilePath).Length;
-                tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(st.FilePath, tab.LastKnownFileSize);
-                tab.StartWatching();
+                tab.IsLoading = true;
+                ShowTabSpinner(tab);
+                asyncLoads.Add((tab, st));
             }
 
             if (i == workspace.Session.ActiveTabIndex)
@@ -1703,17 +1790,39 @@ public partial class MainWindow
 
         ActivateTab(activeTab ?? _tabs[0]);
 
-        Dispatcher.InvokeAsync(() =>
+        foreach (var (t, s) in asyncLoads)
+            _ = LoadWorkspaceTabAsync(t, s);
+    }
+
+    private async Task LoadWorkspaceTabAsync(TabInfo tab, WorkspaceSessionTab st)
+    {
+        var path = st.FilePath!;
+        int tabSize = tab.Editor.TabSize;
+
+        var (encoding, prepared, fileSize, tailBytes) = await Task.Run(() =>
         {
-            for (int i = 0; i < _tabs.Count && i < workspace.Session.Tabs.Count; i++)
-            {
-                var st = workspace.Session.Tabs[i];
-                var tab = _tabs[i];
-                tab.Editor.SetCaretPosition(st.CaretLine, st.CaretCol);
-                tab.ScrollHost?.ScrollToVerticalOffset(st.ScrollY);
-                tab.ScrollHost?.ScrollToHorizontalOffset(st.ScrollX);
-            }
-        }, System.Windows.Threading.DispatcherPriority.Loaded);
+            var enc = FileHelper.DetectEncoding(path);
+            var text = FileHelper.ReadAllText(path, enc);
+            var prep = TextBuffer.PrepareContent(text, tabSize);
+            var size = new FileInfo(path).Length;
+            var tail = FileHelper.ReadTailVerifyBytes(path, size);
+            return (enc, prep, size, tail);
+        });
+
+        if (!_tabs.Contains(tab)) return;
+
+        tab.IsLoading = false;
+        HideTabSpinner(tab);
+        tab.FileEncoding = encoding;
+        tab.Editor.SetPreparedContent(prepared);
+        tab.LastKnownFileSize = fileSize;
+        tab.TailVerifyBytes = tailBytes;
+        tab.StartWatching();
+        UpdateTabHeader(tab);
+
+        tab.Editor.SetCaretPosition(st.CaretLine, st.CaretCol);
+        tab.ScrollHost?.ScrollToVerticalOffset(st.ScrollY);
+        tab.ScrollHost?.ScrollToHorizontalOffset(st.ScrollX);
     }
 
     // ── Workspace context menu handlers ──────────────────────────────────────

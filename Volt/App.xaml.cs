@@ -21,6 +21,13 @@ public partial class App : Application
         // before the user opens settings or the command palette
         Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
             () => FontManager.GetMonospaceFonts());
+
+        // Create and show window manually so we can defer heavy session
+        // restore until after the window is painted on screen.
+        var window = new MainWindow();
+        MainWindow = window;
+        window.Show();
+
         base.OnStartup(e);
     }
 }
