@@ -24,6 +24,8 @@ public enum VoltCommand
     ToggleBottomPanel,
     SwitchTabForward,
     SwitchTabBackward,
+    FoldBlock,
+    UnfoldBlock,
 }
 
 [JsonConverter(typeof(KeyComboJsonConverter))]
@@ -180,6 +182,8 @@ public class KeyBindingManager
         [VoltCommand.ToggleBottomPanel] = new(Key.J, ModifierKeys.Control),
         [VoltCommand.SwitchTabForward] = new(Key.Tab, ModifierKeys.Control),
         [VoltCommand.SwitchTabBackward] = new(Key.Tab, ModifierKeys.Control | ModifierKeys.Shift),
+        [VoltCommand.FoldBlock] = new(Key.OemOpenBrackets, ModifierKeys.Control | ModifierKeys.Shift),
+        [VoltCommand.UnfoldBlock] = new(Key.OemCloseBrackets, ModifierKeys.Control | ModifierKeys.Shift),
     };
 
     private readonly Dictionary<VoltCommand, KeyCombo> _bindings = new();
@@ -291,6 +295,8 @@ public class KeyBindingManager
         VoltCommand.ToggleBottomPanel => "Toggle Bottom Panel",
         VoltCommand.SwitchTabForward => "Next Tab",
         VoltCommand.SwitchTabBackward => "Previous Tab",
+        VoltCommand.FoldBlock => "Fold Block",
+        VoltCommand.UnfoldBlock => "Unfold Block",
         _ => command.ToString(),
     };
 }

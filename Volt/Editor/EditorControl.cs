@@ -1317,7 +1317,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     }
 
     /// <summary>Fold the block at or enclosing the caret.</summary>
-    private void FoldAtCaret()
+    public void FoldAtCaret()
     {
         // If caret is on a block opener, fold it
         if (IsStructuralBlockOpen(_caretLine) && !_foldedLines.Contains(_caretLine))
@@ -1332,7 +1332,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     }
 
     /// <summary>Unfold the block at or enclosing the caret.</summary>
-    private void UnfoldAtCaret()
+    public void UnfoldAtCaret()
     {
         // If caret is on a folded opener, unfold it
         if (_foldedLines.Contains(_caretLine))
@@ -1919,15 +1919,6 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 e.Handled = true;
                 break;
 
-            case Key.OemOpenBrackets when ctrl && shift:
-                FoldAtCaret();
-                e.Handled = true;
-                break;
-
-            case Key.OemCloseBrackets when ctrl && shift:
-                UnfoldAtCaret();
-                e.Handled = true;
-                break;
         }
     }
 
