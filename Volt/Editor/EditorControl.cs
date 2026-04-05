@@ -800,6 +800,23 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _gutterSepPen.Freeze();
     }
 
+    /// <summary>
+    /// Returns true if the character at (line, col) falls inside a string or comment token.
+    /// Used by bracket matching to skip brackets in non-code contexts.
+    /// </summary>
+    private bool IsInsideLiteral(int line, int col)
+    {
+        if (_grammar == null) return false;
+        if (!_tokenCache.TryGetValue(line, out var cached)) return false;
+        foreach (var token in cached.tokens)
+        {
+            if (col < token.Start) break;
+            if (col < token.Start + token.Length)
+                return token.Scope is "string" or "comment";
+        }
+        return false;
+    }
+
     // ──────────────────────────────────────────────────────────────────
     //  Multi-line syntax state
     // ──────────────────────────────────────────────────────────────────
@@ -1005,7 +1022,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             if (_bracketMatchDirty)
             {
-                _bracketMatchCache = BracketMatcher.FindMatch(_buffer, _caretLine, _caretCol);
+                _bracketMatchCache = BracketMatcher.FindMatch(_buffer, _caretLine, _caretCol, IsInsideLiteral);
                 _bracketMatchDirty = false;
             }
             if (_bracketMatchCache is var (bl, bc, ml, mc))
