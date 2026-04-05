@@ -9,7 +9,7 @@ namespace Volt;
 public static class BracketMatcher
 {
     public const int MaxScanLines = 500;
-    private const int MaxScanChars = 100_000;
+    private const int MaxScanChars = 50_000;
 
     public static readonly Dictionary<char, char> Pairs = new()
     {

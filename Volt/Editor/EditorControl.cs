@@ -815,7 +815,6 @@ public class EditorControl : FrameworkElement, IScrollInfo
     /// </summary>
     private bool IsInsideLiteral(int line, int col)
     {
-        if (_grammar == null) return false;
         if (!_tokenCache.TryGetValue(line, out var cached)) return false;
         foreach (var token in cached.tokens)
         {
@@ -825,6 +824,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
         return false;
     }
+
+    /// <summary>Returns the skip delegate for bracket matching, or null when no grammar is active.</summary>
+    private Func<int, int, bool>? LiteralSkip => _grammar != null ? IsInsideLiteral : null;
 
     // ──────────────────────────────────────────────────────────────────
     //  Multi-line syntax state
@@ -1043,7 +1045,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             {
                 _bracketMatchCache = _caretLine < _buffer.Count && _buffer[_caretLine].Length > LongLineThreshold
                     ? null
-                    : BracketMatcher.FindMatch(_buffer, _caretLine, _caretCol, IsInsideLiteral);
+                    : BracketMatcher.FindMatch(_buffer, _caretLine, _caretCol, LiteralSkip);
                 _bracketMatchDirty = false;
             }
             if (_bracketMatchCache is var (bl, bc, ml, mc))
@@ -1324,7 +1326,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             return;
         }
         // Otherwise find the nearest enclosing block opener above
-        int? enclosing = BracketMatcher.FindEnclosingOpenBrace(_buffer, _caretLine, 0, IsInsideLiteral);
+        int? enclosing = BracketMatcher.FindEnclosingOpenBrace(_buffer, _caretLine, 0, LiteralSkip);
         if (enclosing != null && !_foldedLines.Contains(enclosing.Value))
             ToggleFold(enclosing.Value);
     }
@@ -1339,7 +1341,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             return;
         }
         // Otherwise find the nearest enclosing folded opener above
-        int? enclosing = BracketMatcher.FindEnclosingOpenBrace(_buffer, _caretLine, 0, IsInsideLiteral);
+        int? enclosing = BracketMatcher.FindEnclosingOpenBrace(_buffer, _caretLine, 0, LiteralSkip);
         if (enclosing != null && _foldedLines.Contains(enclosing.Value))
             ToggleFold(enclosing.Value);
     }
@@ -1411,7 +1413,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private int? FindStructuralBlock(int line)
     {
         if (_buffer[line].Length > LongLineThreshold) return null;
-        var closer = BracketMatcher.FindBlockCloser(_buffer, line, IsInsideLiteral);
+        var closer = BracketMatcher.FindBlockCloser(_buffer, line, LiteralSkip);
         if (closer == null) return null;
         // The '}' must be the first non-whitespace character on its line
         // to qualify as a structural block closer.
@@ -1474,7 +1476,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             int searchCol = 0;
             while (true)
             {
-                int? openerLine = BracketMatcher.FindEnclosingOpenBrace(_buffer, searchLine, searchCol, IsInsideLiteral);
+                int? openerLine = BracketMatcher.FindEnclosingOpenBrace(_buffer, searchLine, searchCol, LiteralSkip);
                 if (openerLine == null) break;
                 int i = openerLine.Value;
 
