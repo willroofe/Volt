@@ -112,6 +112,9 @@ public partial class MainWindow
     {
         ContentRendered -= OnFirstContentRendered;
         RestoreSession();
+
+        // Silent background update check after startup settles
+        _ = AppUpdateManager.CheckForUpdatesAsync(this);
     }
 
     private TabInfo CreateTab(string? filePath = null)
@@ -1494,7 +1497,8 @@ public partial class MainWindow
             () => OnToggleWordWrap(this, new RoutedEventArgs()),
             ToggleWordWrapAtWords,
             ToggleWordWrapIndent,
-            ToggleFixedWidthTabs));
+            ToggleFixedWidthTabs,
+            () => _ = AppUpdateManager.CheckForUpdatesAsync(this, showUpToDate: true)));
         CmdPalette.SetCommands(commands);
         CmdPalette.Open();
     }
