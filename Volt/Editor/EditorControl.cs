@@ -2255,27 +2255,37 @@ public class EditorControl : FrameworkElement, IScrollInfo
         var scope = BeginEdit(sl, el);
         DeleteSelectionIfPresent();
 
-        var pasteLines = text.Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
-        for (int pi = 0; pi < pasteLines.Length; pi++)
-            pasteLines[pi] = TextBuffer.ExpandTabs(pasteLines[pi], TabSize);
-
-        if (pasteLines.Length == 1)
+        // Fast path: no line breaks — skip Split which scans the entire string
+        if (!text.AsSpan().ContainsAny('\r', '\n'))
         {
-            _buffer.InsertAt(_caretLine, _caretCol, pasteLines[0]);
-            _caretCol += pasteLines[0].Length;
+            var expanded = TextBuffer.ExpandTabs(text, TabSize);
+            _buffer.InsertAt(_caretLine, _caretCol, expanded);
+            _caretCol += expanded.Length;
         }
         else
         {
-            var after = _buffer.TruncateAt(_caretLine, _caretCol);
-            _buffer.InsertAt(_caretLine, _caretCol, pasteLines[0]);
-            for (int i = 1; i < pasteLines.Length; i++)
+            var pasteLines = text.Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
+            for (int pi = 0; pi < pasteLines.Length; pi++)
+                pasteLines[pi] = TextBuffer.ExpandTabs(pasteLines[pi], TabSize);
+
+            if (pasteLines.Length == 1)
             {
-                _caretLine++;
-                _buffer.InsertLine(_caretLine, pasteLines[i]);
+                _buffer.InsertAt(_caretLine, _caretCol, pasteLines[0]);
+                _caretCol += pasteLines[0].Length;
             }
-            _caretCol = _buffer[_caretLine].Length;
-            _buffer.InsertAt(_caretLine, _caretCol, after);
-            _tokenCacheDirty = true;
+            else
+            {
+                var after = _buffer.TruncateAt(_caretLine, _caretCol);
+                _buffer.InsertAt(_caretLine, _caretCol, pasteLines[0]);
+                for (int i = 1; i < pasteLines.Length; i++)
+                {
+                    _caretLine++;
+                    _buffer.InsertLine(_caretLine, pasteLines[i]);
+                }
+                _caretCol = _buffer[_caretLine].Length;
+                _buffer.InsertAt(_caretLine, _caretCol, after);
+                _tokenCacheDirty = true;
+            }
         }
         FinishEdit(scope);
     }
