@@ -1261,14 +1261,12 @@ public partial class MainWindow
         }
     }
 
-    private const int RecentItemsPreviewCount = 10;
-
     private void OnOpenRecentSubmenuOpened(object sender, RoutedEventArgs e)
     {
-        PopulateRecentMenu((MenuItem)sender, showAll: false);
+        PopulateRecentMenu((MenuItem)sender);
     }
 
-    private void PopulateRecentMenu(MenuItem menu, bool showAll)
+    private void PopulateRecentMenu(MenuItem menu)
     {
         menu.Items.Clear();
 
@@ -1280,8 +1278,7 @@ public partial class MainWindow
             return;
         }
 
-        var visibleItems = showAll ? recentItems : recentItems.Take(RecentItemsPreviewCount);
-        foreach (var recent in visibleItems)
+        foreach (var recent in recentItems)
         {
             var kind = recent.Kind;
             var path = recent.Path;
@@ -1313,16 +1310,15 @@ public partial class MainWindow
 
         menu.Items.Add(new Separator());
 
-        if (!showAll && recentItems.Count > RecentItemsPreviewCount)
-        {
-            var viewMore = new MenuItem { Header = "View More...", Style = dropdownStyle };
-            viewMore.Click += (_, _) => OpenRecentInCommandPalette();
-            menu.Items.Add(viewMore);
-        }
+        var viewMore = new MenuItem { Header = "View More...", Style = dropdownStyle };
+        viewMore.Click += (_, _) => OpenRecentInCommandPalette();
+        menu.Items.Add(viewMore);
 
         var clearItem = new MenuItem { Header = "Clear Recent", Style = dropdownStyle };
         clearItem.Click += (_, _) =>
         {
+            if (ThemedMessageBox.Show(this, "Clear the recent items list?", "Clear Recent",
+                    MessageBoxButton.OKCancel) != MessageBoxResult.OK) return;
             _settings.Application.RecentItems.Clear();
             _settings.Save();
         };
@@ -1331,7 +1327,16 @@ public partial class MainWindow
 
     private void OpenRecentInCommandPalette()
     {
-        var options = _settings.Application.RecentItems.Select(recent =>
+        var history = _settings.Application.RecentHistory;
+        if (history.Count == 0)
+        {
+            Dispatcher.BeginInvoke(() => CmdPalette.OpenWithOptions("Recent: ", [
+                new("(no history)", ApplyPreview: () => { }, Commit: () => { }, Revert: () => { })
+            ]));
+            return;
+        }
+
+        var options = history.Select(recent =>
         {
             var kind = recent.Kind;
             var path = recent.Path;
@@ -1347,6 +1352,14 @@ public partial class MainWindow
                 Revert: () => { });
         }).ToList();
 
+        options.Add(new("Clear History", ApplyPreview: () => { }, Commit: () =>
+        {
+            if (ThemedMessageBox.Show(this, "Clear the entire recent history?", "Clear History",
+                    MessageBoxButton.OKCancel) != MessageBoxResult.OK) return;
+            _settings.Application.RecentHistory.Clear();
+            _settings.Save();
+        }, Revert: () => { }));
+
         Dispatcher.BeginInvoke(() => CmdPalette.OpenWithOptions("Recent: ", options));
     }
 
@@ -1358,9 +1371,7 @@ public partial class MainWindow
                 if (!File.Exists(path))
                 {
                     ThemedMessageBox.Show(this, $"The file no longer exists:\n{path}", "File Not Found");
-                    _settings.Application.RecentItems.RemoveAll(r =>
-                        string.Equals(r.Path, path, StringComparison.OrdinalIgnoreCase) && r.Kind == kind);
-                    _settings.Save();
+                    RemoveFromRecentLists(path, kind);
                     return;
                 }
                 var tab = await OpenFileInTabAsync(path, reuseUntitled: true, activate: true);
@@ -1372,9 +1383,7 @@ public partial class MainWindow
                 if (!Directory.Exists(path))
                 {
                     ThemedMessageBox.Show(this, $"The folder no longer exists:\n{path}", "Folder Not Found");
-                    _settings.Application.RecentItems.RemoveAll(r =>
-                        string.Equals(r.Path, path, StringComparison.OrdinalIgnoreCase) && r.Kind == kind);
-                    _settings.Save();
+                    RemoveFromRecentLists(path, kind);
                     return;
                 }
                 if (_workspaceManager.CurrentWorkspace != null)
@@ -1389,6 +1398,15 @@ public partial class MainWindow
                 OpenWorkspaceFromPath(path);
                 break;
         }
+    }
+
+    private void RemoveFromRecentLists(string path, RecentItemKind kind)
+    {
+        bool Match(RecentItem r) =>
+            string.Equals(r.Path, path, StringComparison.OrdinalIgnoreCase) && r.Kind == kind;
+        _settings.Application.RecentItems.RemoveAll(Match);
+        _settings.Application.RecentHistory.RemoveAll(Match);
+        _settings.Save();
     }
 
     private void OnSave(object sender, RoutedEventArgs e)
