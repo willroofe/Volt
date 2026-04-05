@@ -2395,6 +2395,21 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public void SetContent(string text)
     {
         _buffer.SetContent(text, TabSize);
+        ResetAfterContentLoad();
+    }
+
+    /// <summary>
+    /// Apply pre-parsed content (from <see cref="TextBuffer.PrepareContent"/>).
+    /// Use this after offloading the heavy parsing to a background thread.
+    /// </summary>
+    public void SetPreparedContent(TextBuffer.PreparedContent prepared)
+    {
+        _buffer.SetPreparedContent(prepared);
+        ResetAfterContentLoad();
+    }
+
+    private void ResetAfterContentLoad()
+    {
         _caretLine = 0;
         _caretCol = 0;
         _selection.Clear();

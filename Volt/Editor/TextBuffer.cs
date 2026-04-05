@@ -211,6 +211,50 @@ public class TextBuffer
     }
 
     // ── Content get/set ─────────────────────────────────────────────
+
+    /// <summary>Result of <see cref="PrepareContent"/> — holds parsed lines and detected line ending.</summary>
+    public sealed class PreparedContent
+    {
+        internal List<string> Lines { get; init; } = null!;
+        internal string LineEnding { get; init; } = null!;
+    }
+
+    /// <summary>
+    /// Parse text into lines on a background thread. This does the heavy CPU work
+    /// (line splitting, tab expansion, line ending detection) without touching buffer state.
+    /// Call <see cref="SetPreparedContent"/> on the UI thread to apply the result.
+    /// </summary>
+    public static PreparedContent PrepareContent(string text, int tabSize)
+    {
+        var lineEnding = DetectLineEnding(text);
+        var lines = new List<string>();
+        var remaining = text.AsSpan();
+        while (true)
+        {
+            int nlIdx = remaining.IndexOfAny('\r', '\n');
+            if (nlIdx < 0) break;
+            lines.Add(ExpandTabs(remaining.Slice(0, nlIdx).ToString(), tabSize));
+            if (remaining[nlIdx] == '\r' && nlIdx + 1 < remaining.Length && remaining[nlIdx + 1] == '\n')
+                remaining = remaining.Slice(nlIdx + 2);
+            else
+                remaining = remaining.Slice(nlIdx + 1);
+        }
+        lines.Add(ExpandTabs(remaining.ToString(), tabSize));
+        return new PreparedContent { Lines = lines, LineEnding = lineEnding };
+    }
+
+    /// <summary>
+    /// Apply pre-parsed content to the buffer. Must be called on the UI thread.
+    /// </summary>
+    public void SetPreparedContent(PreparedContent prepared)
+    {
+        _lineEnding = prepared.LineEnding;
+        _lines.Clear();
+        _lines.AddRange(prepared.Lines);
+        _maxLineLengthDirty = true; _charCountDirty = true;
+        IsDirty = false;
+    }
+
     public void SetContent(string text, int tabSize)
     {
         _lineEnding = DetectLineEnding(text);
