@@ -95,7 +95,10 @@ public partial class CommandPalette : UserControl
 
     private void OnOverlayClick(object sender, MouseButtonEventArgs e)
     {
-        Cancel();
+        if (_currentOptions != null)
+            RevertCurrentPreview();
+        Visibility = Visibility.Collapsed;
+        Closed?.Invoke(this, EventArgs.Empty);
     }
 
     private void RevertCurrentPreview()
