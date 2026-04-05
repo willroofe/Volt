@@ -118,6 +118,104 @@ public static class BracketMatcher
         TextBuffer buffer, char opener, char closer, int startLine, int startCol)
         => ScanForBracket(buffer, opener, closer, startLine, startCol, forward: true);
 
+    /// <summary>
+    /// Returns the code-context brace balance for a line: +1 per '{' and -1 per '}'
+    /// that are not inside strings or comments (as determined by the skip predicate).
+    /// </summary>
+    public static int CodeBraceBalance(TextBuffer buffer, int line, Func<int, int, bool>? skip = null)
+    {
+        if (line < 0 || line >= buffer.Count) return 0;
+        string text = buffer[line];
+        int depth = 0;
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (skip != null && skip(line, i)) continue;
+            if (text[i] == '{') depth++;
+            else if (text[i] == '}') depth--;
+        }
+        return depth;
+    }
+
+    /// <summary>
+    /// Returns true if the line has more '{' than '}' in code context
+    /// (ignoring braces inside strings and comments).
+    /// </summary>
+    public static bool IsBlockOpen(TextBuffer buffer, int line, Func<int, int, bool>? skip = null)
+        => CodeBraceBalance(buffer, line, skip) > 0;
+
+    /// <summary>
+    /// Returns true if the line has more '}' than '{' in code context.
+    /// </summary>
+    public static bool IsBlockClose(TextBuffer buffer, int line, Func<int, int, bool>? skip = null)
+        => CodeBraceBalance(buffer, line, skip) < 0;
+
+    /// <summary>
+    /// Finds the last unmatched code-context '{' on the given line, then scans forward
+    /// to find its matching '}'. Returns the (line, col) of the closing '}'.
+    /// The "last unmatched" brace is the one whose matching '}' is NOT on the same line —
+    /// i.e. the brace that opens the block continuing to subsequent lines.
+    /// </summary>
+    public static (int line, int col)? FindBlockCloser(TextBuffer buffer, int openLine, Func<int, int, bool>? skip = null)
+    {
+        if (openLine < 0 || openLine >= buffer.Count) return null;
+        string text = buffer[openLine];
+        // Scan from right to left to find the last '{' that is unmatched on this line.
+        // Track depth: '}' increments (unmatched closers), '{' decrements.
+        // The first '{' we see when depth is 0 is the last unmatched opener.
+        int depth = 0;
+        int braceCol = -1;
+        for (int i = text.Length - 1; i >= 0; i--)
+        {
+            if (skip != null && skip(openLine, i)) continue;
+            if (text[i] == '}') depth++;
+            else if (text[i] == '{')
+            {
+                if (depth == 0) { braceCol = i; break; }
+                depth--;
+            }
+        }
+        if (braceCol < 0) return null;
+        return ScanForBracket(buffer, '{', '}', openLine, braceCol, forward: true, skip);
+    }
+
+    /// <summary>
+    /// Scans backward from the given position to find an enclosing unmatched '{' in code context.
+    /// Returns the line number of the opener, or null if not found.
+    /// Used by fold-at-caret and indent guide backward scanning.
+    /// </summary>
+    public static int? FindEnclosingOpenBrace(
+        TextBuffer buffer, int fromLine, int fromCol, Func<int, int, bool>? skip = null)
+    {
+        int depth = 0;
+        int line = fromLine;
+        int col = fromCol - 1;
+        int minLine = Math.Max(0, fromLine - MaxScanLines);
+
+        while (line >= minLine)
+        {
+            while (col < 0 || buffer[line].Length == 0)
+            {
+                line--;
+                if (line < minLine) return null;
+                col = buffer[line].Length - 1;
+            }
+
+            if (skip == null || !skip(line, col))
+            {
+                char ch = buffer[line][col];
+                if (ch == '}') depth++;
+                else if (ch == '{')
+                {
+                    if (depth == 0) return line;
+                    depth--;
+                }
+            }
+
+            col--;
+        }
+        return null;
+    }
+
     private static (int line, int col)? ScanForBracket(
         TextBuffer buffer, char bracket, char target, int startLine, int startCol, bool forward,
         Func<int, int, bool>? skip = null)

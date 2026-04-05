@@ -135,15 +135,6 @@ public class CodeFoldingTests
     }
 
     [Fact]
-    public void IsBlockOpener_And_FindStructuralCloser_WorkTogether()
-    {
-        Assert.True(EditorControl.IsBlockOpener("if (x) {"));
-        Assert.True(EditorControl.IsBlockCloser("}"));
-        Assert.False(EditorControl.IsBlockOpener("x = 1;"));
-        Assert.False(EditorControl.IsBlockCloser("x = 1;"));
-    }
-
-    [Fact]
     public void GetPixelForPosition_FoldOnly_UsesHorizontalScroll()
     {
         var buf = TestHelpers.MakeBuffer("a", "hidden", "b");

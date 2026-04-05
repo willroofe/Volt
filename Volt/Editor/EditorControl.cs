@@ -505,6 +505,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         ClampCaret();
         _selection.Clear();
         _bracketMatchDirty = true;
+        _tokenCacheDirty = true;
         _buffer.IsDirty = _undoManager.UndoCount != _cleanUndoDepth;
         UpdateExtent();
         InvalidateText();
@@ -536,6 +537,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         ClampCaret();
         _selection.Clear();
         _bracketMatchDirty = true;
+        _tokenCacheDirty = true;
         _buffer.IsDirty = _undoManager.UndoCount != _cleanUndoDepth;
         UpdateExtent();
         InvalidateText();
@@ -1202,7 +1204,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     public void ToggleFold(int line)
     {
-        if (line < 0 || line >= _buffer.Count || !IsBlockOpener(_buffer[line])) return;
+        if (line < 0 || line >= _buffer.Count || !IsStructuralBlockOpen(line)) return;
         if (!_foldedLines.Remove(line))
             _foldedLines.Add(line);
         RebuildFoldState();
@@ -1211,7 +1213,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void RebuildFoldState()
     {
         // Validate: remove folds for lines that are no longer block openers
-        _foldedLines.RemoveWhere(f => f < 0 || f >= _buffer.Count || !IsBlockOpener(_buffer[f]));
+        _foldedLines.RemoveWhere(f => f < 0 || f >= _buffer.Count || !IsStructuralBlockOpen(f));
 
         if (_foldedLines.Count == 0)
         {
@@ -1222,7 +1224,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _hiddenLines = new BitArray(_buffer.Count);
             foreach (var opener in _foldedLines)
             {
-                int? closer = FindStructuralCloser(opener);
+                int? closer = FindStructuralBlock(opener);
                 if (closer == null) { _foldedLines.Remove(opener); continue; }
                 for (int i = opener + 1; i < closer.Value; i++)
                     _hiddenLines[i] = true;
@@ -1248,26 +1250,15 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void FoldAtCaret()
     {
         // If caret is on a block opener, fold it
-        if (IsBlockOpener(_buffer[_caretLine]) && !_foldedLines.Contains(_caretLine))
+        if (IsStructuralBlockOpen(_caretLine) && !_foldedLines.Contains(_caretLine))
         {
             ToggleFold(_caretLine);
             return;
         }
         // Otherwise find the nearest enclosing block opener above
-        int depth = 0;
-        for (int i = _caretLine - 1; i >= Math.Max(0, _caretLine - BracketMatcher.MaxScanLines); i--)
-        {
-            depth += BraceBalance(_buffer[i]);
-            if (depth < 0 && IsBlockOpener(_buffer[i]))
-            {
-                if (!_foldedLines.Contains(i))
-                {
-                    ToggleFold(i);
-                    return;
-                }
-                depth = 0; // reset, keep looking further up
-            }
-        }
+        int? enclosing = BracketMatcher.FindEnclosingOpenBrace(_buffer, _caretLine, 0, IsInsideLiteral);
+        if (enclosing != null && !_foldedLines.Contains(enclosing.Value))
+            ToggleFold(enclosing.Value);
     }
 
     /// <summary>Unfold the block at or enclosing the caret.</summary>
@@ -1280,20 +1271,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
             return;
         }
         // Otherwise find the nearest enclosing folded opener above
-        int depth = 0;
-        for (int i = _caretLine - 1; i >= Math.Max(0, _caretLine - BracketMatcher.MaxScanLines); i--)
-        {
-            depth += BraceBalance(_buffer[i]);
-            if (depth < 0 && IsBlockOpener(_buffer[i]))
-            {
-                if (_foldedLines.Contains(i))
-                {
-                    ToggleFold(i);
-                    return;
-                }
-                depth = 0;
-            }
-        }
+        int? enclosing = BracketMatcher.FindEnclosingOpenBrace(_buffer, _caretLine, 0, IsInsideLiteral);
+        if (enclosing != null && _foldedLines.Contains(enclosing.Value))
+            ToggleFold(enclosing.Value);
     }
 
     /// <summary>Shift fold line indices after buffer edits that insert or remove lines.</summary>
@@ -1348,78 +1328,32 @@ public class EditorControl : FrameworkElement, IScrollInfo
     }
 
     /// <summary>
-    /// Returns true if the last non-whitespace character on the line is '{'.
+    /// Returns true if the line opens a structural block — i.e. has an unmatched '{'
+    /// whose matching '}' is the first non-whitespace character on its line.
     /// </summary>
-    internal static bool IsBlockOpener(string line)
+    private bool IsStructuralBlockOpen(int line)
+        => FindStructuralBlock(line) != null;
+
+    /// <summary>
+    /// Finds the closing line for a structural block opened on the given line.
+    /// Returns null if the line has no unmatched '{', or if the matching '}'
+    /// is not the first non-whitespace character on its line (filters inline
+    /// constructs like "eval { ... })").
+    /// </summary>
+    private int? FindStructuralBlock(int line)
     {
-        // Reject lines that start with '}' — continuations like "} else {"
-        // are not standalone block openers (they're part of the parent block).
-        for (int i = 0; i < line.Length; i++)
+        var closer = BracketMatcher.FindBlockCloser(_buffer, line, IsInsideLiteral);
+        if (closer == null) return null;
+        // The '}' must be the first non-whitespace character on its line
+        // to qualify as a structural block closer.
+        string closerText = _buffer[closer.Value.line];
+        for (int i = 0; i < closerText.Length; i++)
         {
-            if (line[i] == ' ' || line[i] == '\t') continue;
-            if (line[i] == '}') return false;
+            if (closerText[i] == ' ' || closerText[i] == '\t') continue;
+            if (i != closer.Value.col) return null;
             break;
         }
-        // Last non-whitespace is '{' (e.g. "if (x) {")
-        for (int i = line.Length - 1; i >= 0; i--)
-        {
-            if (line[i] == ' ' || line[i] == '\t') continue;
-            if (line[i] == '{') return true;
-            break;
-        }
-        // OR first non-whitespace is '{' (e.g. "{    #{ vi" — brace on own line
-        // with trailing content).
-        for (int i = 0; i < line.Length; i++)
-        {
-            if (line[i] == ' ' || line[i] == '\t') continue;
-            return line[i] == '{';
-        }
-        return false;
-    }
-
-    /// <summary>
-    /// Returns true if the first non-whitespace character on the line is '}'.
-    /// </summary>
-    internal static bool IsBlockCloser(string line)
-    {
-        for (int i = 0; i < line.Length; i++)
-        {
-            if (line[i] == ' ' || line[i] == '\t') continue;
-            return line[i] == '}';
-        }
-        return false;
-    }
-
-    /// <summary>
-    /// Counts the net brace balance of a line: +1 per '{', -1 per '}'.
-    /// </summary>
-    internal static int BraceBalance(string line)
-    {
-        int depth = 0;
-        for (int i = 0; i < line.Length; i++)
-        {
-            if (line[i] == '{') depth++;
-            else if (line[i] == '}') depth--;
-        }
-        return depth;
-    }
-
-    /// <summary>
-    /// Scans forward from an opener line to find the matching structural closer.
-    /// Uses per-line brace balance to handle all brace styles generically,
-    /// including braces with trailing comments ("{ #{ vi") and "} else {" lines.
-    /// </summary>
-    private int? FindStructuralCloser(int openLine)
-    {
-        int depth = 1; // looking for exactly one matching '}'
-        int maxLine = Math.Min(_buffer.Count - 1, openLine + BracketMatcher.MaxScanLines);
-        for (int i = openLine + 1; i <= maxLine; i++)
-        {
-            var line = _buffer[i];
-            depth += BraceBalance(line);
-            if (depth == 0) return i;
-        }
-        return null;
+        return closer.Value.line;
     }
 
     private void RenderIndentGuides(DrawingContext dc, int drawFirst, int drawLast)
@@ -1432,17 +1366,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
         // For each line in the draw range that opens a block, find its closer and draw a guide.
         for (int i = drawFirst; i <= drawLast; i++)
         {
-            if (!IsBlockOpener(_buffer[i])) continue;
+            if (!IsStructuralBlockOpen(i)) continue;
 
-            int? closeLineN = FindStructuralCloser(i);
-            if (closeLineN == null) continue;
-            int closeLine = closeLineN.Value;
+            int? closeLine = FindStructuralBlock(i);
+            if (closeLine == null) continue;
 
-            int indentCol = MeasureIndentColumns(_buffer[closeLine], TabSize);
+            int indentCol = MeasureIndentColumns(_buffer[closeLine.Value], TabSize);
             if (indentCol == 0) continue;
 
             int guideFirst = i + 1;
-            int guideLast = closeLine - 1;
+            int guideLast = closeLine.Value - 1;
             if (guideLast < guideFirst) continue;
 
             double x = baseX + indentCol * _font.CharWidth;
@@ -1463,41 +1396,47 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
 
         // Find guides that start above the draw range but pass through it.
-        int scanDepth = 0;
-        int scanMin = Math.Max(0, drawFirst - BracketMatcher.MaxScanLines);
-        for (int i = drawFirst - 1; i >= scanMin; i--)
         {
-            var line = _buffer[i];
-            scanDepth += BraceBalance(line);
-            if (scanDepth >= 0 || !IsBlockOpener(line)) continue;
-            scanDepth = 0; // reset for next enclosing block
-
-            int? closeLineN = FindStructuralCloser(i);
-            if (closeLineN == null) continue;
-            int closeLine = closeLineN.Value;
-            if (closeLine < drawFirst) continue;
-
-            int indentCol = MeasureIndentColumns(_buffer[closeLine], TabSize);
-            if (indentCol == 0) continue;
-
-            int guideFirst = i + 1;
-            int guideLast = closeLine - 1;
-            if (guideLast < guideFirst) continue;
-
-            double x = baseX + indentCol * _font.CharWidth;
-            double yTop, yBot;
-            if (!_wordWrap && !HasFoldLayout)
+            int searchLine = drawFirst;
+            int searchCol = 0;
+            while (true)
             {
-                yTop = guideFirst * _font.LineHeight;
-                yBot = (guideLast + 1) * _font.LineHeight;
-            }
-            else
-            {
-                yTop = _wrap.CumulOffset(guideFirst) * _font.LineHeight;
-                yBot = (_wrap.CumulOffset(guideLast) + VisualLineCount(guideLast)) * _font.LineHeight;
-            }
+                int? openerLine = BracketMatcher.FindEnclosingOpenBrace(_buffer, searchLine, searchCol, IsInsideLiteral);
+                if (openerLine == null) break;
+                int i = openerLine.Value;
 
-            dc.DrawLine(pen, new Point(x, yTop), new Point(x, yBot));
+                int? closeLineN = FindStructuralBlock(i);
+                if (closeLineN == null) { searchLine = i; searchCol = 0; continue; }
+                int closeLine = closeLineN.Value;
+
+                // Set up next search from above this opener
+                searchLine = i;
+                searchCol = 0;
+
+                if (closeLine < drawFirst) continue;
+
+                int indentCol = MeasureIndentColumns(_buffer[closeLine], TabSize);
+                if (indentCol == 0) continue;
+
+                int guideFirst = i + 1;
+                int guideLast = closeLine - 1;
+                if (guideLast < guideFirst) continue;
+
+                double x = baseX + indentCol * _font.CharWidth;
+                double yTop, yBot;
+                if (!_wordWrap && !HasFoldLayout)
+                {
+                    yTop = guideFirst * _font.LineHeight;
+                    yBot = (guideLast + 1) * _font.LineHeight;
+                }
+                else
+                {
+                    yTop = _wrap.CumulOffset(guideFirst) * _font.LineHeight;
+                    yBot = (_wrap.CumulOffset(guideLast) + VisualLineCount(guideLast)) * _font.LineHeight;
+                }
+
+                dc.DrawLine(pen, new Point(x, yTop), new Point(x, yBot));
+            }
         }
     }
 
@@ -1548,7 +1487,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 _gutterWidth - FoldGutterWidth - numWidth - GutterPadding, y, brush);
 
             // Draw fold markers for block openers
-            if (IsBlockOpener(_buffer[i]))
+            if (IsStructuralBlockOpen(i))
             {
                 bool isFolded = _foldedLines.Contains(i);
                 bool isHovered = i == _hoverFoldLine;
@@ -1630,7 +1569,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (pos.X >= _gutterWidth - FoldGutterWidth && pos.X < _gutterWidth)
         {
             var (foldLine, _) = HitTest(pos);
-            if (IsBlockOpener(_buffer[foldLine]))
+            if (IsStructuralBlockOpen(foldLine))
             {
                 ToggleFold(foldLine);
                 e.Handled = true;
@@ -1680,7 +1619,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             if (pos.X >= _gutterWidth - FoldGutterWidth && pos.X < _gutterWidth)
             {
                 var (hl, _) = HitTest(pos);
-                if (hl >= 0 && hl < _buffer.Count && IsBlockOpener(_buffer[hl]))
+                if (hl >= 0 && hl < _buffer.Count && IsStructuralBlockOpen(hl))
                     newHover = hl;
             }
             if (newHover != _hoverFoldLine)
