@@ -1589,6 +1589,8 @@ public partial class MainWindow
             case VoltCommand.ToggleBottomPanel: Shell.ToggleRegion(PanelPlacement.Bottom); SyncViewMenuChecks(); break;
             case VoltCommand.SwitchTabForward: SwitchTab(+1); break;
             case VoltCommand.SwitchTabBackward: SwitchTab(-1); break;
+            case VoltCommand.FoldBlock: _activeTab?.Editor.FoldAtCaret(); break;
+            case VoltCommand.UnfoldBlock: _activeTab?.Editor.UnfoldAtCaret(); break;
         }
     }
 
