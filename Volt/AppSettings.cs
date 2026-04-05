@@ -4,10 +4,19 @@ using System.Windows.Threading;
 
 namespace Volt;
 
+public enum RecentItemKind { File, Folder, Workspace }
+
+public class RecentItem
+{
+    public string Path { get; set; } = "";
+    public RecentItemKind Kind { get; set; }
+}
+
 public class ApplicationSettings
 {
     public string ColorTheme { get; set; } = "Dark";
     public string CommandPalettePosition { get; set; } = "Top";
+    public List<RecentItem> RecentItems { get; set; } = [];
 }
 
 public class FontSettings
@@ -157,6 +166,19 @@ public class AppSettings
     public KeyBindingSettings KeyBindings { get; set; } = new();
     public SessionSettings Session { get; set; } = new();
     public Dictionary<string, SessionSettings> FolderSessions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    private const int MaxRecentItems = 10;
+
+    public void AddRecentItem(string path, RecentItemKind kind)
+    {
+        var fullPath = System.IO.Path.GetFullPath(path);
+        var list = Application.RecentItems;
+        list.RemoveAll(r =>
+            string.Equals(r.Path, fullPath, StringComparison.OrdinalIgnoreCase) && r.Kind == kind);
+        list.Insert(0, new RecentItem { Path = fullPath, Kind = kind });
+        if (list.Count > MaxRecentItems)
+            list.RemoveRange(MaxRecentItems, list.Count - MaxRecentItems);
+    }
 
     public static readonly string[] FindBarPositionOptions = ["Top", "Bottom"];
     public static readonly string[] CommandPalettePositionOptions = ["Top", "Center"];
