@@ -90,9 +90,16 @@ internal static class FileHelper
     public static string ReadAllText(string path, Encoding encoding)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
-            FileShare.ReadWrite | FileShare.Delete);
-        using var reader = new StreamReader(stream, encoding);
-        return reader.ReadToEnd();
+            FileShare.ReadWrite | FileShare.Delete, bufferSize: 1 << 20);
+        // Read raw bytes in one shot to avoid StreamReader's StringBuilder growth
+        int length = (int)stream.Length;
+        var bytes = new byte[length];
+        stream.ReadExactly(bytes);
+        // Skip BOM if present
+        var preamble = encoding.Preamble;
+        if (preamble.Length > 0 && bytes.AsSpan().StartsWith(preamble))
+            return encoding.GetString(bytes, preamble.Length, length - preamble.Length);
+        return encoding.GetString(bytes);
     }
 
     /// <summary>
