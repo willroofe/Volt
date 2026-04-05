@@ -1403,7 +1403,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     /// </summary>
     private int? FindStructuralCloser(int openLine)
     {
-        int depth = BraceBalance(_buffer[openLine]);
+        int depth = 1; // looking for exactly one matching '}'
         int maxLine = Math.Min(_buffer.Count - 1, openLine + BracketMatcher.MaxScanLines);
         for (int i = openLine + 1; i <= maxLine; i++)
         {
