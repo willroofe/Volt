@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -167,9 +168,21 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
     }
 
+    // ── Code folding ────────────────────────────────────────────────
+    private readonly HashSet<int> _foldedLines = new();  // opener lines that are collapsed
+    private BitArray? _hiddenLines;                       // derived: lines hidden by folds
+    private int _hoverFoldLine = -1;                      // line with fold marker being hovered
+
+    private bool IsLineHidden(int line) =>
+        _hiddenLines != null && line < _hiddenLines.Length && _hiddenLines[line];
+
+    /// <summary>Whether layout arrays are active for fold-aware coordinates.</summary>
+    private bool HasFoldLayout => _hiddenLines != null;
+
     // ── Rendering constants ──────────────────────────────────────────
     private const double GutterPadding = 4;
     private const double GutterRightMargin = 8;
+    private const double FoldGutterWidth = 14;
     private const double GutterSeparatorThickness = 0.5;
     private const double HorizontalScrollPadding = 50;
     private const double BarCaretWidth = 1;
@@ -423,6 +436,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
             scope.StartLine, scope.Before, after,
             scope.CaretLine, scope.CaretCol, _caretLine, _caretCol));
         MarkEditDirty(evicted, scope.StartLine);
+        if (lineDelta != 0 && _foldedLines.Count > 0)
+            ShiftFolds(scope.StartLine, lineDelta);
     }
 
     /// <summary>
@@ -472,9 +487,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
         switch (entry)
         {
             case UndoManager.UndoEntry ue:
+            {
+                int delta = ue.Before.Count - ue.After.Count;
                 _buffer.ReplaceLines(ue.StartLine, ue.After.Count, ue.Before);
                 InvalidateLineStatesFrom(ue.StartLine);
+                if (delta != 0 && _foldedLines.Count > 0) ShiftFolds(ue.StartLine, delta);
                 break;
+            }
             case UndoManager.IndentEntry ie:
                 ApplyIndentEntry(ie, reverse: true);
                 InvalidateLineStatesFrom(ie.StartLine);
@@ -499,9 +518,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
         switch (entry)
         {
             case UndoManager.UndoEntry ue:
+            {
+                int delta = ue.After.Count - ue.Before.Count;
                 _buffer.ReplaceLines(ue.StartLine, ue.Before.Count, ue.After);
                 InvalidateLineStatesFrom(ue.StartLine);
+                if (delta != 0 && _foldedLines.Count > 0) ShiftFolds(ue.StartLine, delta);
                 break;
+            }
             case UndoManager.IndentEntry ie:
                 ApplyIndentEntry(ie, reverse: false);
                 InvalidateLineStatesFrom(ie.StartLine);
@@ -580,7 +603,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     private (int line, int col) HitTest(Point pos)
     {
-        if (!_wordWrap)
+        if (!_wordWrap && !HasFoldLayout)
         {
             int line = (int)((pos.Y + _offset.Y) / _font.LineHeight);
             line = Math.Clamp(line, 0, _buffer.Count - 1);
@@ -655,7 +678,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         int anchorLine = -1;
         int anchorWrap = 0;
         double anchorDelta = 0;
-        if (_wordWrap && !_skipWrapAnchor && _wrap.HasValidData(_buffer.Count) && _wrap.TotalVisualLines > 0)
+        if ((_wordWrap || HasFoldLayout) && !_skipWrapAnchor && _wrap.HasValidData(_buffer.Count) && _wrap.TotalVisualLines > 0)
         {
             int topVisual = Math.Clamp((int)(_offset.Y / _font.LineHeight), 0, _wrap.TotalVisualLines - 1);
             (anchorLine, anchorWrap) = VisualToLogical(topVisual);
@@ -665,7 +688,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         RecalcWrapData();
 
         // Restore scroll position so the same logical line stays at top
-        if (_wordWrap && anchorLine >= 0 && _wrap.HasValidData(_buffer.Count))
+        if ((_wordWrap || HasFoldLayout) && anchorLine >= 0 && _wrap.HasValidData(_buffer.Count))
         {
             int newWrap = Math.Min(anchorWrap, VisualLineCount(anchorLine) - 1);
             double newY = (_wrap.CumulOffset(anchorLine) + newWrap) * _font.LineHeight + anchorDelta;
@@ -681,7 +704,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (digits != _gutterDigits)
         {
             _gutterDigits = digits;
-            _gutterWidth = digits * _font.CharWidth + GutterRightMargin;
+            _gutterWidth = digits * _font.CharWidth + GutterRightMargin + FoldGutterWidth;
         }
 
         int maxLen = _buffer.UpdateMaxForLine(_caretLine);
@@ -690,7 +713,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _wordWrap
                 ? _viewport.Width
                 : _gutterWidth + GutterPadding + maxLen * _font.CharWidth + HorizontalScrollPadding,
-            (_wordWrap ? _wrap.TotalVisualLines : _buffer.Count) * _font.LineHeight + _viewport.Height / 2);
+            (_wordWrap || HasFoldLayout ? _wrap.TotalVisualLines : _buffer.Count) * _font.LineHeight + _viewport.Height / 2);
 
         if (Math.Abs(newExtent.Width - _extent.Width) > 0.5
             || Math.Abs(newExtent.Height - _extent.Height) > 0.5)
@@ -703,7 +726,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void RecalcWrapData()
     {
         double textAreaWidth = _viewport.Width - _gutterWidth - GutterPadding;
-        _wrap.Recalculate(_wordWrap, _wordWrapAtWords, _wordWrapIndent, _buffer, textAreaWidth, _font.CharWidth);
+        _wrap.Recalculate(_wordWrap, _wordWrapAtWords, _wordWrapIndent, _buffer, textAreaWidth, _font.CharWidth, _hiddenLines);
     }
 
     // ── Wrap coordinate helpers (delegate to WrapLayout) ────────────
@@ -857,7 +880,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     private (int first, int last) VisibleLineRange()
     {
-        if (!_wordWrap)
+        if (!_wordWrap && !HasFoldLayout)
         {
             int first = Math.Max(0, (int)(_offset.Y / _font.LineHeight));
             int last = Math.Min(_buffer.Count - 1,
@@ -904,10 +927,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
             var (sl, sc, el, ec) = _selection.GetOrdered(_caretLine, _caretCol);
             for (int i = Math.Max(firstLine, sl); i <= Math.Min(lastLine, el); i++)
             {
+                if (IsLineHidden(i)) continue;
                 int selStart = i == sl ? sc : 0;
                 int selEnd = i == el ? ec : _buffer[i].Length;
 
-                if (!_wordWrap)
+                if (!_wordWrap && !HasFoldLayout)
                 {
                     double y = i * _font.LineHeight - _offset.Y;
                     double x1 = _gutterWidth + GutterPadding + selStart * _font.CharWidth - _offset.X;
@@ -938,11 +962,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
             {
                 var (mLine, mCol, mLen) = _find.Matches[m];
                 if (mLine > lastLine) break;
+                if (IsLineHidden(mLine)) continue;
                 var brush = m == _find.CurrentIndex
                     ? ThemeManager.FindMatchCurrentBrush
                     : ThemeManager.FindMatchBrush;
 
-                if (!_wordWrap)
+                if (!_wordWrap && !HasFoldLayout)
                 {
                     double pxStart = mCol * _font.CharWidth;
                     double pxEnd = (mCol + mLen) * _font.CharWidth;
@@ -985,14 +1010,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
             }
             if (_bracketMatchCache is var (bl, bc, ml, mc))
             {
-                if (bl >= firstLine && bl <= lastLine)
+                if (bl >= firstLine && bl <= lastLine && !IsLineHidden(bl))
                 {
                     var (bx, by) = GetPixelForPosition(bl, bc);
                     dc.DrawRectangle(ThemeManager.MatchingBracketBrush,
                         ThemeManager.MatchingBracketPen,
                         new Rect(bx, by, _font.CharWidth, _font.LineHeight));
                 }
-                if (ml >= firstLine && ml <= lastLine)
+                if (ml >= firstLine && ml <= lastLine && !IsLineHidden(ml))
                 {
                     var (mx, my) = GetPixelForPosition(ml, mc);
                     dc.DrawRectangle(ThemeManager.MatchingBracketBrush,
@@ -1073,6 +1098,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         EnsureLineStates(drawLast);
         for (int i = drawFirst; i <= drawLast; i++)
         {
+            if (IsLineHidden(i)) continue;
             var line = _buffer[i];
             if (line.Length == 0) continue;
             double x = _gutterWidth + GutterPadding;
@@ -1088,7 +1114,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
             if (!_wordWrap || VisualLineCount(i) <= 1)
             {
-                double y = _wordWrap ? _wrap.CumulOffset(i) * _font.LineHeight : i * _font.LineHeight;
+                double y = _wordWrap || HasFoldLayout ? _wrap.CumulOffset(i) * _font.LineHeight : i * _font.LineHeight;
                 RenderLineTokens(dc, line, x, y, 0, line.Length, cached.tokens);
             }
             else
@@ -1152,6 +1178,141 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _font.DrawGlyphRun(dc, line, pos, segEnd - pos,
                 x + (pos - segStart) * _font.CharWidth, y, ThemeManager.EditorFg);
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    //  Code folding
+    // ──────────────────────────────────────────────────────────────────
+
+    public void ToggleFold(int line)
+    {
+        if (line < 0 || line >= _buffer.Count || !IsBlockOpener(_buffer[line])) return;
+        if (!_foldedLines.Remove(line))
+            _foldedLines.Add(line);
+        RebuildFoldState();
+    }
+
+    private void RebuildFoldState()
+    {
+        // Validate: remove folds for lines that are no longer block openers
+        _foldedLines.RemoveWhere(f => f < 0 || f >= _buffer.Count || !IsBlockOpener(_buffer[f]));
+
+        if (_foldedLines.Count == 0)
+        {
+            _hiddenLines = null;
+        }
+        else
+        {
+            _hiddenLines = new BitArray(_buffer.Count);
+            foreach (var opener in _foldedLines)
+            {
+                int? closer = FindStructuralCloser(opener);
+                if (closer == null) { _foldedLines.Remove(opener); continue; }
+                for (int i = opener + 1; i < closer.Value; i++)
+                    _hiddenLines[i] = true;
+            }
+        }
+
+        // If caret is inside a folded region, move it to the fold opener
+        if (_hiddenLines != null && _caretLine < _hiddenLines.Length && _hiddenLines[_caretLine])
+        {
+            for (int i = _caretLine - 1; i >= 0; i--)
+            {
+                if (!_hiddenLines[i]) { _caretLine = i; _caretCol = _buffer[i].Length; break; }
+            }
+        }
+
+        _tokenCacheDirty = true;
+        _bracketMatchDirty = true;
+        UpdateExtent();
+        InvalidateText();
+    }
+
+    /// <summary>Fold the block at or enclosing the caret.</summary>
+    private void FoldAtCaret()
+    {
+        // If caret is on a block opener, fold it
+        if (IsBlockOpener(_buffer[_caretLine]) && !_foldedLines.Contains(_caretLine))
+        {
+            ToggleFold(_caretLine);
+            return;
+        }
+        // Otherwise find the nearest enclosing block opener above
+        int depth = 0;
+        for (int i = _caretLine - 1; i >= Math.Max(0, _caretLine - BracketMatcher.MaxScanLines); i--)
+        {
+            if (IsBlockCloser(_buffer[i])) depth++;
+            if (IsBlockOpener(_buffer[i]))
+            {
+                if (depth > 0) { depth--; continue; }
+                if (!_foldedLines.Contains(i))
+                {
+                    ToggleFold(i);
+                    return;
+                }
+            }
+        }
+    }
+
+    /// <summary>Unfold the block at or enclosing the caret.</summary>
+    private void UnfoldAtCaret()
+    {
+        // If caret is on a folded opener, unfold it
+        if (_foldedLines.Contains(_caretLine))
+        {
+            ToggleFold(_caretLine);
+            return;
+        }
+        // Otherwise find the nearest enclosing folded opener above
+        int depth = 0;
+        for (int i = _caretLine - 1; i >= Math.Max(0, _caretLine - BracketMatcher.MaxScanLines); i--)
+        {
+            if (IsBlockCloser(_buffer[i])) depth++;
+            if (IsBlockOpener(_buffer[i]))
+            {
+                if (depth > 0) { depth--; continue; }
+                if (_foldedLines.Contains(i))
+                {
+                    ToggleFold(i);
+                    return;
+                }
+            }
+        }
+    }
+
+    /// <summary>Shift fold line indices after buffer edits that insert or remove lines.</summary>
+    private void ShiftFolds(int editLine, int linesDelta)
+    {
+        if (linesDelta == 0 || _foldedLines.Count == 0) return;
+        var shifted = new HashSet<int>();
+        foreach (var f in _foldedLines)
+            shifted.Add(f >= editLine ? f + linesDelta : f);
+        _foldedLines.Clear();
+        foreach (var f in shifted)
+            _foldedLines.Add(f);
+        RebuildFoldState();
+    }
+
+    /// <summary>Find the next visible line at or after the given line.</summary>
+    private int NextVisibleLine(int line)
+    {
+        if (_hiddenLines == null) return line;
+        while (line < _buffer.Count && line < _hiddenLines.Length && _hiddenLines[line])
+            line++;
+        return Math.Min(line, _buffer.Count - 1);
+    }
+
+    /// <summary>Find the previous visible line at or before the given line.</summary>
+    private int PrevVisibleLine(int line)
+    {
+        if (_hiddenLines == null) return line;
+        while (line > 0 && line < _hiddenLines.Length && _hiddenLines[line])
+            line--;
+        return Math.Max(line, 0);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    //  Indent guides & block detection
+    // ──────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Measures the number of leading whitespace columns in a line,
@@ -1239,7 +1400,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
             double x = baseX + indentCol * _font.CharWidth;
             double yTop, yBot;
-            if (!_wordWrap)
+            if (!_wordWrap && !HasFoldLayout)
             {
                 yTop = guideFirst * _font.LineHeight;
                 yBot = (guideLast + 1) * _font.LineHeight;
@@ -1250,7 +1411,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 yBot = (_wrap.CumulOffset(guideLast) + VisualLineCount(guideLast)) * _font.LineHeight;
             }
 
-            dc.DrawLine(pen, new Point(x, yTop), new Point(x, yBot));
+            if (yTop < yBot)
+                dc.DrawLine(pen, new Point(x, yTop), new Point(x, yBot));
         }
 
         // Find guides that start above the draw range but pass through it.
@@ -1278,7 +1440,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
                 double x = baseX + indentCol * _font.CharWidth;
                 double yTop, yBot;
-                if (!_wordWrap)
+                if (!_wordWrap && !HasFoldLayout)
                 {
                     yTop = guideFirst * _font.LineHeight;
                     yBot = (guideLast + 1) * _font.LineHeight;
@@ -1304,7 +1466,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (drawLast < drawFirst) return;
 
         double bgTop, bgBottom;
-        if (_wordWrap)
+        if (_wordWrap || HasFoldLayout)
         {
             bgTop = _wrap.CumulOffset(drawFirst) * _font.LineHeight;
             int lastVisual = _wrap.CumulOffset(drawLast) + VisualLineCount(drawLast);
@@ -1321,9 +1483,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
         dc.DrawLine(_gutterSepPen,
             new Point(_gutterWidth, bgTop), new Point(_gutterWidth, bgBottom));
 
+        double foldCenterX = _gutterWidth - FoldGutterWidth / 2 - 2;
         for (int i = drawFirst; i <= drawLast; i++)
         {
-            double y = _wordWrap ? _wrap.CumulOffset(i) * _font.LineHeight : i * _font.LineHeight;
+            if (IsLineHidden(i)) continue;
+            double y = _wordWrap || HasFoldLayout
+                ? _wrap.CumulOffset(i) * _font.LineHeight
+                : i * _font.LineHeight;
             var brush = i == _caretLine
                 ? ThemeManager.ActiveLineNumberFg : ThemeManager.GutterFg;
             int lineNum = i + 1;
@@ -1334,7 +1500,54 @@ public class EditorControl : FrameworkElement, IScrollInfo
             }
             double numWidth = numStr.Length * _font.CharWidth;
             _font.DrawGlyphRun(dc, numStr, 0, numStr.Length,
-                _gutterWidth - numWidth - GutterPadding, y, brush);
+                _gutterWidth - FoldGutterWidth - numWidth - GutterPadding, y, brush);
+
+            // Draw fold markers for block openers
+            if (IsBlockOpener(_buffer[i]))
+            {
+                bool isFolded = _foldedLines.Contains(i);
+                bool isHovered = i == _hoverFoldLine;
+                double cy = y + _font.LineHeight / 2;
+                double sz = Math.Min(8, _font.LineHeight * 0.45);
+                double btnSize = _font.LineHeight * 0.85;
+                double btnX = foldCenterX - btnSize / 2;
+                double btnY = y + (_font.LineHeight - btnSize) / 2;
+
+                // Hover background (matches scroll bar arrow button style)
+                if (isHovered)
+                {
+                    dc.DrawRoundedRectangle(ThemeManager.FoldHoverBrush, null,
+                        new Rect(btnX, btnY, btnSize, btnSize), 3, 3);
+                }
+
+                var fg = isHovered ? ThemeManager.EditorFg : ThemeManager.GutterFg;
+                if (isFolded)
+                {
+                    // ▸ right-pointing triangle
+                    var tri = new StreamGeometry();
+                    using (var ctx = tri.Open())
+                    {
+                        ctx.BeginFigure(new Point(foldCenterX - sz * 0.4, cy - sz * 0.55), true, true);
+                        ctx.LineTo(new Point(foldCenterX + sz * 0.5, cy), true, false);
+                        ctx.LineTo(new Point(foldCenterX - sz * 0.4, cy + sz * 0.55), true, false);
+                    }
+                    tri.Freeze();
+                    dc.DrawGeometry(fg, null, tri);
+                }
+                else
+                {
+                    // ▾ down-pointing triangle
+                    var tri = new StreamGeometry();
+                    using (var ctx = tri.Open())
+                    {
+                        ctx.BeginFigure(new Point(foldCenterX - sz * 0.55, cy - sz * 0.35), true, true);
+                        ctx.LineTo(new Point(foldCenterX + sz * 0.55, cy - sz * 0.35), true, false);
+                        ctx.LineTo(new Point(foldCenterX, cy + sz * 0.45), true, false);
+                    }
+                    tri.Freeze();
+                    dc.DrawGeometry(fg, null, tri);
+                }
+            }
         }
 
         _gutterRenderedFirstLine = drawFirst;
@@ -1365,9 +1578,22 @@ public class EditorControl : FrameworkElement, IScrollInfo
     {
         Focus();
         Keyboard.Focus(this);
-        CaptureMouse();
 
         var pos = e.GetPosition(this);
+
+        // Check for click on fold gutter marker
+        if (pos.X >= _gutterWidth - FoldGutterWidth && pos.X < _gutterWidth)
+        {
+            var (foldLine, _) = HitTest(pos);
+            if (IsBlockOpener(_buffer[foldLine]))
+            {
+                ToggleFold(foldLine);
+                e.Handled = true;
+                return;
+            }
+        }
+
+        CaptureMouse();
         var (line, col) = HitTest(pos);
 
         if (e.ClickCount == 2)
@@ -1400,8 +1626,36 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
-        if (!_isDragging) return;
         var pos = e.GetPosition(this);
+
+        // Update fold gutter hover state and cursor
+        if (!_isDragging)
+        {
+            int newHover = -1;
+            if (pos.X >= _gutterWidth - FoldGutterWidth && pos.X < _gutterWidth)
+            {
+                var (hl, _) = HitTest(pos);
+                if (hl >= 0 && hl < _buffer.Count && IsBlockOpener(_buffer[hl]))
+                    newHover = hl;
+            }
+            if (newHover != _hoverFoldLine)
+            {
+                _hoverFoldLine = newHover;
+                Cursor = _hoverFoldLine >= 0 ? Cursors.Hand : Cursors.IBeam;
+                _gutterVisualDirty = true;
+                InvalidateVisual();
+            }
+            else if (pos.X < _gutterWidth)
+            {
+                Cursor = _hoverFoldLine >= 0 ? Cursors.Hand : Cursors.Arrow;
+            }
+            else
+            {
+                Cursor = Cursors.IBeam;
+            }
+        }
+
+        if (!_isDragging) return;
         var (line, col) = HitTest(pos);
 
         if (line == _caretLine && col == _caretCol)
@@ -1426,6 +1680,17 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _isDragging = false;
         ReleaseMouseCapture();
         e.Handled = true;
+    }
+
+    protected override void OnMouseLeave(MouseEventArgs e)
+    {
+        if (_hoverFoldLine >= 0)
+        {
+            _hoverFoldLine = -1;
+            Cursor = Cursors.IBeam;
+            _gutterVisualDirty = true;
+            InvalidateVisual();
+        }
     }
 
     protected override void OnMouseRightButtonUp(MouseButtonEventArgs e)
@@ -1592,6 +1857,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 Redo();
                 EnsureCaretVisible();
                 ResetCaret();
+                e.Handled = true;
+                break;
+
+            case Key.OemOpenBrackets when ctrl && shift:
+                FoldAtCaret();
+                e.Handled = true;
+                break;
+
+            case Key.OemCloseBrackets when ctrl && shift:
+                UnfoldAtCaret();
                 e.Handled = true;
                 break;
         }
@@ -1791,7 +2066,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     _caretCol--;
                 else if (_caretLine > 0)
                 {
-                    _caretLine--;
+                    _caretLine = PrevVisibleLine(_caretLine - 1);
                     _caretCol = _buffer[_caretLine].Length;
                 }
                 if (!shift) _selection.Clear();
@@ -1806,7 +2081,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     _caretCol++;
                 else if (_caretLine < _buffer.Count - 1)
                 {
-                    _caretLine++;
+                    _caretLine = NextVisibleLine(_caretLine + 1);
                     _caretCol = 0;
                 }
                 if (!shift) _selection.Clear();
@@ -1817,7 +2092,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 if (_caretLine > 0)
                 {
                     if (_preferredCol < 0) _preferredCol = _caretCol;
-                    _caretLine--;
+                    _caretLine = PrevVisibleLine(_caretLine - 1);
                     _caretCol = Math.Min(_preferredCol, _buffer[_caretLine].Length);
                 }
                 if (!shift) _selection.Clear();
@@ -1828,7 +2103,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 if (_caretLine < _buffer.Count - 1)
                 {
                     if (_preferredCol < 0) _preferredCol = _caretCol;
-                    _caretLine++;
+                    _caretLine = NextVisibleLine(_caretLine + 1);
                     _caretCol = Math.Min(_preferredCol, _buffer[_caretLine].Length);
                 }
                 if (!shift) _selection.Clear();
@@ -1856,9 +2131,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 int visibleLines = Math.Max(1, (int)(_viewport.Height / _font.LineHeight) - 1);
                 if (shift) _selection.Start(_caretLine, _caretCol);
                 if (key == Key.PageUp)
-                    _caretLine = Math.Max(0, _caretLine - visibleLines);
+                    _caretLine = PrevVisibleLine(Math.Max(0, _caretLine - visibleLines));
                 else
-                    _caretLine = Math.Min(_buffer.Count - 1, _caretLine + visibleLines);
+                    _caretLine = NextVisibleLine(Math.Min(_buffer.Count - 1, _caretLine + visibleLines));
                 _caretCol = Math.Min(_caretCol, _buffer[_caretLine].Length);
                 if (!shift) _selection.Clear();
                 break;
@@ -2056,6 +2331,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _selection.Clear();
         _undoManager.Clear();
         _cleanUndoDepth = 0;
+        _foldedLines.Clear();
+        _hiddenLines = null;
         _find.Clear();
         _tokenCacheDirty = true;
         _lineNumStrings.Clear();
@@ -2134,6 +2411,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         bool large = _buffer.Count > 10_000;
         _undoManager.Clear();
         _buffer.Clear();
+        _foldedLines.Clear();
+        _hiddenLines = null;
         // TrimExcess releases the backing arrays that Clear() leaves allocated
         _tokenCache.Clear();
         _tokenCache.TrimExcess();

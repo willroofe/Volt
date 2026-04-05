@@ -29,6 +29,7 @@ public class ThemeManager
     public Brush FindMatchBrush { get; private set; } = Brushes.Yellow;
     public Brush FindMatchCurrentBrush { get; private set; } = Brushes.Orange;
     public Pen IndentGuidePen { get; private set; } = new Pen(Brushes.Gray, 1);
+    public Brush FoldHoverBrush { get; private set; } = Brushes.DarkGray;
 
     private bool _initialized;
 
@@ -101,6 +102,7 @@ public class ThemeManager
         FindMatchBrush = ColorTheme.ParseBrush(e.FindMatch);
         FindMatchCurrentBrush = ColorTheme.ParseBrush(e.FindMatchCurrent);
         IndentGuidePen = ColorTheme.ParsePen(e.IndentGuide, 1);
+        FoldHoverBrush = ColorTheme.ParseBrush(_colorTheme.Chrome.ScrollThumb);
     }
 
     private void UpdateAppResources()
