@@ -28,6 +28,7 @@ public class ThemeManager
     public Pen MatchingBracketPen { get; private set; } = new Pen(Brushes.Gray, 1);
     public Brush FindMatchBrush { get; private set; } = Brushes.Yellow;
     public Brush FindMatchCurrentBrush { get; private set; } = Brushes.Orange;
+    public Pen IndentGuidePen { get; private set; } = new Pen(Brushes.Gray, 1);
 
     private bool _initialized;
 
@@ -99,6 +100,7 @@ public class ThemeManager
         MatchingBracketPen = ColorTheme.ParsePen(e.MatchingBracketBorder, 1);
         FindMatchBrush = ColorTheme.ParseBrush(e.FindMatch);
         FindMatchCurrentBrush = ColorTheme.ParseBrush(e.FindMatchCurrent);
+        IndentGuidePen = ColorTheme.ParsePen(e.IndentGuide, 1);
     }
 
     private void UpdateAppResources()

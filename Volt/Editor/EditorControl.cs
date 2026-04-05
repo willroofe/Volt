@@ -44,6 +44,18 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ── Settings ───────────────────────────────────────────────────────
     public int TabSize { get; set; } = 4;
     public bool BlockCaret { get; set; }
+    private bool _indentGuides = true;
+    public bool IndentGuides
+    {
+        get => _indentGuides;
+        set
+        {
+            if (_indentGuides == value) return;
+            _indentGuides = value;
+            _textVisualDirty = true;
+            InvalidateVisual();
+        }
+    }
 
     private bool _wordWrapAtWords = true;
     public bool WordWrapAtWords
@@ -1055,6 +1067,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         if (drawLast < drawFirst) return;
 
+        if (_indentGuides)
+            RenderIndentGuides(dc, drawFirst, drawLast);
+
         EnsureLineStates(drawLast);
         for (int i = drawFirst; i <= drawLast; i++)
         {
@@ -1136,6 +1151,147 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (pos < segEnd)
             _font.DrawGlyphRun(dc, line, pos, segEnd - pos,
                 x + (pos - segStart) * _font.CharWidth, y, ThemeManager.EditorFg);
+    }
+
+    /// <summary>
+    /// Measures the number of leading whitespace columns in a line,
+    /// accounting for tab stops.
+    /// </summary>
+    internal static int MeasureIndentColumns(string line, int tabSize)
+    {
+        int cols = 0;
+        for (int i = 0; i < line.Length; i++)
+        {
+            if (line[i] == ' ') cols++;
+            else if (line[i] == '\t') cols += tabSize - cols % tabSize;
+            else break;
+        }
+        return cols;
+    }
+
+    /// <summary>
+    /// Returns true if the last non-whitespace character on the line is '{'.
+    /// </summary>
+    internal static bool IsBlockOpener(string line)
+    {
+        for (int i = line.Length - 1; i >= 0; i--)
+        {
+            if (line[i] == ' ' || line[i] == '\t') continue;
+            return line[i] == '{';
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Returns true if the first non-whitespace character on the line is '}'.
+    /// </summary>
+    internal static bool IsBlockCloser(string line)
+    {
+        for (int i = 0; i < line.Length; i++)
+        {
+            if (line[i] == ' ' || line[i] == '\t') continue;
+            return line[i] == '}';
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Scans forward from an opener line to find the matching structural closer.
+    /// Only considers '{' at end of line and '}' at start of line for depth counting,
+    /// which naturally ignores braces inside comments, strings, and hash accesses.
+    /// </summary>
+    private int? FindStructuralCloser(int openLine)
+    {
+        int depth = 1;
+        int maxLine = Math.Min(_buffer.Count - 1, openLine + BracketMatcher.MaxScanLines);
+        for (int i = openLine + 1; i <= maxLine; i++)
+        {
+            var line = _buffer[i];
+            if (IsBlockOpener(line)) depth++;
+            if (IsBlockCloser(line)) depth--;
+            if (depth == 0) return i;
+        }
+        return null;
+    }
+
+    private void RenderIndentGuides(DrawingContext dc, int drawFirst, int drawLast)
+    {
+        if (_buffer.Count == 0) return;
+
+        double baseX = _gutterWidth + GutterPadding;
+        var pen = ThemeManager.IndentGuidePen;
+
+        // For each line in the draw range that opens a block, find its closer and draw a guide.
+        for (int i = drawFirst; i <= drawLast; i++)
+        {
+            if (!IsBlockOpener(_buffer[i])) continue;
+
+            int? closeLineN = FindStructuralCloser(i);
+            if (closeLineN == null) continue;
+            int closeLine = closeLineN.Value;
+
+            int indentCol = MeasureIndentColumns(_buffer[closeLine], TabSize);
+            if (indentCol == 0) continue;
+
+            int guideFirst = i + 1;
+            int guideLast = closeLine - 1;
+            if (guideLast < guideFirst) continue;
+
+            double x = baseX + indentCol * _font.CharWidth;
+            double yTop, yBot;
+            if (!_wordWrap)
+            {
+                yTop = guideFirst * _font.LineHeight;
+                yBot = (guideLast + 1) * _font.LineHeight;
+            }
+            else
+            {
+                yTop = _wrap.CumulOffset(guideFirst) * _font.LineHeight;
+                yBot = (_wrap.CumulOffset(guideLast) + VisualLineCount(guideLast)) * _font.LineHeight;
+            }
+
+            dc.DrawLine(pen, new Point(x, yTop), new Point(x, yBot));
+        }
+
+        // Find guides that start above the draw range but pass through it.
+        int depth = 0;
+        int scanMin = Math.Max(0, drawFirst - BracketMatcher.MaxScanLines);
+        for (int i = drawFirst - 1; i >= scanMin; i--)
+        {
+            var line = _buffer[i];
+            if (IsBlockCloser(line)) depth++;
+            if (IsBlockOpener(line))
+            {
+                if (depth > 0) { depth--; continue; }
+
+                int? closeLineN = FindStructuralCloser(i);
+                if (closeLineN == null) continue;
+                int closeLine = closeLineN.Value;
+                if (closeLine < drawFirst) continue;
+
+                int indentCol = MeasureIndentColumns(_buffer[closeLine], TabSize);
+                if (indentCol == 0) continue;
+
+                int guideFirst = i + 1;
+                int guideLast = closeLine - 1;
+                if (guideLast < guideFirst) continue;
+
+                double x = baseX + indentCol * _font.CharWidth;
+                double yTop, yBot;
+                if (!_wordWrap)
+                {
+                    yTop = guideFirst * _font.LineHeight;
+                    yBot = (guideLast + 1) * _font.LineHeight;
+                }
+                else
+                {
+                    yTop = _wrap.CumulOffset(guideFirst) * _font.LineHeight;
+                    yBot = (_wrap.CumulOffset(guideLast) + VisualLineCount(guideLast)) * _font.LineHeight;
+                }
+
+                dc.DrawLine(pen, new Point(x, yTop), new Point(x, yBot));
+            }
+        }
     }
 
     private void RenderGutterVisual(int firstLine, int lastLine)
