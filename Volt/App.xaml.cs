@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using Velopack;
@@ -38,6 +39,11 @@ public partial class App : Application
         // Create and show window manually so we can defer heavy session
         // restore until after the window is painted on screen.
         var window = new MainWindow();
+
+        // Pass command-line file path (e.g. from Windows "Open with") to the window
+        if (e.Args.Length > 0 && File.Exists(e.Args[0]))
+            window._startupFilePath = e.Args[0];
+
         MainWindow = window;
         window.Show();
 
