@@ -218,6 +218,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private int _gutterRenderedFirstLine = -1;
     private int _gutterRenderedLastLine = -1;
     private const int RenderBufferLines = 50;
+    private const int LongLineThreshold = 500_000; // skip expensive processing for lines longer than this
+    // Track rendered scroll region for long-line viewport clamping
+    private double _renderedScrollX = double.NaN;
+    private double _renderedScrollY = double.NaN;
+    // Bias subtracted from content-space X coords to keep values small enough for
+    // WPF's float32 render pipeline. Zero for normal files.
+    private double _textXBias;
 
     // ── Font property delegation ─────────────────────────────────────
     public string FontFamilyName
@@ -845,7 +852,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
             {
                 for (int i = from; i < _buffer.Count && i + 1 < _lineStates.Count; i++)
                 {
-                    SyntaxManager.Tokenize(_buffer[i], _grammar, _lineStates[i], out var outState);
+                    var outState = _buffer[i].Length > LongLineThreshold
+                        ? SyntaxManager.DefaultState
+                        : TokenizeLineState(_buffer[i], _lineStates[i]);
                     if (_lineStates[i + 1] == outState)
                         break;
                     _lineStates[i + 1] = outState;
@@ -857,9 +866,17 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             int lineIdx = _lineStates.Count - 1;
             var inState = _lineStates[lineIdx];
-            SyntaxManager.Tokenize(_buffer[lineIdx], _grammar, inState, out var outState);
+            var outState = _buffer[lineIdx].Length > LongLineThreshold
+                ? SyntaxManager.DefaultState
+                : TokenizeLineState(_buffer[lineIdx], inState);
             _lineStates.Add(outState);
         }
+    }
+
+    private LineState TokenizeLineState(string line, LineState inState)
+    {
+        SyntaxManager.Tokenize(line, _grammar, inState, out var outState);
+        return outState;
     }
 
     private void InvalidateLineStates()
@@ -1024,7 +1041,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             if (_bracketMatchDirty)
             {
-                _bracketMatchCache = BracketMatcher.FindMatch(_buffer, _caretLine, _caretCol, IsInsideLiteral);
+                _bracketMatchCache = _caretLine < _buffer.Count && _buffer[_caretLine].Length > LongLineThreshold
+                    ? null
+                    : BracketMatcher.FindMatch(_buffer, _caretLine, _caretCol, IsInsideLiteral);
                 _bracketMatchDirty = false;
             }
             if (_bracketMatchCache is var (bl, bc, ml, mc))
@@ -1046,17 +1065,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
             }
         }
 
-        _textTransform.X = -_offset.X;
-        _textTransform.Y = -_offset.Y;
-        _gutterTransform.Y = -_offset.Y;
-
-        _textClipGeom.Rect = new Rect(
-            _gutterWidth + _offset.X, _offset.Y,
-            Math.Max(0, ActualWidth - _gutterWidth), ActualHeight);
+        // For long lines, the rendered region is clamped to the viewport.
+        // Re-render when scroll moves beyond the rendered buffer zone.
+        bool longLineScrolled = !double.IsNaN(_renderedScrollX)
+            && (Math.Abs(_offset.X - _renderedScrollX) > _viewport.Width * 0.25
+                || Math.Abs(_offset.Y - _renderedScrollY) > _viewport.Height * 0.25);
 
         if (_textVisualDirty
             || firstLine < _renderedFirstLine
-            || lastLine > _renderedLastLine)
+            || lastLine > _renderedLastLine
+            || longLineScrolled)
         {
             RenderTextVisual(firstLine, lastLine);
             _textVisualDirty = false;
@@ -1068,13 +1086,26 @@ public class EditorControl : FrameworkElement, IScrollInfo
             RenderGutterVisual(firstLine, lastLine);
             _gutterVisualDirty = false;
         }
+
+        // Set transform/clip AFTER RenderTextVisual so _textXBias is up to date
+        _textTransform.X = -(_offset.X - _textXBias);
+        _textTransform.Y = -_offset.Y;
+        _gutterTransform.Y = -_offset.Y;
+
+        _textClipGeom.Rect = new Rect(
+            _gutterWidth + _offset.X - _textXBias, _offset.Y,
+            Math.Max(0, ActualWidth - _gutterWidth), ActualHeight);
         UpdateCaretVisual();
     }
 
     private void RenderWrappedSelection(DrawingContext dc, int line, int selStart, int selEnd, int sl, int sc, int el)
     {
         int vCount = VisualLineCount(line);
-        for (int w = 0; w < vCount; w++)
+        int baseCumul = _wrap.CumulOffset(line);
+        int visFirst = Math.Max(0, (int)(_offset.Y / _font.LineHeight) - RenderBufferLines - baseCumul);
+        int visLast = Math.Min(vCount - 1,
+            (int)((_offset.Y + _viewport.Height) / _font.LineHeight) + RenderBufferLines - baseCumul);
+        for (int w = Math.Max(0, visFirst); w <= visLast; w++)
         {
             int wStart = WrapColStart(line, w);
             int wEnd = w + 1 < vCount ? WrapColStart(line, w + 1) : _buffer[line].Length;
@@ -1111,6 +1142,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         if (drawLast < drawFirst) return;
 
+        // Compute X bias before rendering. When long lines are visible, bias
+        // shifts content-space X origin near the viewport to avoid float32
+        // precision loss in WPF's transform pipeline at very large pixel offsets.
+        bool hasLongLine = false;
+        for (int i = drawFirst; i <= drawLast; i++)
+            if (_buffer[i].Length > LongLineThreshold) { hasLongLine = true; break; }
+        _textXBias = hasLongLine ? _offset.X : 0;
+
         if (_indentGuides)
             RenderIndentGuides(dc, drawFirst, drawLast);
 
@@ -1126,7 +1165,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
             if (!_tokenCache.TryGetValue(i, out var cached)
                 || cached.content != line || cached.inState != inState)
             {
-                var tokens = SyntaxManager.Tokenize(line, _grammar, inState, out _);
+                // Skip expensive tokenization for extremely long lines — render as plain text
+                var tokens = line.Length > LongLineThreshold
+                    ? []
+                    : SyntaxManager.Tokenize(line, _grammar, inState, out _);
                 _tokenCache[i] = (line, inState, tokens);
                 cached = _tokenCache[i];
             }
@@ -1134,16 +1176,32 @@ public class EditorControl : FrameworkElement, IScrollInfo
             if (!_wordWrap || VisualLineCount(i) <= 1)
             {
                 double y = _wordWrap || HasFoldLayout ? _wrap.CumulOffset(i) * _font.LineHeight : i * _font.LineHeight;
-                RenderLineTokens(dc, line, x, y, 0, line.Length, cached.tokens);
+                int segStart = 0;
+                int segEnd = line.Length;
+                if (line.Length > LongLineThreshold)
+                {
+                    // Clamp to visible horizontal range to avoid rendering millions of off-screen chars
+                    segStart = Math.Max(0, (int)(_offset.X / _font.CharWidth) - 2);
+                    segEnd = Math.Min(line.Length,
+                        (int)((_offset.X + _viewport.Width) / _font.CharWidth) + 2);
+                }
+                // Subtract _textXBias from X to keep content-space coords small
+                RenderLineTokens(dc, line, x + segStart * _font.CharWidth - _textXBias,
+                    y, segStart, segEnd, cached.tokens);
             }
             else
             {
                 int vCount = VisualLineCount(i);
-                for (int w = 0; w < vCount; w++)
+                int baseCumul = _wrap.CumulOffset(i);
+                // Clamp wrap segment loop to viewport-visible range (critical for very long lines)
+                int visFirst = Math.Max(0, (int)(_offset.Y / _font.LineHeight) - RenderBufferLines - baseCumul);
+                int visLast = Math.Min(vCount - 1,
+                    (int)((_offset.Y + _viewport.Height) / _font.LineHeight) + RenderBufferLines - baseCumul);
+                for (int w = Math.Max(0, visFirst); w <= visLast; w++)
                 {
                     int segStart = WrapColStart(i, w);
                     int segEnd = w + 1 < vCount ? WrapColStart(i, w + 1) : line.Length;
-                    double y = (_wrap.CumulOffset(i) + w) * _font.LineHeight;
+                    double y = (baseCumul + w) * _font.LineHeight;
                     double wx = x + WrapIndentPx(i, w);
                     RenderLineTokens(dc, line, wx, y, segStart, segEnd, cached.tokens);
                 }
@@ -1152,6 +1210,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         _renderedFirstLine = drawFirst;
         _renderedLastLine = drawLast;
+        // Track scroll position when long-line clamping is active
+        if (hasLongLine)
+        {
+            _renderedScrollX = _offset.X;
+            _renderedScrollY = _offset.Y;
+        }
+        else
+        {
+            _renderedScrollX = double.NaN;
+        }
 
         if (_tokenCache.Count > (drawLast - drawFirst + 1) * 3)
         {
@@ -1342,6 +1410,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     /// </summary>
     private int? FindStructuralBlock(int line)
     {
+        if (_buffer[line].Length > LongLineThreshold) return null;
         var closer = BracketMatcher.FindBlockCloser(_buffer, line, IsInsideLiteral);
         if (closer == null) return null;
         // The '}' must be the first non-whitespace character on its line
@@ -1359,6 +1428,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void RenderIndentGuides(DrawingContext dc, int drawFirst, int drawLast)
     {
         if (_buffer.Count == 0) return;
+        // Skip indent guides when any visible line is extremely long —
+        // bracket scanning would be O(line_length) per character.
+        for (int i = drawFirst; i <= drawLast; i++)
+            if (_buffer[i].Length > LongLineThreshold) return;
 
         double baseX = _gutterWidth + GutterPadding;
         var pen = ThemeManager.IndentGuidePen;

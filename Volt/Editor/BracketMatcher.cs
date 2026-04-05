@@ -9,6 +9,7 @@ namespace Volt;
 public static class BracketMatcher
 {
     public const int MaxScanLines = 500;
+    private const int MaxScanChars = 500_000;
 
     public static readonly Dictionary<char, char> Pairs = new()
     {
@@ -70,6 +71,7 @@ public static class BracketMatcher
         int line = caretLine;
         int col = caretCol - 1;
         int minLine = Math.Max(0, caretLine - MaxScanLines);
+        int budget = MaxScanChars;
 
         while (line >= minLine)
         {
@@ -104,6 +106,7 @@ public static class BracketMatcher
             }
 
             col--;
+            if (--budget <= 0) return null;
         }
         return null;
     }
@@ -190,6 +193,7 @@ public static class BracketMatcher
         int line = fromLine;
         int col = fromCol - 1;
         int minLine = Math.Max(0, fromLine - MaxScanLines);
+        int budget = MaxScanChars;
 
         while (line >= minLine)
         {
@@ -212,6 +216,7 @@ public static class BracketMatcher
             }
 
             col--;
+            if (--budget <= 0) return null;
         }
         return null;
     }
@@ -225,6 +230,7 @@ public static class BracketMatcher
         int col = startCol;
         int maxLine = Math.Min(buffer.Count - 1, startLine + MaxScanLines);
         int minLine = Math.Max(0, startLine - MaxScanLines);
+        int budget = MaxScanChars;
 
         while (line >= minLine && line <= maxLine)
         {
@@ -256,6 +262,7 @@ public static class BracketMatcher
             else if (ch == target) depth--;
 
             if (depth == 0) return (line, col);
+            if (--budget <= 0) return null;
         }
         return null;
     }
