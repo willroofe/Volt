@@ -30,7 +30,8 @@ internal record CommandPaletteContext(
     Action ToggleWordWrapAtWords,
     Action ToggleWordWrapIndent,
     Action ToggleFixedWidthTabs,
-    Action CheckForUpdates);
+    Action CheckForUpdates,
+    Action OpenRecent);
 
 /// <summary>
 /// Builds the command list for the command palette, keeping the 90 lines of
@@ -174,6 +175,8 @@ internal static class CommandPaletteCommands
             new("Workspace: Add Folder to Workspace", Action: workspace.AddFolder),
 
             new("Check for Updates", Action: ctx.CheckForUpdates),
+
+            new("Open Recent", Action: ctx.OpenRecent),
         ];
     }
 }

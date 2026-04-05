@@ -1347,7 +1347,7 @@ public partial class MainWindow
                 Revert: () => { });
         }).ToList();
 
-        CmdPalette.OpenWithOptions("Recent: ", options);
+        Dispatcher.BeginInvoke(() => CmdPalette.OpenWithOptions("Recent: ", options));
     }
 
     private async void OpenRecentItem(string path, RecentItemKind kind)
@@ -1640,7 +1640,8 @@ public partial class MainWindow
             ToggleWordWrapAtWords,
             ToggleWordWrapIndent,
             ToggleFixedWidthTabs,
-            () => _ = AppUpdateManager.CheckForUpdatesAsync(this, showUpToDate: true)));
+            () => _ = AppUpdateManager.CheckForUpdatesAsync(this, showUpToDate: true),
+            OpenRecentInCommandPalette));
         CmdPalette.SetCommands(commands);
         CmdPalette.Open();
     }
