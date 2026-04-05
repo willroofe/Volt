@@ -215,11 +215,20 @@ public class TextBuffer
     {
         _lineEnding = DetectLineEnding(text);
         _lines.Clear();
-        var rawLines = text.Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
-        for (int i = 0; i < rawLines.Length; i++)
-            rawLines[i] = ExpandTabs(rawLines[i], tabSize);
-        _lines.AddRange(rawLines);
-        if (_lines.Count == 0) _lines.Add("");
+        // Split by line breaks using span enumeration to avoid allocating
+        // a large intermediate string[] (critical for binary files with many \n bytes).
+        var remaining = text.AsSpan();
+        while (true)
+        {
+            int nlIdx = remaining.IndexOfAny('\r', '\n');
+            if (nlIdx < 0) break;
+            _lines.Add(ExpandTabs(remaining.Slice(0, nlIdx).ToString(), tabSize));
+            if (remaining[nlIdx] == '\r' && nlIdx + 1 < remaining.Length && remaining[nlIdx + 1] == '\n')
+                remaining = remaining.Slice(nlIdx + 2);
+            else
+                remaining = remaining.Slice(nlIdx + 1);
+        }
+        _lines.Add(ExpandTabs(remaining.ToString(), tabSize));
         _maxLineLengthDirty = true; _charCountDirty = true;
         IsDirty = false;
     }
