@@ -188,7 +188,7 @@
                                        FontWeight="SemiBold"/>
                         </StackPanel>
                     </MenuItem.Header>
-                    <MenuItem Header="S_ettings" InputGestureText="Ctrl+Alt+S" Click="OnSettings">
+                    <MenuItem x:Name="MenuSettings" Header="S_ettings" Click="OnSettings">
                         <MenuItem.Icon>
                             <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
                         </MenuItem.Icon>
@@ -198,15 +198,15 @@
                 </MenuItem>
                 <MenuItem Header="_File" Style="{StaticResource TopLevelMenuItem}"
                          ItemContainerStyle="{StaticResource MenuItemDropdownStyle}">
-                    <MenuItem Header="_Save" InputGestureText="Ctrl+S" Click="OnSave">
+                    <MenuItem x:Name="MenuSave" Header="_Save" Click="OnSave">
                         <MenuItem.Icon>
                             <TextBlock Text="&#xE74E;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
                         </MenuItem.Icon>
                     </MenuItem>
-                    <MenuItem Header="Save _As..." InputGestureText="Ctrl+Shift+S" Click="OnSaveAs"/>
+                    <MenuItem x:Name="MenuSaveAs" Header="Save _As..." Click="OnSaveAs"/>
                     <Separator/>
-                    <MenuItem Header="_Open File" InputGestureText="Ctrl+O" Click="OnOpen"/>
-                    <MenuItem Header="Open _Folder" InputGestureText="Ctrl+Shift+O" Click="OnOpenFolder">
+                    <MenuItem x:Name="MenuOpenFile" Header="_Open File" Click="OnOpen"/>
+                    <MenuItem x:Name="MenuOpenFolder" Header="Open _Folder" Click="OnOpenFolder">
                         <MenuItem.Icon>
                             <TextBlock Text="&#xE838;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
                         </MenuItem.Icon>
@@ -225,10 +225,10 @@
                 </MenuItem>
                 <MenuItem Header="_View" Style="{StaticResource TopLevelMenuItem}"
                          ItemContainerStyle="{StaticResource MenuItemCheckableStyle}">
-                    <MenuItem x:Name="MenuViewLeft" Header="_Left Panel" IsCheckable="True" InputGestureText="Ctrl+B" Click="OnToggleLeftPanel"/>
-                    <MenuItem x:Name="MenuViewRight" Header="_Right Panel" IsCheckable="True" InputGestureText="Ctrl+Alt+B" Click="OnToggleRightPanel"/>
-                    <MenuItem x:Name="MenuViewTop" Header="_Top Panel" IsCheckable="True" InputGestureText="Ctrl+Alt+J" Click="OnToggleTopPanel"/>
-                    <MenuItem x:Name="MenuViewBottom" Header="_Bottom Panel" IsCheckable="True" InputGestureText="Ctrl+J" Click="OnToggleBottomPanel"/>
+                    <MenuItem x:Name="MenuViewLeft" Header="_Left Panel" IsCheckable="True" Click="OnToggleLeftPanel"/>
+                    <MenuItem x:Name="MenuViewRight" Header="_Right Panel" IsCheckable="True" Click="OnToggleRightPanel"/>
+                    <MenuItem x:Name="MenuViewTop" Header="_Top Panel" IsCheckable="True" Click="OnToggleTopPanel"/>
+                    <MenuItem x:Name="MenuViewBottom" Header="_Bottom Panel" IsCheckable="True" Click="OnToggleBottomPanel"/>
                 </MenuItem>
                 <MenuItem Header="_Workspace" Style="{StaticResource TopLevelMenuItem}"
                          ItemContainerStyle="{StaticResource MenuItemDropdownStyle}">

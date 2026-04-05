@@ -34,6 +34,13 @@ public partial class CommandPalette : UserControl
         _commands = commands;
     }
 
+    public void SetPosition(string position)
+    {
+        bool center = position == "Center";
+        _panel.VerticalAlignment = center ? VerticalAlignment.Center : VerticalAlignment.Top;
+        _panel.Margin = center ? new Thickness(0) : new Thickness(0, 50, 0, 0);
+    }
+
     public void Open()
     {
         _currentOptions = null;

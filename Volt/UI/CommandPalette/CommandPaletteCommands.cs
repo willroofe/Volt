@@ -22,6 +22,7 @@ internal record CommandPaletteContext(
     ThemeManager ThemeManager,
     EditorControl ActiveEditor,
     FindBar FindBar,
+    CommandPalette CommandPalette,
     Action SaveSettings,
     ExplorerActions Explorer,
     WorkspaceActions Workspace,
@@ -43,6 +44,7 @@ internal static class CommandPaletteCommands
         var themeManager = ctx.ThemeManager;
         var activeEditor = ctx.ActiveEditor;
         var findBar = ctx.FindBar;
+        var cmdPalette = ctx.CommandPalette;
         var saveSettings = ctx.SaveSettings;
         var explorer = ctx.Explorer;
         var workspace = ctx.Workspace;
@@ -140,6 +142,17 @@ internal static class CommandPaletteCommands
                     ApplyPreview: () => findBar.SetPosition(pos),
                     Commit: () => { settings.Editor.Find.BarPosition = pos; saveSettings(); },
                     Revert: () => findBar.SetPosition(original)
+                )).ToList();
+            }),
+
+            new("Command Palette Position", CurrentValue: () => settings.Application.CommandPalettePosition, GetOptions: () =>
+            {
+                var original = settings.Application.CommandPalettePosition;
+                return AppSettings.CommandPalettePositionOptions.Select(pos => new PaletteOption(
+                    pos,
+                    ApplyPreview: () => cmdPalette.SetPosition(pos),
+                    Commit: () => { settings.Application.CommandPalettePosition = pos; saveSettings(); },
+                    Revert: () => cmdPalette.SetPosition(original)
                 )).ToList();
             }),
 

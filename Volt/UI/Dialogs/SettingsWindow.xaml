@@ -259,6 +259,12 @@
                     <Button x:Name="NavTheme" Content="Theme"
                             Style="{StaticResource NavButtonActive}"
                             Click="OnNavTheme"/>
+                    <Button x:Name="NavCommandPalette" Content="Command Palette"
+                            Style="{StaticResource NavButton}"
+                            Click="OnNavCommandPalette"/>
+                    <Button x:Name="NavKeybinds" Content="Keybinds"
+                            Style="{StaticResource NavButton}"
+                            Click="OnNavKeybinds"/>
 
                     <TextBlock Text="EDITOR" Style="{StaticResource NavHeader}" Margin="16,12,0,2"/>
                     <Button x:Name="NavFont" Content="Font"
@@ -308,6 +314,45 @@
                         <ComboBox x:Name="ColorThemeBox" Width="200" Height="26"
                                   HorizontalAlignment="Left" Margin="0,0,0,16"
                                   VerticalContentAlignment="Center" FontSize="13"/>
+
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Command Palette section -->
+                <ScrollViewer x:Name="CommandPaletteScroller" Grid.Row="0"
+                              Template="{StaticResource ThemedScrollViewer}"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Visibility="Collapsed">
+                    <StackPanel Margin="24,20">
+                        <TextBlock Text="Command Palette" Style="{StaticResource SectionHeader}"/>
+
+                        <TextBlock Text="Position" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="CmdPalettePosBox" Width="100" Height="26"
+                                  HorizontalAlignment="Left" Margin="0,0,0,16"
+                                  VerticalContentAlignment="Center" FontSize="13">
+                            <ComboBoxItem Content="Top"/>
+                            <ComboBoxItem Content="Center"/>
+                        </ComboBox>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Keybinds section -->
+                <ScrollViewer x:Name="KeybindsScroller" Grid.Row="0"
+                              Template="{StaticResource ThemedScrollViewer}"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Visibility="Collapsed">
+                    <StackPanel Margin="24,20">
+                        <DockPanel Margin="0,0,0,16">
+                            <TextBlock Text="Keybinds" Style="{StaticResource SectionHeader}"
+                                       DockPanel.Dock="Left" Margin="0"/>
+                            <Button x:Name="ResetAllKeybinds" Content="Reset All"
+                                    Style="{StaticResource ActionButton}"
+                                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                                    Click="OnResetAllKeybinds"/>
+                        </DockPanel>
+                        <ItemsControl x:Name="KeybindList"/>
                     </StackPanel>
                 </ScrollViewer>
 
