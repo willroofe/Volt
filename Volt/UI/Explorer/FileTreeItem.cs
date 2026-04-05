@@ -89,10 +89,15 @@ public class FileTreeItem : INotifyPropertyChanged
     {
         try
         {
-            var (dirs, files) = await Task.Run(() => LoadDirectoryEntries(FullPath));
+            // Clear the placeholder immediately (before yielding) so it's never
+            // visible when the caller rebuilds the flat list after setting IsExpanded.
+            if (_hasPlaceholder)
+            {
+                _hasPlaceholder = false;
+                Children.Clear();
+            }
 
-            _hasPlaceholder = false;
-            Children.Clear();
+            var (dirs, files) = await Task.Run(() => LoadDirectoryEntries(FullPath));
 
             foreach (var dir in dirs)
             {
