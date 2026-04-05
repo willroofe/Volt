@@ -212,6 +212,7 @@ internal class WrapLayout
 
             int subLines = 0;
             int pos = 0;
+            var span = line.AsSpan();
             while (pos < len)
             {
                 _colStartBuffer.Add(pos);
@@ -223,16 +224,8 @@ internal class WrapLayout
 
                 // Find last whitespace within the visual line width to break at
                 int limit = pos + avail;
-                int breakAt = -1;
-                for (int j = limit; j > pos; j--)
-                {
-                    if (line[j - 1] == ' ' || line[j - 1] == '\t')
-                    {
-                        breakAt = j;
-                        break;
-                    }
-                }
-                pos = breakAt > pos ? breakAt : limit;
+                int idx = span.Slice(pos, limit - pos).LastIndexOfAny(' ', '\t');
+                pos = idx >= 0 ? pos + idx + 1 : limit;
             }
             _wrapLineCount![i] = subLines;
             cumul += subLines;
