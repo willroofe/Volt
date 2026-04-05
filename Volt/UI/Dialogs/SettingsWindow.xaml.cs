@@ -7,7 +7,8 @@ public record SettingsSnapshot(
     string FontFamily, double FontSize, string FontWeight,
     double LineHeight, string ColorTheme, string FindBarPosition,
     bool FindSeedWithSelection, bool FixedWidthTabs,
-    bool WordWrap, bool WordWrapAtWords, bool WordWrapIndent);
+    bool WordWrap, bool WordWrapAtWords, bool WordWrapIndent,
+    bool IndentGuides);
 
 public partial class SettingsWindow : Window
 {
@@ -25,8 +26,9 @@ public partial class SettingsWindow : Window
     public bool WordWrap { get; private set; }
     public bool WordWrapAtWords { get; private set; }
     public bool WordWrapIndent { get; private set; }
+    public bool IndentGuides { get; private set; }
 
-    private enum SettingsSection { Theme, Font, Caret, Tabs, Find, Explorer, WordWrap }
+    private enum SettingsSection { Theme, Font, Caret, Tabs, Find, Explorer, WordWrap, Indentation }
 
     public event EventHandler? Applied;
 
@@ -63,6 +65,8 @@ public partial class SettingsWindow : Window
         WordWrapAtWordsBox.SelectedIndex = snapshot.WordWrapAtWords ? 0 : 1;
         WordWrapIndent = snapshot.WordWrapIndent;
         WordWrapIndentBox.SelectedIndex = snapshot.WordWrapIndent ? 0 : 1;
+        IndentGuides = snapshot.IndentGuides;
+        IndentGuidesBox.SelectedIndex = snapshot.IndentGuides ? 0 : 1;
 
         // Populate font family dropdown
         _fontNames = FontManager.GetMonospaceFonts();
@@ -106,6 +110,7 @@ public partial class SettingsWindow : Window
         NavFind.Style = (Style)FindResource(section == SettingsSection.Find ? "NavButtonActive" : "NavButton");
         NavExplorer.Style = (Style)FindResource(section == SettingsSection.Explorer ? "NavButtonActive" : "NavButton");
         NavWordWrap.Style = (Style)FindResource(section == SettingsSection.WordWrap ? "NavButtonActive" : "NavButton");
+        NavIndentation.Style = (Style)FindResource(section == SettingsSection.Indentation ? "NavButtonActive" : "NavButton");
 
         ThemeScroller.Visibility = section == SettingsSection.Theme ? Visibility.Visible : Visibility.Collapsed;
         FontScroller.Visibility = section == SettingsSection.Font ? Visibility.Visible : Visibility.Collapsed;
@@ -114,6 +119,7 @@ public partial class SettingsWindow : Window
         FindScroller.Visibility = section == SettingsSection.Find ? Visibility.Visible : Visibility.Collapsed;
         ExplorerScroller.Visibility = section == SettingsSection.Explorer ? Visibility.Visible : Visibility.Collapsed;
         WordWrapScroller.Visibility = section == SettingsSection.WordWrap ? Visibility.Visible : Visibility.Collapsed;
+        IndentationScroller.Visibility = section == SettingsSection.Indentation ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnNavTheme(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Theme);
@@ -123,6 +129,7 @@ public partial class SettingsWindow : Window
     private void OnNavFind(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Find);
     private void OnNavExplorer(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Explorer);
     private void OnNavWordWrap(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.WordWrap);
+    private void OnNavIndentation(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Indentation);
 
     private void ReadCurrentValues()
     {
@@ -140,6 +147,7 @@ public partial class SettingsWindow : Window
         WordWrap = WordWrapBox.SelectedIndex == 0;
         WordWrapAtWords = WordWrapAtWordsBox.SelectedIndex == 0;
         WordWrapIndent = WordWrapIndentBox.SelectedIndex == 0;
+        IndentGuides = IndentGuidesBox.SelectedIndex == 0;
     }
 
     private void OnApply(object sender, RoutedEventArgs e)

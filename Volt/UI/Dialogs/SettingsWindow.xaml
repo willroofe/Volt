@@ -273,6 +273,9 @@
                     <Button x:Name="NavFind" Content="Find"
                             Style="{StaticResource NavButton}"
                             Click="OnNavFind"/>
+                    <Button x:Name="NavIndentation" Content="Indentation"
+                            Style="{StaticResource NavButton}"
+                            Click="OnNavIndentation"/>
                     <Button x:Name="NavWordWrap" Content="Word Wrap"
                             Style="{StaticResource NavButton}"
                             Click="OnNavWordWrap"/>
@@ -366,6 +369,18 @@
                                        Margin="10,0,0,0" Width="50"/>
                         </StackPanel>
 
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Indentation section -->
+                <ScrollViewer x:Name="IndentationScroller" Grid.Row="0"
+                              Template="{StaticResource ThemedScrollViewer}"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Visibility="Collapsed">
+                    <StackPanel Margin="24,20">
+                        <TextBlock Text="Indentation" Style="{StaticResource SectionHeader}"/>
+
                         <TextBlock Text="Tab size" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
                         <ComboBox x:Name="TabSizeBox" Width="70" Height="26"
                                   HorizontalAlignment="Left" Margin="0,0,0,16"
@@ -373,6 +388,14 @@
                             <ComboBoxItem Content="2"/>
                             <ComboBoxItem Content="4"/>
                             <ComboBoxItem Content="8"/>
+                        </ComboBox>
+
+                        <TextBlock Text="Indent guides" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="IndentGuidesBox" Width="100" Height="26"
+                                  HorizontalAlignment="Left" Margin="0,0,0,16"
+                                  VerticalContentAlignment="Center" FontSize="13">
+                            <ComboBoxItem Content="On"/>
+                            <ComboBoxItem Content="Off"/>
                         </ComboBox>
                     </StackPanel>
                 </ScrollViewer>

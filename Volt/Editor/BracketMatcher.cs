@@ -103,6 +103,14 @@ public static class BracketMatcher
 
     private static int BracketIndex(char ch) => ch switch { '(' => 0, '{' => 1, '[' => 2, _ => -1 };
 
+    /// <summary>
+    /// Scans forward from the given position to find the matching closing bracket.
+    /// Used by indent guide rendering to find matching braces.
+    /// </summary>
+    public static (int line, int col)? ScanForward(
+        TextBuffer buffer, char opener, char closer, int startLine, int startCol)
+        => ScanForBracket(buffer, opener, closer, startLine, startCol, forward: true);
+
     private static (int line, int col)? ScanForBracket(
         TextBuffer buffer, char bracket, char target, int startLine, int startCol, bool forward)
     {

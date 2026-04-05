@@ -11,7 +11,8 @@
     "matchingBracket": "#E0E0E0",
     "matchingBracketBorder": "#999999",
     "findMatch": "#60FFFF00",
-    "findMatchCurrent": "#80FF8C00"
+    "findMatchCurrent": "#80FF8C00",
+    "indentGuide": "#18000000"
   },
   "chrome": {
     "titleBar": "#F5F5F5",

@@ -377,6 +377,7 @@ public partial class MainWindow
         editor.WordWrapAtWords = _settings.Editor.WordWrapAtWords;
         editor.WordWrapIndent = _settings.Editor.WordWrapIndent;
         editor.WordWrap = _settings.Editor.WordWrap;
+        editor.IndentGuides = _settings.Editor.IndentGuides;
         editor.BlockCaret = _settings.Editor.Caret.BlockCaret;
         editor.CaretBlinkMs = _settings.Editor.Caret.BlinkMs;
         if (_settings.Editor.Font.Family != null) editor.FontFamilyName = _settings.Editor.Font.Family;
@@ -1144,7 +1145,8 @@ public partial class MainWindow
             editor.FontFamilyName, editor.EditorFontSize, editor.EditorFontWeight,
             editor.LineHeightMultiplier, _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition,
             _settings.Editor.Find.SeedWithSelection, _settings.Editor.FixedWidthTabs,
-            _settings.Editor.WordWrap, _settings.Editor.WordWrapAtWords, _settings.Editor.WordWrapIndent);
+            _settings.Editor.WordWrap, _settings.Editor.WordWrapAtWords, _settings.Editor.WordWrapIndent,
+            _settings.Editor.IndentGuides);
         var dlg = new SettingsWindow(ThemeManager, snapshot) { Owner = this };
         dlg.Applied += (_, _) => ApplySettingsFromDialog(dlg);
         if (dlg.ShowDialog() == true)
@@ -1167,6 +1169,7 @@ public partial class MainWindow
         _settings.Editor.WordWrap = dlg.WordWrap;
         _settings.Editor.WordWrapAtWords = dlg.WordWrapAtWords;
         _settings.Editor.WordWrapIndent = dlg.WordWrapIndent;
+        _settings.Editor.IndentGuides = dlg.IndentGuides;
         _settings.Save();
         ApplySettings();
         ThemeManager.Apply(dlg.ColorThemeName);
