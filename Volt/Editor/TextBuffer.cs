@@ -268,10 +268,14 @@ public class TextBuffer
     }
 
     // ── Tab expansion ───────────────────────────────────────────────
+    [ThreadStatic] private static System.Text.StringBuilder? _expandTabsSb;
+
     public static string ExpandTabs(string line, int tabSize)
     {
         if (!line.Contains('\t')) return line;
-        var sb = new System.Text.StringBuilder(line.Length + 16);
+        var sb = _expandTabsSb ??= new System.Text.StringBuilder(256);
+        sb.Clear();
+        sb.EnsureCapacity(line.Length + 16);
         foreach (char c in line)
         {
             if (c == '\t')
