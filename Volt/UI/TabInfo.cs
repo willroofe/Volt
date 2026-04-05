@@ -30,6 +30,9 @@ public class TabInfo
     /// <summary>Guards against re-entrant external change handling (MessageBox pumps messages).</summary>
     public bool IsHandlingExternalChange { get; set; }
 
+    /// <summary>True while file content is being loaded asynchronously.</summary>
+    public bool IsLoading { get; set; }
+
     private FileSystemWatcher? _watcher;
     private DispatcherTimer? _debounceTimer;
 
