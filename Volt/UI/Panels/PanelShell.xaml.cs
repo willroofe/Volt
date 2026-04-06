@@ -167,6 +167,7 @@ public partial class PanelShell : UserControl
         // Group by placement and sort by TabIndex to restore tab order
         var sorted = configs.OrderBy(c => c.Placement).ThenBy(c => c.TabIndex).ToList();
 
+        _collapsedByToggle.Clear();
         foreach (var config in sorted)
         {
             if (!_panels.TryGetValue(config.PanelId, out var reg)) continue;
@@ -178,6 +179,9 @@ public partial class PanelShell : UserControl
                 ShowPanel(config.PanelId);
             else
                 HidePanel(config.PanelId);
+
+            if (config.CollapsedByToggle)
+                _collapsedByToggle.Add(config.PanelId);
         }
 
         // Restore active tabs
@@ -211,6 +215,7 @@ public partial class PanelShell : UserControl
                 Placement = reg.Placement,
                 Size = GetRegionSize(reg.Placement),
                 Visible = reg.IsVisible,
+                CollapsedByToggle = _collapsedByToggle.Contains(reg.Panel.PanelId),
                 TabIndex = Math.Max(0, region.GetTabIndex(reg.Panel.PanelId)),
                 IsActiveTab = region.IsActiveTab(reg.Panel.PanelId)
             });
