@@ -26,6 +26,7 @@ public enum VoltCommand
     SwitchTabBackward,
     FoldBlock,
     UnfoldBlock,
+    GoToLine,
 }
 
 [JsonConverter(typeof(KeyComboJsonConverter))]
@@ -184,6 +185,7 @@ public class KeyBindingManager
         [VoltCommand.SwitchTabBackward] = new(Key.Tab, ModifierKeys.Control | ModifierKeys.Shift),
         [VoltCommand.FoldBlock] = new(Key.OemOpenBrackets, ModifierKeys.Control | ModifierKeys.Shift),
         [VoltCommand.UnfoldBlock] = new(Key.OemCloseBrackets, ModifierKeys.Control | ModifierKeys.Shift),
+        [VoltCommand.GoToLine] = new(Key.G, ModifierKeys.Control),
     };
 
     private readonly Dictionary<VoltCommand, KeyCombo> _bindings = new();

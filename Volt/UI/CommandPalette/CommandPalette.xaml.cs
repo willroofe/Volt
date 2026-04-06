@@ -16,6 +16,7 @@ public partial class CommandPalette : UserControl
     private PaletteCommand? _activeCommand;
     private int _selectedIndex = -1;
     private string _prefixText = "";
+    private Action<string>? _freeInputCallback;
 
     public event EventHandler? Closed;
 
@@ -73,8 +74,33 @@ public partial class CommandPalette : UserControl
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => Keyboard.Focus(_filterInput));
     }
 
+    public void OpenFreeInput(string prefix, Action<string> onConfirm)
+    {
+        _commands = [];
+        _activeCommand = null;
+        _currentOptions = null;
+        _freeInputCallback = onConfirm;
+        _prefixText = prefix;
+        _filterPrefix.Text = prefix;
+        _filterInput.Text = "";
+        _selectedIndex = -1;
+        Visibility = Visibility.Visible;
+        _commandList.Visibility = Visibility.Collapsed;
+        _placeholder.Visibility = Visibility.Collapsed;
+        _noResults.Visibility = Visibility.Collapsed;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => Keyboard.Focus(_filterInput));
+    }
+
     public void Cancel()
     {
+        if (_freeInputCallback != null)
+        {
+            _freeInputCallback = null;
+            Visibility = Visibility.Collapsed;
+            Closed?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
         if (_currentOptions != null)
         {
             // Revert preview and go back to top-level
@@ -95,6 +121,7 @@ public partial class CommandPalette : UserControl
 
     private void OnOverlayClick(object sender, MouseButtonEventArgs e)
     {
+        _freeInputCallback = null;
         if (_currentOptions != null)
             RevertCurrentPreview();
         Visibility = Visibility.Collapsed;
@@ -113,6 +140,7 @@ public partial class CommandPalette : UserControl
 
     private void OnInputTextChanged(object sender, TextChangedEventArgs e)
     {
+        if (_freeInputCallback != null) return;
         _selectedIndex = -1;
         RefreshList();
         // Auto-select first item
@@ -194,6 +222,16 @@ public partial class CommandPalette : UserControl
 
     private void Confirm()
     {
+        if (_freeInputCallback != null)
+        {
+            var cb = _freeInputCallback;
+            _freeInputCallback = null;
+            Visibility = Visibility.Collapsed;
+            Closed?.Invoke(this, EventArgs.Empty);
+            cb(_filterInput.Text);
+            return;
+        }
+
         if (_currentOptions == null)
         {
             // Top-level: enter sub-list or execute toggle
