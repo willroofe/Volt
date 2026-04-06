@@ -133,6 +133,23 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             FlowDirection.LeftToRight, IconTypeface, 12, textBrush, dpi);
     }
 
+    // --- Filter ---
+
+    private string _filterText = "";
+
+    public string FilterText
+    {
+        get => _filterText;
+        set
+        {
+            var normalized = value ?? "";
+            if (_filterText == normalized) return;
+            _filterText = normalized;
+            _selectedRowIndex = -1;
+            RebuildFlatList();
+        }
+    }
+
     // --- Public API ---
 
     public void SetRootItems(ObservableCollection<FileTreeItem>? items)
@@ -141,6 +158,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         _selectedRowIndex = -1;
         _hoverRowIndex = -1;
         _verticalOffset = 0;
+        _filterText = "";
         RebuildFlatList();
     }
 
@@ -189,8 +207,14 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         _flatRows.Clear();
         if (_rootItems != null)
         {
+            bool filtering = !string.IsNullOrEmpty(_filterText);
             foreach (var item in _rootItems)
-                Flatten(item, 0);
+            {
+                if (filtering)
+                    FlattenFiltered(item, 0);
+                else
+                    Flatten(item, 0);
+            }
         }
         UpdateExtent();
         InvalidateVisual();
@@ -204,6 +228,35 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             foreach (var child in item.Children)
                 Flatten(child, depth + 1);
         }
+    }
+
+    private bool FlattenFiltered(FileTreeItem item, int depth)
+    {
+        bool nameMatches = item.Name.Contains(_filterText, StringComparison.OrdinalIgnoreCase);
+        int insertIndex = _flatRows.Count;
+        _flatRows.Add(new FlatRow(item, depth));
+
+        bool anyChildMatch = false;
+
+        // Walk children if loaded (not just a placeholder)
+        bool hasLoadedChildren = item.IsDirectory && item.Children.Count > 0
+            && !(item.Children.Count == 1 && string.IsNullOrEmpty(item.Children[0].FullPath));
+
+        if (hasLoadedChildren)
+        {
+            foreach (var child in item.Children)
+            {
+                if (FlattenFiltered(child, depth + 1))
+                    anyChildMatch = true;
+            }
+        }
+
+        if (!nameMatches && !anyChildMatch)
+        {
+            _flatRows.RemoveRange(insertIndex, _flatRows.Count - insertIndex);
+            return false;
+        }
+        return true;
     }
 
     // --- IScrollInfo ---
@@ -361,19 +414,69 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             }
 
             // Name text
-            Brush nameBrush = textBrush;
-            Typeface nameTypeface = NormalTypeface;
-
             double maxTextWidth = Math.Max(0, ActualWidth - x - 8);
-            var nameText = new FormattedText(row.Item.Name, CultureInfo.CurrentCulture,
-                FlowDirection.LeftToRight, nameTypeface, 13, nameBrush, dpi)
+
+            if (!string.IsNullOrEmpty(_filterText))
             {
-                MaxTextWidth = maxTextWidth > 0 ? maxTextWidth : 1,
-                Trimming = TextTrimming.CharacterEllipsis,
-                MaxLineCount = 1
-            };
-            double nameY = y + (RowHeight - nameText.Height) / 2;
-            dc.DrawText(nameText, new Point(x, nameY));
+                DrawHighlightedName(dc, row.Item.Name, _filterText, x, y, maxTextWidth, textBrush, dpi);
+            }
+            else
+            {
+                var nameText = new FormattedText(row.Item.Name, CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight, NormalTypeface, 13, textBrush, dpi)
+                {
+                    MaxTextWidth = maxTextWidth > 0 ? maxTextWidth : 1,
+                    Trimming = TextTrimming.CharacterEllipsis,
+                    MaxLineCount = 1
+                };
+                double nameY = y + (RowHeight - nameText.Height) / 2;
+                dc.DrawText(nameText, new Point(x, nameY));
+            }
+        }
+    }
+
+    private void DrawHighlightedName(DrawingContext dc, string name, string filter,
+        double x, double y, double maxWidth, Brush normalBrush, double dpi)
+    {
+        var highlightBrush = App.Current.ThemeManager.FindMatchBrush;
+        double currentX = x;
+        double limitX = x + maxWidth;
+        int searchStart = 0;
+
+        // Measure text height for vertical centering
+        var measure = new FormattedText("X", CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight, NormalTypeface, 13, normalBrush, dpi) { MaxLineCount = 1 };
+        double textY = y + (RowHeight - measure.Height) / 2;
+
+        while (searchStart < name.Length && currentX < limitX)
+        {
+            int matchIndex = name.IndexOf(filter, searchStart, StringComparison.OrdinalIgnoreCase);
+            if (matchIndex < 0)
+            {
+                var ft = new FormattedText(name[searchStart..], CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight, NormalTypeface, 13, normalBrush, dpi) { MaxLineCount = 1 };
+                dc.DrawText(ft, new Point(currentX, textY));
+                break;
+            }
+
+            // Text before match
+            if (matchIndex > searchStart)
+            {
+                var ft = new FormattedText(name[searchStart..matchIndex], CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight, NormalTypeface, 13, normalBrush, dpi) { MaxLineCount = 1 };
+                dc.DrawText(ft, new Point(currentX, textY));
+                currentX += ft.Width;
+            }
+
+            // Matching portion with highlight background
+            var matchStr = name[matchIndex..(matchIndex + filter.Length)];
+            var matchFt = new FormattedText(matchStr, CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight, NormalTypeface, 13, normalBrush, dpi) { MaxLineCount = 1 };
+            dc.DrawRoundedRectangle(highlightBrush, null,
+                new Rect(currentX, textY, matchFt.Width, matchFt.Height), 2, 2);
+            dc.DrawText(matchFt, new Point(currentX, textY));
+            currentX += matchFt.Width;
+            searchStart = matchIndex + filter.Length;
         }
     }
 

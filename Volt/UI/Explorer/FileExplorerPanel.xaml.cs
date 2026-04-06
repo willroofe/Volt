@@ -48,6 +48,8 @@ public partial class FileExplorerPanel : UserControl, IPanel
         TitleChanged?.Invoke();
     }
 
+    private DispatcherTimer? _searchDebounce;
+
     public FileExplorerPanel()
     {
         InitializeComponent();
@@ -58,6 +60,50 @@ public partial class FileExplorerPanel : UserControl, IPanel
         ExplorerTree.DeleteRequested += OnDeleteRequested;
         ExplorerTree.UndoRequested += Undo;
         ExplorerTree.RedoRequested += Redo;
+        PreviewKeyDown += OnPanelPreviewKeyDown;
+    }
+
+    private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
+    {
+        var query = SearchInput.Text;
+        ClearSearchBtn.Visibility = string.IsNullOrEmpty(query)
+            ? Visibility.Hidden : Visibility.Visible;
+
+        _searchDebounce ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _searchDebounce.Stop();
+        _searchDebounce.Tick -= OnSearchDebounce;
+        _searchDebounce.Tick += OnSearchDebounce;
+        _searchDebounce.Start();
+    }
+
+    private void OnSearchDebounce(object? sender, EventArgs e)
+    {
+        _searchDebounce?.Stop();
+        ExplorerTree.FilterText = SearchInput.Text?.Trim() ?? "";
+    }
+
+    private void OnSearchFocusChanged(object sender, RoutedEventArgs e)
+    {
+        SearchBorder.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty,
+            SearchInput.IsKeyboardFocused ? ThemeResourceKeys.TextFgMuted : ThemeResourceKeys.MenuPopupBorder);
+    }
+
+    private void OnClearSearchClick(object sender, RoutedEventArgs e)
+    {
+        SearchInput.Clear();
+        SearchInput.Focus();
+    }
+
+    private void OnPanelPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Escape && SearchInput.IsFocused)
+        {
+            if (!string.IsNullOrEmpty(SearchInput.Text))
+                SearchInput.Clear();
+            else
+                ExplorerTree.Focus();
+            e.Handled = true;
+        }
     }
 
     public void SetWorkspaceManager(WorkspaceManager manager)
