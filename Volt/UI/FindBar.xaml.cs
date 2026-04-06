@@ -112,12 +112,14 @@ public partial class FindBar : UserControl
     /// Runs UpdateSearch while suppressing the live selection handlers,
     /// preventing navigation side-effects from re-entering the selection tracking.
     /// </summary>
-    private void SearchWithoutTrackingSelection()
+    private void WithNavigationGuard(Action action)
     {
         _navigating = true;
-        UpdateSearch();
+        action();
         _navigating = false;
     }
+
+    private void SearchWithoutTrackingSelection() => WithNavigationGuard(UpdateSearch);
 
     // ──────────────────────────────────────────────────────────────────
     //  Open / Close
@@ -248,17 +250,13 @@ public partial class FindBar : UserControl
 
     private void OnPrevClick(object sender, RoutedEventArgs e)
     {
-        _navigating = true;
-        _editor?.FindPrevious();
-        _navigating = false;
+        WithNavigationGuard(() => _editor?.FindPrevious());
         UpdateMatchCountLabel();
     }
 
     private void OnNextClick(object sender, RoutedEventArgs e)
     {
-        _navigating = true;
-        _editor?.FindNext();
-        _navigating = false;
+        WithNavigationGuard(() => _editor?.FindNext());
         UpdateMatchCountLabel();
     }
 
@@ -319,9 +317,7 @@ public partial class FindBar : UserControl
     private void DoReplace()
     {
         if (_editor == null || _editor.FindMatchCount == 0) return;
-        _navigating = true;
-        _editor.ReplaceCurrent(_replaceInput.Text);
-        _navigating = false;
+        WithNavigationGuard(() => _editor.ReplaceCurrent(_replaceInput.Text));
         UpdateSearch();
     }
 
@@ -349,12 +345,13 @@ public partial class FindBar : UserControl
                 }
                 else
                 {
-                    _navigating = true;
-                    if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
-                        _editor?.FindPrevious();
-                    else
-                        _editor?.FindNext();
-                    _navigating = false;
+                    WithNavigationGuard(() =>
+                    {
+                        if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+                            _editor?.FindPrevious();
+                        else
+                            _editor?.FindNext();
+                    });
                 }
                 UpdateMatchCountLabel();
                 e.Handled = true;
