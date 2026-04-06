@@ -14,7 +14,7 @@ public partial class AboutWindow : Window
         var version = GetCurrentVersion();
         var buildDate = GetBuildDate();
         VersionText.Text = buildDate != null
-            ? $"Version {version} ({buildDate:yyyy-MM-dd})"
+            ? $"Version {version} ({buildDate.Value.ToShortDateString()})"
             : $"Version {version}";
         CopyrightText.Text = $"\u00a9 {DateTime.Now.Year} William Roofe";
     }
