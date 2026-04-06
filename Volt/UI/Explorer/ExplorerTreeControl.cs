@@ -161,12 +161,12 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         {
             var unloaded = new List<FileTreeItem>();
             CollectUnloadedDirs(_rootItems, unloaded);
-            foreach (var dir in unloaded)
+            for (int i = 0; i < unloaded.Count; i++)
             {
                 if (_filterText != filter) return; // filter changed — bail
-                await dir.EnsureChildrenLoaded();
+                await unloaded[i].EnsureChildrenLoaded();
                 // Newly loaded children may themselves have unloaded subdirs
-                CollectUnloadedDirs(dir.Children, unloaded);
+                CollectUnloadedDirs(unloaded[i].Children, unloaded);
             }
         }
         if (_filterText != filter) return;
