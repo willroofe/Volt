@@ -1172,7 +1172,11 @@ public partial class MainWindow
             FileName = tab.FilePath != null ? Path.GetFileName(tab.FilePath) : ""
         };
         if (dlg.ShowDialog() != true) return;
+        var oldExt = tab.FilePath != null ? Path.GetExtension(tab.FilePath) : "";
         tab.FilePath = dlg.FileName;
+        // Clear manual language override when the extension changes so auto-detect kicks in
+        if (!string.Equals(oldExt, Path.GetExtension(dlg.FileName), StringComparison.OrdinalIgnoreCase))
+            tab.LanguageOverride = null;
         if (!WriteAndFinishSave(tab)) return;
         if (tab == _activeTab)
         {
