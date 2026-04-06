@@ -13,9 +13,7 @@ public partial class CommandPalette : UserControl
 {
     private List<PaletteCommand> _commands = [];
     private List<PaletteOption>? _currentOptions;
-    private PaletteCommand? _activeCommand;
     private int _selectedIndex = -1;
-    private string _prefixText = "";
     private Action<string>? _freeInputCallback;
 
     public event EventHandler? Closed;
@@ -45,10 +43,8 @@ public partial class CommandPalette : UserControl
     public void Open()
     {
         _currentOptions = null;
-        _activeCommand = null;
         _freeInputCallback = null;
         SetInputOnlyMode(false);
-        _prefixText = "";
         _filterPrefix.Text = "";
         _filterInput.Text = "";
         _selectedIndex = -1;
@@ -63,9 +59,7 @@ public partial class CommandPalette : UserControl
     public void OpenWithOptions(string prefix, List<PaletteOption> options)
     {
         _commands = [];
-        _activeCommand = null;
         _currentOptions = options;
-        _prefixText = prefix;
         _filterPrefix.Text = prefix;
         _filterInput.Text = "";
         _selectedIndex = options.Count > 0 ? 0 : -1;
@@ -82,10 +76,8 @@ public partial class CommandPalette : UserControl
     /// </summary>
     public void OpenFreeInput(string prefix, Action<string> onConfirm)
     {
-        _activeCommand = null;
         _currentOptions = null;
         _freeInputCallback = onConfirm;
-        _prefixText = prefix;
         _filterPrefix.Text = prefix;
         _filterInput.Text = "";
         _selectedIndex = -1;
@@ -113,26 +105,11 @@ public partial class CommandPalette : UserControl
 
     public void Cancel()
     {
-        if (_freeInputCallback != null)
-        {
-            _freeInputCallback = null;
-            SetInputOnlyMode(false);
-            Visibility = Visibility.Collapsed;
-            Closed?.Invoke(this, EventArgs.Empty);
-            return;
-        }
-
-        if (_currentOptions != null)
+        if (_currentOptions != null && _freeInputCallback == null)
         {
             // Revert preview and go back to top-level
             RevertCurrentPreview();
-            _currentOptions = null;
-            _activeCommand = null;
-            _prefixText = "";
-            _filterPrefix.Text = "";
-            _filterInput.Text = "";
-            _selectedIndex = -1;
-            RefreshList();
+            ReturnToTopLevel();
             return;
         }
 
@@ -142,22 +119,27 @@ public partial class CommandPalette : UserControl
 
     private void OnOverlayClick(object sender, MouseButtonEventArgs e)
     {
-        if (_freeInputCallback != null) SetInputOnlyMode(false);
-        _freeInputCallback = null;
-        if (_currentOptions != null)
-            RevertCurrentPreview();
+        RevertCurrentPreview();
         Visibility = Visibility.Collapsed;
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
+    private void ReturnToTopLevel()
+    {
+        _freeInputCallback = null;
+        SetInputOnlyMode(false);
+        _currentOptions = null;
+        _filterPrefix.Text = "";
+        _filterInput.Text = "";
+        _selectedIndex = -1;
+        RefreshList();
+    }
+
     private void RevertCurrentPreview()
     {
-        if (_currentOptions != null && _selectedIndex >= 0 && _selectedIndex < _currentOptions.Count)
-        {
-            var filtered = GetFilteredOptions();
-            if (_selectedIndex < filtered.Count)
-                filtered[_selectedIndex].Revert();
-        }
+        var filtered = GetFilteredOptions();
+        if (_selectedIndex >= 0 && _selectedIndex < filtered.Count)
+            filtered[_selectedIndex].Revert();
     }
 
     private void OnInputTextChanged(object sender, TextChangedEventArgs e)
@@ -202,15 +184,7 @@ public partial class CommandPalette : UserControl
             case Key.Back:
                 if (_filterInput.Text.Length == 0 && (_currentOptions != null || _freeInputCallback != null))
                 {
-                    // Go back to top-level command search
-                    _freeInputCallback = null;
-                    SetInputOnlyMode(false);
-                    _currentOptions = null;
-                    _activeCommand = null;
-                    _prefixText = "";
-                    _filterPrefix.Text = "";
-                    _selectedIndex = -1;
-                    RefreshList();
+                    ReturnToTopLevel();
                     e.Handled = true;
                 }
                 break;
@@ -225,13 +199,7 @@ public partial class CommandPalette : UserControl
         int count = _commandList.Items.Count;
         if (count == 0) return;
 
-        // Revert current preview before moving
-        if (_currentOptions != null && _selectedIndex >= 0)
-        {
-            var filtered = GetFilteredOptions();
-            if (_selectedIndex < filtered.Count)
-                filtered[_selectedIndex].Revert();
-        }
+        RevertCurrentPreview();
 
         _selectedIndex += delta;
         if (_selectedIndex < 0) _selectedIndex = count - 1;
@@ -256,7 +224,6 @@ public partial class CommandPalette : UserControl
         {
             var cb = _freeInputCallback;
             _freeInputCallback = null;
-            SetInputOnlyMode(false);
             Visibility = Visibility.Collapsed;
             Closed?.Invoke(this, EventArgs.Empty);
             cb(_filterInput.Text);
@@ -285,10 +252,8 @@ public partial class CommandPalette : UserControl
                 // Capture current value before any preview changes the editor state
                 var currentValue = cmd.CurrentValue?.Invoke();
 
-                _activeCommand = cmd;
                 _currentOptions = cmd.GetOptions();
-                _prefixText = cmd.Name + ": ";
-                _filterPrefix.Text = _prefixText;
+                _filterPrefix.Text = cmd.Name + ": ";
                 _filterInput.Text = "";
                 _selectedIndex = -1;
                 RefreshList();
@@ -411,13 +376,7 @@ public partial class CommandPalette : UserControl
             var idx = _commandList.Items.IndexOf(item);
             if (idx == _selectedIndex) return;
 
-            // Revert old preview
-            if (_currentOptions != null && _selectedIndex >= 0)
-            {
-                var filtered = GetFilteredOptions();
-                if (_selectedIndex < filtered.Count)
-                    filtered[_selectedIndex].Revert();
-            }
+            RevertCurrentPreview();
 
             _selectedIndex = idx;
             UpdateListSelection();
