@@ -2,13 +2,55 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:Volt">
-    <ScrollViewer x:Name="TreeScrollViewer"
-                  HorizontalScrollBarVisibility="Disabled"
-                  VerticalScrollBarVisibility="Auto"
-                  CanContentScroll="True"
-                  Focusable="False"
-                  Background="{DynamicResource ThemeExplorerBg}"
-                  Template="{StaticResource ThemedScrollViewer}">
-        <local:ExplorerTreeControl x:Name="ExplorerTree"/>
-    </ScrollViewer>
+    <DockPanel Background="{DynamicResource ThemeExplorerBg}">
+        <Border x:Name="SearchBorder" DockPanel.Dock="Top"
+                Margin="4,4,4,2"
+                Background="{DynamicResource ThemeExplorerBg}"
+                BorderThickness="1" CornerRadius="3"
+                SnapsToDevicePixels="True"
+                BorderBrush="{DynamicResource ThemeMenuPopupBorder}">
+            <DockPanel>
+                <Button x:Name="ClearSearchBtn"
+                        DockPanel.Dock="Right"
+                        Style="{StaticResource MatchCaseButton}"
+                        Width="24" Height="22"
+                        Margin="0,2,2,2" Padding="0"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Focusable="False"
+                        Visibility="Hidden"
+                        ToolTip="Clear search"
+                        Background="Transparent"
+                        Foreground="{DynamicResource ThemeTextFgMuted}"
+                        Click="OnClearSearchClick">
+                    <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                </Button>
+                <TextBlock DockPanel.Dock="Left"
+                           Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                           Foreground="{DynamicResource ThemeTextFgMuted}"
+                           VerticalAlignment="Center" Margin="6,0,0,0"/>
+                <TextBox x:Name="SearchInput"
+                         BorderThickness="0"
+                         FontFamily="Segoe UI" FontSize="13"
+                         Padding="4,3,0,3"
+                         VerticalContentAlignment="Center"
+                         Background="Transparent"
+                         Foreground="{DynamicResource ThemeTextFg}"
+                         CaretBrush="{DynamicResource ThemeTextFg}"
+                         SelectionBrush="{DynamicResource ThemeInputSelection}"
+                         TextChanged="OnSearchTextChanged"
+                         GotKeyboardFocus="OnSearchFocusChanged"
+                         LostKeyboardFocus="OnSearchFocusChanged"/>
+            </DockPanel>
+        </Border>
+        <ScrollViewer x:Name="TreeScrollViewer"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto"
+                      CanContentScroll="True"
+                      Focusable="False"
+                      Background="{DynamicResource ThemeExplorerBg}"
+                      Template="{StaticResource ThemedScrollViewer}">
+            <local:ExplorerTreeControl x:Name="ExplorerTree"/>
+        </ScrollViewer>
+    </DockPanel>
 </UserControl>
