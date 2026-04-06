@@ -1781,10 +1781,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
 
         if (menu.Items.Count > 0)
-        {
-            ContextMenu = menu;
-            menu.IsOpen = true;
-        }
+            menu.Items.Add(new System.Windows.Controls.Separator());
+
+        var selectAll = ContextMenuHelper.Item("Select All", "\uE8B3", HandleSelectAll);
+        selectAll.InputGestureText = "Ctrl+A";
+        menu.Items.Add(selectAll);
+
+        ContextMenu = menu;
+        menu.IsOpen = true;
         e.Handled = true;
     }
 
@@ -1848,6 +1852,23 @@ public class EditorControl : FrameworkElement, IScrollInfo
     {
         bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
         bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        bool alt = (Keyboard.Modifiers & ModifierKeys.Alt) != 0;
+
+        // Alt+key arrives as Key.System — check SystemKey for the real key
+        if (e.Key == Key.System && alt && !ctrl)
+        {
+            switch (e.SystemKey)
+            {
+                case Key.Up:
+                    HandleMoveLine(true);
+                    e.Handled = true;
+                    return;
+                case Key.Down:
+                    HandleMoveLine(false);
+                    e.Handled = true;
+                    return;
+            }
+        }
 
         switch (e.Key)
         {
@@ -1916,6 +1937,21 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 Redo();
                 EnsureCaretVisible();
                 ResetCaret();
+                e.Handled = true;
+                break;
+
+            case Key.D when ctrl:
+                HandleDuplicateLine();
+                e.Handled = true;
+                break;
+
+            case Key.K when ctrl && shift:
+                HandleDeleteLine();
+                e.Handled = true;
+                break;
+
+            case Key.L when ctrl:
+                HandleSelectLine();
                 e.Handled = true;
                 break;
 
@@ -2281,6 +2317,159 @@ public class EditorControl : FrameworkElement, IScrollInfo
             }
         }
         FinishEdit(scope);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    //  Line manipulation shortcuts
+    // ──────────────────────────────────────────────────────────────────
+
+    private void HandleDuplicateLine()
+    {
+        ResetPreferredCol();
+        if (_selection.HasSelection)
+        {
+            var (sl, _, el, _) = _selection.GetOrdered(_caretLine, _caretCol);
+            int count = el - sl + 1;
+            var scope = BeginEdit(sl, el + count);
+            var lines = _buffer.GetLines(sl, count);
+            for (int i = 0; i < count; i++)
+                _buffer.InsertLine(el + 1 + i, lines[i]);
+            _caretLine += count;
+            _selection.AnchorLine += count;
+            _tokenCacheDirty = true;
+            FinishEdit(scope);
+        }
+        else
+        {
+            var scope = BeginEdit(_caretLine, _caretLine + 1);
+            _buffer.InsertLine(_caretLine + 1, _buffer[_caretLine]);
+            _caretLine++;
+            _tokenCacheDirty = true;
+            FinishEdit(scope);
+        }
+    }
+
+    private void HandleDeleteLine()
+    {
+        ResetPreferredCol();
+        if (_buffer.Count == 1)
+        {
+            var scope = BeginEdit(0, 0);
+            _buffer.NotifyLineChanging(0);
+            _buffer[0] = "";
+            _caretLine = 0;
+            _caretCol = 0;
+            FinishEdit(scope);
+            return;
+        }
+
+        int sl, el;
+        if (_selection.HasSelection)
+        {
+            (sl, _, el, _) = _selection.GetOrdered(_caretLine, _caretCol);
+        }
+        else
+        {
+            sl = _caretLine;
+            el = _caretLine;
+        }
+
+        int count = el - sl + 1;
+        bool deletingAll = count >= _buffer.Count;
+        var editScope = BeginEdit(sl, Math.Min(el + 1, _buffer.Count - 1));
+        if (deletingAll)
+        {
+            _buffer.RemoveRange(1, _buffer.Count - 1);
+            _buffer.NotifyLineChanging(0);
+            _buffer[0] = "";
+            _caretLine = 0;
+            _caretCol = 0;
+        }
+        else
+        {
+            _buffer.RemoveRange(sl, count);
+            _caretLine = Math.Min(sl, _buffer.Count - 1);
+            _caretCol = Math.Min(_caretCol, _buffer[_caretLine].Length);
+        }
+        _selection.Clear();
+        _tokenCacheDirty = true;
+        FinishEdit(editScope);
+    }
+
+    private void HandleMoveLine(bool up)
+    {
+        ResetPreferredCol();
+        int sl, el;
+        if (_selection.HasSelection)
+        {
+            (sl, _, el, _) = _selection.GetOrdered(_caretLine, _caretCol);
+        }
+        else
+        {
+            sl = _caretLine;
+            el = _caretLine;
+        }
+
+        if (up && sl == 0) return;
+
+        if (!up && el >= _buffer.Count - 1)
+        {
+            // At the bottom edge, append an empty line then use the normal swap logic
+            var scope2 = BeginEdit(sl, el);
+            _buffer.InsertLine(el + 1, "");
+            // Swap: move the new empty line from el+1 to sl
+            _buffer.RemoveRange(el + 1, 1);
+            _buffer.InsertLine(sl, "");
+            _caretLine++;
+            if (_selection.HasSelection)
+                _selection.AnchorLine++;
+            _tokenCacheDirty = true;
+            FinishEdit(scope2);
+            return;
+        }
+
+        var scope = BeginEdit(up ? sl - 1 : sl, up ? el : el + 1);
+        if (up)
+        {
+            var line = _buffer[sl - 1];
+            _buffer.RemoveRange(sl - 1, 1);
+            _buffer.InsertLine(el, line);
+            _caretLine--;
+            if (_selection.HasSelection)
+                _selection.AnchorLine--;
+        }
+        else
+        {
+            var line = _buffer[el + 1];
+            _buffer.RemoveRange(el + 1, 1);
+            _buffer.InsertLine(sl, line);
+            _caretLine++;
+            if (_selection.HasSelection)
+                _selection.AnchorLine++;
+        }
+        _tokenCacheDirty = true;
+        FinishEdit(scope);
+    }
+
+    private void HandleSelectLine()
+    {
+        _selection.AnchorLine = _caretLine;
+        _selection.AnchorCol = 0;
+        _selection.HasSelection = true;
+        if (_caretLine < _buffer.Count - 1)
+        {
+            _caretLine++;
+            _caretCol = 0;
+        }
+        else
+        {
+            _caretCol = _buffer[_caretLine].Length;
+        }
+        ResetPreferredCol();
+        EnsureCaretVisible();
+        ResetCaret();
+        _textVisualDirty = true;
+        InvalidateVisual();
     }
 
     // ──────────────────────────────────────────────────────────────────
