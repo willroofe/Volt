@@ -493,6 +493,12 @@ public partial class MainWindow
         Shell.TogglePanel("file-explorer");
     }
 
+    private void FocusExplorer()
+    {
+        Shell.ShowPanel("file-explorer");
+        _explorerPanel.FocusSearch();
+    }
+
     private void RestorePanelLayout()
     {
         if (_settings.Editor.PanelLayouts.Count > 0)
@@ -1588,6 +1594,7 @@ public partial class MainWindow
             case VoltCommand.FoldBlock: _activeTab?.Editor.FoldAtCaret(); break;
             case VoltCommand.UnfoldBlock: _activeTab?.Editor.UnfoldAtCaret(); break;
             case VoltCommand.GoToLine: OpenGoToLine(); break;
+            case VoltCommand.FocusExplorer: FocusExplorer(); break;
         }
     }
 
