@@ -14,7 +14,7 @@ public class RecentItem
 
 public class ApplicationSettings
 {
-    public string ColorTheme { get; set; } = "Dark";
+    public string ColorTheme { get; set; } = "Volt Dark";
     public string CommandPalettePosition { get; set; } = "Top";
     public List<RecentItem> RecentItems { get; set; } = [];
     public List<RecentItem> RecentHistory { get; set; } = [];
@@ -256,7 +256,7 @@ public class AppSettings
         var settings = new AppSettings();
 
         if (root.TryGetProperty("ColorTheme", out var ct))
-            settings.Application.ColorTheme = ct.GetString() ?? "Dark";
+            settings.Application.ColorTheme = ct.GetString() ?? "Volt Dark";
 
         if (root.TryGetProperty("TabSize", out var ts))
             settings.Editor.TabSize = ts.GetInt32();
