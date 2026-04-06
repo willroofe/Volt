@@ -177,6 +177,12 @@ internal static class CommandPaletteCommands
             new("Check for Updates", Action: ctx.CheckForUpdates),
 
             new("Open Recent", Action: ctx.OpenRecent),
+
+            new("Go to Line", Action: () => ctx.CommandPalette.OpenFreeInput("Go to Line: ", text =>
+            {
+                if (int.TryParse(text.Trim(), out int line) && line >= 1)
+                    ctx.ActiveEditor?.GoToLine(line - 1);
+            })),
         ];
     }
 }

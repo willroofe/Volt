@@ -1614,7 +1614,17 @@ public partial class MainWindow
             case VoltCommand.SwitchTabBackward: SwitchTab(-1); break;
             case VoltCommand.FoldBlock: _activeTab?.Editor.FoldAtCaret(); break;
             case VoltCommand.UnfoldBlock: _activeTab?.Editor.UnfoldAtCaret(); break;
+            case VoltCommand.GoToLine: OpenGoToLine(); break;
         }
+    }
+
+    private void OpenGoToLine()
+    {
+        CmdPalette.OpenFreeInput("Go to Line: ", text =>
+        {
+            if (int.TryParse(text.Trim(), out int line) && line >= 1)
+                Editor?.GoToLine(line - 1);
+        });
     }
 
     private void UpdateMenuGestureText()

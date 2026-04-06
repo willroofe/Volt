@@ -1317,6 +1317,21 @@ public class EditorControl : FrameworkElement, IScrollInfo
     }
 
     /// <summary>Fold the block at or enclosing the caret.</summary>
+    public void GoToLine(int line)
+    {
+        _selection.Clear();
+        _caretLine = Math.Clamp(line, 0, _buffer.Count - 1);
+        _caretCol = 0;
+        ResetPreferredCol();
+        // Centre the target line in the viewport
+        double caretTop = GetVisualY(_caretLine, _caretCol);
+        double target = caretTop - (_viewport.Height - _font.LineHeight) / 2;
+        SetVerticalOffset(Math.Max(0, target));
+        ResetCaret();
+        _textVisualDirty = true;
+        InvalidateVisual();
+    }
+
     public void FoldAtCaret()
     {
         // If caret is on a block opener, fold it
