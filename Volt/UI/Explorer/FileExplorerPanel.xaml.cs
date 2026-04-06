@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Threading;
 using Microsoft.VisualBasic.FileIO;
 
@@ -60,6 +61,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
         ExplorerTree.DeleteRequested += OnDeleteRequested;
         ExplorerTree.UndoRequested += Undo;
         ExplorerTree.RedoRequested += Redo;
+        ExplorerTree.NavigateAboveFirst += () => FocusSearch();
         PreviewKeyDown += OnPanelPreviewKeyDown;
     }
 
@@ -88,21 +90,35 @@ public partial class FileExplorerPanel : UserControl, IPanel
             SearchInput.IsKeyboardFocused ? ThemeResourceKeys.TextFgMuted : ThemeResourceKeys.MenuPopupBorder);
     }
 
+    public void FocusSearch()
+    {
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,
+            () => { Keyboard.Focus(SearchInput); SearchInput.SelectAll(); });
+    }
+
     private void OnClearSearchClick(object sender, RoutedEventArgs e)
     {
         SearchInput.Clear();
         SearchInput.Focus();
     }
 
-    private void OnPanelPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    private void OnPanelPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == System.Windows.Input.Key.Escape && SearchInput.IsFocused)
+        if (SearchInput.IsFocused)
         {
-            if (!string.IsNullOrEmpty(SearchInput.Text))
-                SearchInput.Clear();
-            else
-                ExplorerTree.Focus();
-            e.Handled = true;
+            if (e.Key == Key.Escape)
+            {
+                if (!string.IsNullOrEmpty(SearchInput.Text))
+                    SearchInput.Clear();
+                else
+                    ExplorerTree.Focus();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Down || e.Key == Key.Tab)
+            {
+                ExplorerTree.SelectFirstAndFocus();
+                e.Handled = true;
+            }
         }
     }
 

@@ -16,8 +16,9 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
     private const double ArrowZoneWidth = 20;
     private const double IconZoneWidth = 16;
     private const double IconGap = 4;
-    private const double HighlightMargin = 2;
+    private const double HighlightMargin = 4;
     private const double HighlightRadius = 4;
+    private const double RowLeftPadding = 4;
 
     // Segoe MDL2 Assets glyphs
     private const string ChevronRight = "\uE76C";
@@ -65,6 +66,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
     public event Action<FileTreeItem>? DeleteRequested;
     public event Action? UndoRequested;
     public event Action? RedoRequested;
+    public event Action? NavigateAboveFirst;
 
     public FileTreeItem? SelectedItem =>
         _selectedRowIndex >= 0 && _selectedRowIndex < _flatRows.Count
@@ -184,6 +186,24 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             else
                 CollectUnloadedDirs(item.Children, result);
         }
+    }
+
+    public void SelectFirstAndFocus()
+    {
+        if (_flatRows.Count > 0)
+        {
+            int target = 0;
+            if (!string.IsNullOrEmpty(_filterText))
+            {
+                for (int i = 0; i < _flatRows.Count; i++)
+                {
+                    if (_flatRows[i].Item.Name.Contains(_filterText, StringComparison.OrdinalIgnoreCase))
+                    { target = i; break; }
+                }
+            }
+            SelectRow(target);
+        }
+        Focus();
     }
 
     // --- Public API ---
@@ -416,7 +436,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         {
             var row = _flatRows[i];
             double y = i * RowHeight - _verticalOffset;
-            double indent = row.Depth * IndentWidth;
+            double indent = RowLeftPadding + row.Depth * IndentWidth;
 
             // Hover / selection / drop-target highlight (rounded corners, with margin)
             if (i == _dropTargetRowIndex)
@@ -441,11 +461,16 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
 
             double x = indent;
 
+            // In filter mode, dirs are visually expanded if the next row is a child
+            bool visuallyExpanded = row.Item.IsExpanded
+                || (filtering && row.Item.IsDirectory
+                    && i + 1 < _flatRows.Count && _flatRows[i + 1].Depth > row.Depth);
+
             // Arrow chevron (muted when collapsed, normal text color when expanded or highlighted)
             bool isHighlighted = i == _selectedRowIndex || i == _hoverRowIndex;
             if (HasChildren(row.Item))
             {
-                var arrowText = row.Item.IsExpanded ? _chevronDownText!
+                var arrowText = visuallyExpanded ? _chevronDownText!
                     : isHighlighted ? _chevronRightText! : _chevronRightMuted!;
                 double arrowX = x + (ArrowZoneWidth - arrowText.Width) / 2;
                 double arrowY = y + (RowHeight - arrowText.Height) / 2;
@@ -457,7 +482,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             {
                 var iconText = !row.Item.IsDirectory
                     ? _fileIconText!
-                    : row.Item.IsExpanded ? _folderOpenIconText! : _folderIconText!;
+                    : visuallyExpanded ? _folderOpenIconText! : _folderIconText!;
                 double iconX = x + (IconZoneWidth - iconText.Width) / 2;
                 double iconY = y + (RowHeight - iconText.Height) / 2;
                 dc.DrawText(iconText, new Point(iconX, iconY));
@@ -542,7 +567,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         if (rowIndex < 0 || rowIndex >= _flatRows.Count) return false;
         var row = _flatRows[rowIndex];
         double x = e.GetPosition(this).X;
-        double indent = row.Depth * IndentWidth;
+        double indent = RowLeftPadding + row.Depth * IndentWidth;
         return x >= indent && x < indent + ArrowZoneWidth;
     }
 
@@ -626,11 +651,52 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             return;
         }
 
+        if (e.Key == Key.Down)
+        {
+            int next = NextMatchRow(_selectedRowIndex, +1);
+            if (next >= 0) SelectRow(next);
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Up)
+        {
+            int prev = NextMatchRow(_selectedRowIndex, -1);
+            if (prev < 0)
+                NavigateAboveFirst?.Invoke();
+            else
+                SelectRow(prev);
+            e.Handled = true;
+            return;
+        }
+
         if (_selectedRowIndex < 0 || _selectedRowIndex >= _flatRows.Count) return;
         var item = _flatRows[_selectedRowIndex].Item;
         if (string.IsNullOrEmpty(item.FullPath)) return;
 
-        if (e.Key == Key.F2)
+        if (e.Key == Key.Enter)
+        {
+            if (item.IsDirectory)
+            {
+                item.IsExpanded = !item.IsExpanded;
+                RefreshFlatList();
+            }
+            else
+            {
+                FileOpenRequested?.Invoke(item.FullPath);
+            }
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Right && item.IsDirectory)
+        {
+            if (!item.IsExpanded) { item.IsExpanded = true; RefreshFlatList(); }
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Left && item.IsDirectory)
+        {
+            if (item.IsExpanded) { item.IsExpanded = false; RefreshFlatList(); }
+            e.Handled = true;
+        }
+        else if (e.Key == Key.F2)
         {
             RenameRequested?.Invoke(item);
             e.Handled = true;
@@ -640,6 +706,42 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             DeleteRequested?.Invoke(item);
             e.Handled = true;
         }
+    }
+
+    private void SelectRow(int index)
+    {
+        if (index < 0 || index >= _flatRows.Count) return;
+        _selectedRowIndex = index;
+        ScrollIntoView(index);
+        InvalidateVisual();
+        SelectionChanged?.Invoke(_flatRows[index].Item);
+    }
+
+    /// <summary>
+    /// Returns the next row index in the given direction. When filtering,
+    /// skips ancestor-only rows and lands on actual matches.
+    /// </summary>
+    private int NextMatchRow(int current, int direction)
+    {
+        bool filtering = !string.IsNullOrEmpty(_filterText);
+        int i = current + direction;
+        while (i >= 0 && i < _flatRows.Count)
+        {
+            if (!filtering || _flatRows[i].Item.Name.Contains(_filterText, StringComparison.OrdinalIgnoreCase))
+                return i;
+            i += direction;
+        }
+        return -1;
+    }
+
+    private void ScrollIntoView(int rowIndex)
+    {
+        double rowTop = rowIndex * RowHeight;
+        double rowBottom = rowTop + RowHeight;
+        if (rowTop < _verticalOffset)
+            SetVerticalOffset(rowTop);
+        else if (rowBottom > _verticalOffset + _viewport.Height)
+            SetVerticalOffset(rowBottom - _viewport.Height);
     }
 
     protected override void OnMouseRightButtonDown(MouseButtonEventArgs e)

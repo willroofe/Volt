@@ -27,6 +27,7 @@ public enum VoltCommand
     FoldBlock,
     UnfoldBlock,
     GoToLine,
+    FocusExplorer,
 }
 
 [JsonConverter(typeof(KeyComboJsonConverter))]
@@ -186,6 +187,7 @@ public class KeyBindingManager
         [VoltCommand.FoldBlock] = new(Key.OemOpenBrackets, ModifierKeys.Control | ModifierKeys.Shift),
         [VoltCommand.UnfoldBlock] = new(Key.OemCloseBrackets, ModifierKeys.Control | ModifierKeys.Shift),
         [VoltCommand.GoToLine] = new(Key.G, ModifierKeys.Control),
+        [VoltCommand.FocusExplorer] = new(Key.E, ModifierKeys.Control),
     };
 
     private readonly Dictionary<VoltCommand, KeyCombo> _bindings = new();
@@ -299,6 +301,7 @@ public class KeyBindingManager
         VoltCommand.SwitchTabBackward => "Previous Tab",
         VoltCommand.FoldBlock => "Fold Block",
         VoltCommand.UnfoldBlock => "Unfold Block",
+        VoltCommand.FocusExplorer => "Focus Explorer",
         _ => command.ToString(),
     };
 }
