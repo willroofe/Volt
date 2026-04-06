@@ -45,7 +45,7 @@ public class FontManager
         {
             if (Math.Abs(value - _lineHeightMultiplier) < 0.001) return;
             _lineHeightMultiplier = value;
-            Apply(_monoTypeface.FontFamily.Source, _fontSize, _fontWeight);
+            RecalcLineHeight();
         }
     }
 
@@ -112,6 +112,15 @@ public class FontManager
         GlyphBaseline = sample.Baseline;
         _uniformAdvanceWidths = Array.Empty<double>();
 
+        FontChanged?.Invoke();
+    }
+
+    private void RecalcLineHeight()
+    {
+        BeforeFontChanged?.Invoke();
+        var sample = new FormattedText("X", CultureInfo.InvariantCulture,
+            FlowDirection.LeftToRight, _monoTypeface, _fontSize, Brushes.White, Dpi);
+        LineHeight = Math.Round(sample.Height * _lineHeightMultiplier * Dpi) / Dpi;
         FontChanged?.Invoke();
     }
 
