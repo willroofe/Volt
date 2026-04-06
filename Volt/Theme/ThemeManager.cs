@@ -56,8 +56,8 @@ public class ThemeManager
     {
         var themes = LoadThemeCache();
         var theme = themes.FirstOrDefault(t => t.Name.Equals(themeName, StringComparison.OrdinalIgnoreCase));
-        theme ??= themes.FirstOrDefault(t => t.Name.Equals("Dark", StringComparison.OrdinalIgnoreCase));
-        theme ??= new ColorTheme { Name = "Dark" };
+        theme ??= themes.FirstOrDefault(t => t.Name.Equals("Volt Dark", StringComparison.OrdinalIgnoreCase));
+        theme ??= new ColorTheme { Name = "Volt Dark" };
         _colorTheme = theme;
 
         UpdateEditorColors();
