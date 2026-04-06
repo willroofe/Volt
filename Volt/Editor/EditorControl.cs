@@ -66,14 +66,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             if (_wordWrapAtWords == value) return;
             _wordWrapAtWords = value;
-            if (_wordWrap)
-            {
-                RecalcWrapData();
-                _textVisualDirty = true;
-                _gutterVisualDirty = true;
-                UpdateExtent();
-                InvalidateVisual();
-            }
+            if (_wordWrap) InvalidateWrapLayout();
         }
     }
 
@@ -85,14 +78,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             if (_wordWrapIndent == value) return;
             _wordWrapIndent = value;
-            if (_wordWrap)
-            {
-                RecalcWrapData();
-                _textVisualDirty = true;
-                _gutterVisualDirty = true;
-                UpdateExtent();
-                InvalidateVisual();
-            }
+            if (_wordWrap) InvalidateWrapLayout();
         }
     }
 
@@ -374,6 +360,15 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _ => throw new ArgumentOutOfRangeException(nameof(index))
     };
 
+    private void InvalidateWrapLayout()
+    {
+        RecalcWrapData();
+        _textVisualDirty = true;
+        _gutterVisualDirty = true;
+        UpdateExtent();
+        InvalidateVisual();
+    }
+
     private void InvalidateText()
     {
         _textVisualDirty = true;
@@ -507,15 +502,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 break;
         }
 
-        _caretLine = entry.CaretLineBefore;
-        _caretCol = entry.CaretColBefore;
-        ClampCaret();
-        _selection.Clear();
-        _bracketMatchDirty = true;
-        _tokenCacheDirty = true;
-        _buffer.IsDirty = _undoManager.UndoCount != _cleanUndoDepth;
-        UpdateExtent();
-        InvalidateText();
+        FinishUndoRedo(entry.CaretLineBefore, entry.CaretColBefore);
     }
 
     private void Redo()
@@ -539,8 +526,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 break;
         }
 
-        _caretLine = entry.CaretLineAfter;
-        _caretCol = entry.CaretColAfter;
+        FinishUndoRedo(entry.CaretLineAfter, entry.CaretColAfter);
+    }
+
+    private void FinishUndoRedo(int caretLine, int caretCol)
+    {
+        _caretLine = caretLine;
+        _caretCol = caretCol;
         ClampCaret();
         _selection.Clear();
         _bracketMatchDirty = true;
@@ -1316,7 +1308,6 @@ public class EditorControl : FrameworkElement, IScrollInfo
         InvalidateText();
     }
 
-    /// <summary>Fold the block at or enclosing the caret.</summary>
     public void GoToLine(int line)
     {
         _selection.Clear();
@@ -1332,6 +1323,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         InvalidateVisual();
     }
 
+    /// <summary>Fold the block at or enclosing the caret.</summary>
     public void FoldAtCaret()
     {
         // If caret is on a block opener, fold it
