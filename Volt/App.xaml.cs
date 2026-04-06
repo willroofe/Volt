@@ -11,6 +11,8 @@ public partial class App : Application
     public SyntaxManager SyntaxManager { get; } = new();
     public AppSettings Settings { get; private set; } = null!;
 
+    private SingleInstanceManager? _singleInstance;
+
     public static new App Current => (App)Application.Current;
 
     [STAThread]
@@ -20,7 +22,12 @@ public partial class App : Application
         // install/uninstall/update hooks and may exit the process.
         VelopackApp.Build().Run();
 
+        var singleInstance = new SingleInstanceManager();
+        if (!singleInstance.TryStart(args))
+            return; // Another instance is running — file path forwarded, exit now
+
         var app = new App();
+        app._singleInstance = singleInstance;
         app.InitializeComponent();
         app.Run();
     }
@@ -44,9 +51,22 @@ public partial class App : Application
         if (e.Args.Length > 0 && File.Exists(e.Args[0]))
             window._startupFilePath = e.Args[0];
 
+        // Listen for file open requests from second instances
+        if (_singleInstance != null)
+        {
+            _singleInstance.FileRequested += path =>
+                Dispatcher.Invoke(() => window.OpenFileFromIpc(path));
+        }
+
         MainWindow = window;
         window.Show();
 
         base.OnStartup(e);
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        _singleInstance?.Dispose();
+        base.OnExit(e);
     }
 }

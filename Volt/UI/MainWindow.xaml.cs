@@ -148,6 +148,17 @@ public partial class MainWindow
         _ = AppUpdateManager.CheckForUpdatesAsync(this);
     }
 
+    internal void OpenFileFromIpc(string path)
+    {
+        if (!File.Exists(path)) return;
+        _ = OpenFileInTabAsync(path, reuseUntitled: false, activate: true);
+
+        // Bring window to foreground
+        if (WindowState == WindowState.Minimized)
+            WindowState = WindowState.Normal;
+        Activate();
+    }
+
     private TabInfo CreateTab(string? filePath = null)
     {
         var tab = new TabInfo(ThemeManager, SyntaxManager) { FilePath = filePath };
