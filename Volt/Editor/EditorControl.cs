@@ -2208,8 +2208,17 @@ public class EditorControl : FrameworkElement, IScrollInfo
             case Key.Home:
                 ResetPreferredCol();
                 if (shift) _selection.Start(_caretLine, _caretCol);
-                if (ctrl) _caretLine = 0;
-                _caretCol = 0;
+                if (ctrl)
+                {
+                    _caretLine = 0;
+                    _caretCol = 0;
+                }
+                else
+                {
+                    var text = _buffer[_caretLine];
+                    int indent = text.Length - text.TrimStart().Length;
+                    _caretCol = _caretCol == indent ? 0 : indent;
+                }
                 if (!shift) _selection.Clear();
                 break;
 
