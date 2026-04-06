@@ -344,29 +344,29 @@ public partial class SettingsWindow : Window
 
     // ── Navigation ──────────────────────────────────────────────────────
 
+    private (Button nav, FrameworkElement scroller)[] _navSections = null!;
+
+    private (Button nav, FrameworkElement scroller)[] NavSections => _navSections ??=
+    [
+        (NavTheme, ThemeScroller), (NavCommandPalette, CommandPaletteScroller),
+        (NavKeybinds, KeybindsScroller), (NavFont, FontScroller),
+        (NavCaret, CaretScroller), (NavTabs, TabsScroller),
+        (NavFind, FindScroller), (NavExplorer, ExplorerScroller),
+        (NavWordWrap, WordWrapScroller), (NavIndentation, IndentationScroller),
+    ];
+
     private void SelectNav(SettingsSection section)
     {
-        NavTheme.Style = (Style)FindResource(section == SettingsSection.Theme ? "NavButtonActive" : "NavButton");
-        NavCommandPalette.Style = (Style)FindResource(section == SettingsSection.CommandPalette ? "NavButtonActive" : "NavButton");
-        NavKeybinds.Style = (Style)FindResource(section == SettingsSection.Keybinds ? "NavButtonActive" : "NavButton");
-        NavFont.Style = (Style)FindResource(section == SettingsSection.Font ? "NavButtonActive" : "NavButton");
-        NavCaret.Style = (Style)FindResource(section == SettingsSection.Caret ? "NavButtonActive" : "NavButton");
-        NavTabs.Style = (Style)FindResource(section == SettingsSection.Tabs ? "NavButtonActive" : "NavButton");
-        NavFind.Style = (Style)FindResource(section == SettingsSection.Find ? "NavButtonActive" : "NavButton");
-        NavExplorer.Style = (Style)FindResource(section == SettingsSection.Explorer ? "NavButtonActive" : "NavButton");
-        NavWordWrap.Style = (Style)FindResource(section == SettingsSection.WordWrap ? "NavButtonActive" : "NavButton");
-        NavIndentation.Style = (Style)FindResource(section == SettingsSection.Indentation ? "NavButtonActive" : "NavButton");
+        var active = (Style)FindResource("NavButtonActive");
+        var inactive = (Style)FindResource("NavButton");
+        var sections = NavSections;
 
-        ThemeScroller.Visibility = section == SettingsSection.Theme ? Visibility.Visible : Visibility.Collapsed;
-        CommandPaletteScroller.Visibility = section == SettingsSection.CommandPalette ? Visibility.Visible : Visibility.Collapsed;
-        KeybindsScroller.Visibility = section == SettingsSection.Keybinds ? Visibility.Visible : Visibility.Collapsed;
-        FontScroller.Visibility = section == SettingsSection.Font ? Visibility.Visible : Visibility.Collapsed;
-        CaretScroller.Visibility = section == SettingsSection.Caret ? Visibility.Visible : Visibility.Collapsed;
-        TabsScroller.Visibility = section == SettingsSection.Tabs ? Visibility.Visible : Visibility.Collapsed;
-        FindScroller.Visibility = section == SettingsSection.Find ? Visibility.Visible : Visibility.Collapsed;
-        ExplorerScroller.Visibility = section == SettingsSection.Explorer ? Visibility.Visible : Visibility.Collapsed;
-        WordWrapScroller.Visibility = section == SettingsSection.WordWrap ? Visibility.Visible : Visibility.Collapsed;
-        IndentationScroller.Visibility = section == SettingsSection.Indentation ? Visibility.Visible : Visibility.Collapsed;
+        for (int i = 0; i < sections.Length; i++)
+        {
+            bool isActive = i == (int)section;
+            sections[i].nav.Style = isActive ? active : inactive;
+            sections[i].scroller.Visibility = isActive ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     private void OnNavTheme(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Theme);
