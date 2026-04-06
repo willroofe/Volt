@@ -376,14 +376,19 @@ public partial class FileExplorerPanel : UserControl, IPanel
         return stagedPath;
     }
 
+    private static void MoveFileOrDirectory(string source, string dest)
+    {
+        if (Directory.Exists(source))
+            Directory.Move(source, dest);
+        else if (File.Exists(source))
+            File.Move(source, dest);
+    }
+
     private void OnFileMoveRequested(string sourcePath, string destPath)
     {
         try
         {
-            if (File.Exists(sourcePath))
-                File.Move(sourcePath, destPath);
-            else if (Directory.Exists(sourcePath))
-                Directory.Move(sourcePath, destPath);
+            MoveFileOrDirectory(sourcePath, destPath);
             PushUndo(new FileOperation(FileOperationKind.Move, sourcePath, destPath));
             FileRenamed?.Invoke(sourcePath, destPath);
         }
@@ -426,18 +431,11 @@ public partial class FileExplorerPanel : UserControl, IPanel
                     break;
                 case FileOperationKind.Rename:
                 case FileOperationKind.Move:
-                    if (Directory.Exists(op.NewPath!))
-                        Directory.Move(op.NewPath!, op.Path);
-                    else if (File.Exists(op.NewPath!))
-                        File.Move(op.NewPath!, op.Path);
+                    MoveFileOrDirectory(op.NewPath!, op.Path);
                     FileRenamed?.Invoke(op.NewPath!, op.Path);
                     break;
                 case FileOperationKind.Delete:
-                    // Restore from staging directory
-                    if (Directory.Exists(op.NewPath!))
-                        Directory.Move(op.NewPath!, op.Path);
-                    else if (File.Exists(op.NewPath!))
-                        File.Move(op.NewPath!, op.Path);
+                    MoveFileOrDirectory(op.NewPath!, op.Path);
                     break;
             }
             _redoStack.Push(op);
@@ -466,10 +464,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
                     break;
                 case FileOperationKind.Rename:
                 case FileOperationKind.Move:
-                    if (Directory.Exists(op.Path))
-                        Directory.Move(op.Path, op.NewPath!);
-                    else if (File.Exists(op.Path))
-                        File.Move(op.Path, op.NewPath!);
+                    MoveFileOrDirectory(op.Path, op.NewPath!);
                     FileRenamed?.Invoke(op.Path, op.NewPath!);
                     break;
                 case FileOperationKind.Delete:

@@ -5,18 +5,11 @@ using System.Windows.Threading;
 
 namespace Volt;
 
-public enum FileTreeItemKind
-{
-    File,
-    Directory
-}
-
 public class FileTreeItem : INotifyPropertyChanged
 {
     public string Name { get; }
     public string FullPath { get; }
     public bool IsDirectory { get; }
-    public FileTreeItemKind Kind { get; }
 
     private bool _isExpanded;
     public bool IsExpanded
@@ -28,7 +21,7 @@ public class FileTreeItem : INotifyPropertyChanged
             _isExpanded = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsExpanded)));
             if (value && _hasPlaceholder)
-                LoadChildren();
+                _ = LoadChildrenCore();
         }
     }
 
@@ -57,7 +50,6 @@ public class FileTreeItem : INotifyPropertyChanged
         var name = Path.GetFileName(fullPath);
         Name = string.IsNullOrEmpty(name) ? fullPath : name;
         IsDirectory = isDirectory;
-        Kind = isDirectory ? FileTreeItemKind.Directory : FileTreeItemKind.File;
 
         if (isDirectory)
         {
@@ -67,22 +59,16 @@ public class FileTreeItem : INotifyPropertyChanged
         }
     }
 
-    private FileTreeItem(string fullPath, string name, bool isDirectory, FileTreeItemKind kind)
+    private FileTreeItem(string fullPath, string name, bool isDirectory)
     {
         FullPath = fullPath;
         Name = name;
         IsDirectory = isDirectory;
-        Kind = kind;
     }
 
     private static FileTreeItem CreatePlaceholder()
     {
-        return new FileTreeItem("", "", false, FileTreeItemKind.File);
-    }
-
-    private async void LoadChildren()
-    {
-        await LoadChildrenCore();
+        return new FileTreeItem("", "", false);
     }
 
     private async Task LoadChildrenCore()

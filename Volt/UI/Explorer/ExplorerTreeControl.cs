@@ -351,7 +351,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
 
             // Icon
             {
-                var iconText = row.Item.Kind == FileTreeItemKind.File
+                var iconText = !row.Item.IsDirectory
                     ? _fileIconText!
                     : row.Item.IsExpanded ? _folderOpenIconText! : _folderIconText!;
                 double iconX = x + (IconZoneWidth - iconText.Width) / 2;
@@ -382,12 +382,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
 
     // --- Mouse interaction ---
 
-    private int HitTestRow(MouseEventArgs e)
-    {
-        double y = e.GetPosition(this).Y;
-        int row = (int)((y + _verticalOffset) / RowHeight);
-        return row >= 0 && row < _flatRows.Count ? row : -1;
-    }
+    private int HitTestRow(MouseEventArgs e) => HitTestRowFromPoint(e.GetPosition(this));
 
     private bool IsInArrowZone(MouseEventArgs e, int rowIndex)
     {
@@ -417,7 +412,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
                 item.IsExpanded = !item.IsExpanded;
                 RefreshFlatList();
             }
-            else if (item.Kind == FileTreeItemKind.File && !string.IsNullOrEmpty(item.FullPath))
+            else if (!item.IsDirectory && !string.IsNullOrEmpty(item.FullPath))
             {
                 FileOpenRequested?.Invoke(item.FullPath);
             }
@@ -571,7 +566,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
 
         if (ft.Width > maxTextWidth)
         {
-            _pendingTooltipText = item.Kind == FileTreeItemKind.File ? item.FullPath : item.Name;
+            _pendingTooltipText = !item.IsDirectory ? item.FullPath : item.Name;
             _tooltipTimer.Start();
         }
     }
