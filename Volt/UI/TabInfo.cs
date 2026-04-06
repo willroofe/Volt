@@ -33,6 +33,9 @@ public class TabInfo
     /// <summary>True while file content is being loaded asynchronously.</summary>
     public bool IsLoading { get; set; }
 
+    /// <summary>Manually chosen language name, overriding extension-based detection. Null = auto-detect.</summary>
+    public string? LanguageOverride { get; set; }
+
     private FileSystemWatcher? _watcher;
     private DispatcherTimer? _debounceTimer;
 

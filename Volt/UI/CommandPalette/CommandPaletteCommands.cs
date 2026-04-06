@@ -31,7 +31,8 @@ internal record CommandPaletteContext(
     Action ToggleWordWrapIndent,
     Action ToggleFixedWidthTabs,
     Action CheckForUpdates,
-    Action OpenRecent);
+    Action OpenRecent,
+    Action<string?> SetLanguage);
 
 /// <summary>
 /// Builds the command list for the command palette, keeping the 90 lines of
@@ -48,6 +49,7 @@ internal static class CommandPaletteCommands
         var findBar = ctx.FindBar;
         var cmdPalette = ctx.CommandPalette;
         var saveSettings = ctx.SaveSettings;
+        var syntaxManager = App.Current.SyntaxManager;
         var explorer = ctx.Explorer;
         var workspace = ctx.Workspace;
         var toggleWordWrap = ctx.ToggleWordWrap;
@@ -183,6 +185,26 @@ internal static class CommandPaletteCommands
                 if (int.TryParse(text.Trim(), out int line) && line >= 1)
                     ctx.ActiveEditor?.GoToLine(line - 1);
             })),
+
+            new("Change Language", CurrentValue: () => activeEditor.LanguageName, GetOptions: () =>
+            {
+                var activeTab = ctx.Tabs.FirstOrDefault(t => t.Editor == activeEditor);
+                var originalOverride = activeTab?.LanguageOverride;
+                var options = new List<PaletteOption>
+                {
+                    new("Plain Text",
+                        ApplyPreview: () => ctx.SetLanguage(""),
+                        Commit: () => ctx.SetLanguage(""),
+                        Revert: () => ctx.SetLanguage(originalOverride))
+                };
+                options.AddRange(syntaxManager.GetAvailableLanguages().Select(name => new PaletteOption(
+                    name,
+                    ApplyPreview: () => ctx.SetLanguage(name),
+                    Commit: () => ctx.SetLanguage(name),
+                    Revert: () => ctx.SetLanguage(originalOverride)
+                )));
+                return options;
+            }),
         ];
     }
 }

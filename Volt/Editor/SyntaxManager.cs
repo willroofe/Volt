@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows.Media;
 
@@ -568,6 +569,14 @@ public class SyntaxManager
         }
         return result;
     }
+
+    /// <summary>Returns all loaded grammar names sorted alphabetically.</summary>
+    public List<string> GetAvailableLanguages()
+        => _grammars.Select(g => g.Name).Distinct().OrderBy(n => n).ToList();
+
+    /// <summary>Finds a grammar by its display name (case-insensitive).</summary>
+    public SyntaxDefinition? GetDefinitionByName(string name)
+        => _grammars.FirstOrDefault(g => string.Equals(g.Name, name, StringComparison.OrdinalIgnoreCase));
 
     public void ReloadGrammars()
     {

@@ -1080,11 +1080,38 @@ public partial class MainWindow
     private void UpdateFileType()
     {
         if (Editor is not { } editor) return;
-        var ext = _activeTab!.FilePath != null ? Path.GetExtension(_activeTab.FilePath).ToLowerInvariant() : "";
-        editor.SetGrammar(SyntaxManager.GetDefinition(ext));
-        FileTypeText.Text = FileHelper.GetFileTypeName(ext);
+
+        if (_activeTab!.LanguageOverride != null)
+        {
+            // Empty string = explicit "Plain Text" override; non-empty = language name
+            var grammar = _activeTab.LanguageOverride.Length > 0
+                ? SyntaxManager.GetDefinitionByName(_activeTab.LanguageOverride)
+                : null;
+            editor.SetGrammar(grammar);
+            FileTypeText.Text = grammar?.Name ?? "Plain Text";
+        }
+        else
+        {
+            var ext = _activeTab.FilePath != null ? Path.GetExtension(_activeTab.FilePath).ToLowerInvariant() : "";
+            editor.SetGrammar(SyntaxManager.GetDefinition(ext));
+            FileTypeText.Text = FileHelper.GetFileTypeName(ext);
+        }
+
         EncodingText.Text = GetEncodingLabel();
         LineEndingText.Text = editor.LineEnding;
+    }
+
+    private void SetActiveTabLanguage(string? languageName)
+    {
+        if (_activeTab == null) return;
+        _activeTab.LanguageOverride = languageName;
+        UpdateFileType();
+    }
+
+    private void OnFileTypeClick(object sender, MouseButtonEventArgs e)
+    {
+        EnsurePaletteCommands();
+        CmdPalette.OpenWithCommand("Change Language");
     }
 
     private void UpdateTitle() => Title = "Volt";
@@ -1683,7 +1710,8 @@ public partial class MainWindow
             ToggleWordWrapIndent,
             ToggleFixedWidthTabs,
             () => _ = AppUpdateManager.CheckForUpdatesAsync(this, showUpToDate: true),
-            OpenRecentInCommandPalette));
+            OpenRecentInCommandPalette,
+            SetActiveTabLanguage));
         CmdPalette.SetCommands(commands);
     }
 
