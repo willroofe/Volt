@@ -167,6 +167,7 @@ public class AppSettings
     public KeyBindingSettings KeyBindings { get; set; } = new();
     public SessionSettings Session { get; set; } = new();
     public Dictionary<string, SessionSettings> FolderSessions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, List<string>> FolderExpandedPaths { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     private const int MaxRecentMenuItems = 10;
     private const int MaxRecentHistory = 200;

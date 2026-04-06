@@ -103,9 +103,9 @@ public partial class MainWindow
             _settings.Editor.Explorer.OpenFolderPath is string folderPath && Directory.Exists(folderPath))
         {
             _explorerPanel.OpenFolder(folderPath);
-            if (_settings.Editor.Explorer.ExpandedPaths.Count > 0)
-                _explorerPanel.RestoreExpandedPaths(_settings.Editor.Explorer.ExpandedPaths);
+            RestoreFolderExpandedPaths(folderPath);
             MenuCloseFolder.Visibility = Visibility.Visible;
+            UpdateSaveWorkspaceMenuState();
         }
 
         CmdPalette.Closed += (_, _) => { if (Editor is { } ed) Keyboard.Focus(ed); };
@@ -543,12 +543,12 @@ public partial class MainWindow
 
     private void SwitchToFolder(string newFolderPath)
     {
-        // Save current folder's tabs before switching
+        // Save current folder's tabs and expanded paths before switching
         var currentFolder = _explorerPanel.OpenFolderPath;
         if (currentFolder != null)
         {
             SaveFolderSession(currentFolder);
-            _settings.Editor.Explorer.ExpandedPaths = _explorerPanel.GetExpandedPaths();
+            SaveFolderExpandedPaths(currentFolder);
         }
 
         CloseAllTabs();
@@ -557,8 +557,10 @@ public partial class MainWindow
         _settings.Editor.Explorer.OpenFolderPath = newFolderPath;
         Shell.ShowPanel("file-explorer");
         MenuCloseFolder.Visibility = Visibility.Visible;
+        UpdateSaveWorkspaceMenuState();
 
-        // Restore tabs for the new folder
+        // Restore expanded paths and tabs for the new folder
+        RestoreFolderExpandedPaths(newFolderPath);
         RestoreFolderTabs(newFolderPath);
         _settings.Save();
     }
@@ -567,11 +569,15 @@ public partial class MainWindow
     {
         var folderPath = _explorerPanel.OpenFolderPath;
         if (folderPath != null)
+        {
             SaveFolderSession(folderPath);
+            SaveFolderExpandedPaths(folderPath);
+        }
 
         CloseAllTabs();
         _explorerPanel.CloseFolder();
         MenuCloseFolder.Visibility = Visibility.Collapsed;
+        UpdateSaveWorkspaceMenuState();
         _settings.Editor.Explorer.OpenFolderPath = null;
         _settings.Editor.Explorer.ExpandedPaths.Clear();
         _settings.Save();
@@ -804,6 +810,21 @@ public partial class MainWindow
         _settings.FolderSessions[folderPath] = _sessionManager.SaveSession(_tabs, _activeTab, folderPath);
     }
 
+    private void SaveFolderExpandedPaths(string folderPath)
+    {
+        var paths = _explorerPanel.GetExpandedPaths();
+        _settings.FolderExpandedPaths[folderPath] = paths;
+        _settings.Editor.Explorer.ExpandedPaths = paths;
+    }
+
+    private void RestoreFolderExpandedPaths(string folderPath)
+    {
+        if (_settings.FolderExpandedPaths.TryGetValue(folderPath, out var paths) && paths.Count > 0)
+            _explorerPanel.RestoreExpandedPaths(paths);
+        else if (_settings.Editor.Explorer.ExpandedPaths.Count > 0)
+            _explorerPanel.RestoreExpandedPaths(_settings.Editor.Explorer.ExpandedPaths);
+    }
+
     private void RestoreFolderTabs(string folderPath)
     {
         if (!_settings.FolderSessions.TryGetValue(folderPath, out var session) || session.Tabs.Count == 0)
@@ -1003,7 +1024,11 @@ public partial class MainWindow
         }
 
         _settings.WindowMaximized = WindowState == WindowState.Maximized;
+        // Save expanded paths both globally (for backward compat) and per-folder
         _settings.Editor.Explorer.ExpandedPaths = _explorerPanel.GetExpandedPaths();
+        var openFolder = _explorerPanel.OpenFolderPath;
+        if (openFolder != null && _workspaceManager.CurrentWorkspace == null)
+            SaveFolderExpandedPaths(openFolder);
         _settings.Editor.PanelLayouts = Shell.GetCurrentLayout();
         _settings.Editor.OpenRegions = Shell.GetOpenRegions();
         _settings.Save();
@@ -1677,13 +1702,50 @@ public partial class MainWindow
 
     private void OnSaveWorkspaceAs(object sender, RoutedEventArgs e)
     {
-        if (_workspaceManager.CurrentWorkspace == null) return;
+        // If a single folder is open (no workspace), promote it to a workspace first
+        if (_workspaceManager.CurrentWorkspace == null)
+        {
+            var folderPath = _explorerPanel.OpenFolderPath;
+            if (folderPath == null) return;
 
+            SaveFolderSession(folderPath);
+            SaveFolderExpandedPaths(folderPath);
+
+            _workspaceManager.NewWorkspace(Path.GetFileName(folderPath));
+            _workspaceManager.AddFolder(folderPath);
+            _explorerPanel.OpenWorkspace(_workspaceManager.CurrentWorkspace!);
+            RestoreFolderExpandedPaths(folderPath);
+
+            _settings.Editor.Explorer.OpenFolderPath = null;
+            MenuCloseFolder.Visibility = Visibility.Collapsed;
+            UpdateWorkspaceMenuState(true);
+
+            // Restore tabs in workspace context
+            if (_settings.FolderSessions.TryGetValue(folderPath, out var session))
+            {
+                _workspaceManager.CurrentWorkspace!.Session = new WorkspaceSession
+                {
+                    Tabs = session.Tabs.Select(t => new WorkspaceSessionTab
+                    {
+                        FilePath = t.FilePath,
+                        IsDirty = t.IsDirty,
+                        CaretLine = t.CaretLine,
+                        CaretCol = t.CaretCol,
+                        ScrollX = t.ScrollHorizontal,
+                        ScrollY = t.ScrollVertical,
+                    }).ToList(),
+                    ActiveTabIndex = session.ActiveTabIndex,
+                    ExpandedPaths = _explorerPanel.GetExpandedPaths()
+                };
+            }
+        }
+
+        var defaultName = _workspaceManager.CurrentWorkspace!.Name ?? "MyWorkspace";
         var dlg = new SaveFileDialog
         {
             Filter = "Workspace Files (*.volt-workspace)|*.volt-workspace",
             DefaultExt = ".volt-workspace",
-            FileName = (_workspaceManager.CurrentWorkspace.Name ?? "MyWorkspace") + ".volt-workspace"
+            FileName = defaultName + ".volt-workspace"
         };
         if (dlg.ShowDialog() != true) return;
 
@@ -1735,7 +1797,7 @@ public partial class MainWindow
             if (currentFolder != null)
             {
                 SaveFolderSession(currentFolder);
-                _settings.Editor.Explorer.ExpandedPaths = _explorerPanel.GetExpandedPaths();
+                SaveFolderExpandedPaths(currentFolder);
             }
 
             _workspaceManager.NewWorkspace("Untitled Workspace");
@@ -1855,8 +1917,13 @@ public partial class MainWindow
     private void UpdateWorkspaceMenuState(bool workspaceOpen)
     {
         MenuCloseWorkspace.Visibility = workspaceOpen ? Visibility.Visible : Visibility.Collapsed;
-        MenuSaveWorkspaceAs.IsEnabled = workspaceOpen;
+        MenuSaveWorkspaceAs.IsEnabled = workspaceOpen || _explorerPanel.OpenFolderPath != null;
         if (workspaceOpen) MenuCloseFolder.Visibility = Visibility.Collapsed;
+    }
+
+    private void UpdateSaveWorkspaceMenuState()
+    {
+        MenuSaveWorkspaceAs.IsEnabled = _workspaceManager.CurrentWorkspace != null || _explorerPanel.OpenFolderPath != null;
     }
 
     private void CloseAllTabs()
