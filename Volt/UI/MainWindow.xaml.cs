@@ -714,41 +714,6 @@ public partial class MainWindow
     /// Opens a file in a tab synchronously. Used by session restore where async
     /// isn't needed (files load before the window is shown).
     /// </summary>
-    private TabInfo? OpenFileInTab(string path, bool reuseUntitled)
-    {
-        var fullPath = Path.GetFullPath(path);
-
-        // Switch to existing tab if already open
-        var existing = _tabs.FirstOrDefault(t =>
-            t.FilePath != null && string.Equals(Path.GetFullPath(t.FilePath), fullPath, StringComparison.OrdinalIgnoreCase));
-        if (existing != null)
-            return existing;
-
-        if (!File.Exists(fullPath))
-        {
-            ThemedMessageBox.Show(this, $"The file no longer exists:\n{fullPath}", "File Not Found");
-            return null;
-        }
-
-        if (!CheckFileSize(path)) return null;
-
-        // Reuse current tab if untitled and clean
-        TabInfo tab;
-        if (reuseUntitled && _activeTab != null && _activeTab.FilePath == null && !_activeTab.Editor.IsDirty)
-            tab = _activeTab;
-        else
-            tab = CreateTab();
-
-        tab.FilePath = path;
-        tab.FileEncoding = FileHelper.DetectEncoding(path);
-        tab.Editor.SetContent(FileHelper.ReadAllText(path, tab.FileEncoding));
-        tab.LastKnownFileSize = new FileInfo(path).Length;
-        tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(path, tab.LastKnownFileSize);
-        tab.StartWatching();
-        UpdateTabHeader(tab);
-        return tab;
-    }
-
     private void RestoreSession()
     {
         // Restore workspace if one was open
