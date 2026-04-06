@@ -349,6 +349,7 @@
             <!-- Tab bar -->
             <Border DockPanel.Dock="Top" Background="{DynamicResource ThemeTabBarBg}"
                     BorderBrush="{DynamicResource ThemeTabBorder}" BorderThickness="0,0,0,1">
+                <!-- Keep in sync with UIConstants.TabBarHeight -->
                 <DockPanel Height="33">
                     <Button x:Name="NewTabButton" DockPanel.Dock="Right"
                             Width="28" Height="28" Margin="4,0"

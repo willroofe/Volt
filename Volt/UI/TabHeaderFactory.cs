@@ -64,7 +64,7 @@ internal class TabHeaderFactory
         var header = new Border
         {
             Child = panel,
-            Height = 33,
+            Height = UIConstants.TabBarHeight,
             MinWidth = 60,
             Cursor = Cursors.Hand,
             BorderThickness = new Thickness(0, 0, 1, 0)
