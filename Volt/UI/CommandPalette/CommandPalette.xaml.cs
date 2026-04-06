@@ -71,6 +71,42 @@ public partial class CommandPalette : UserControl
     }
 
     /// <summary>
+    /// Opens the palette directly into a specific command's option list by name.
+    /// </summary>
+    public void OpenWithCommand(string commandName)
+    {
+        var cmd = _commands.Find(c => c.Name == commandName);
+        if (cmd?.GetOptions == null) return;
+
+        _freeInputCallback = null;
+        SetInputOnlyMode(false);
+        var currentValue = cmd.CurrentValue?.Invoke();
+
+        _currentOptions = cmd.GetOptions();
+        _filterPrefix.Text = cmd.Name + ": ";
+        _filterInput.Text = "";
+        _selectedIndex = -1;
+        Visibility = Visibility.Visible;
+        RefreshList();
+
+        if (_commandList.Items.Count > 0)
+        {
+            _selectedIndex = 0;
+            if (currentValue != null)
+            {
+                var idx = _currentOptions.FindIndex(o =>
+                    o.Label.Equals(currentValue, StringComparison.OrdinalIgnoreCase));
+                if (idx >= 0) _selectedIndex = idx;
+            }
+            UpdateListSelection();
+            _commandList.ScrollIntoView(_commandList.Items[_selectedIndex]);
+            ApplyPreviewForIndex(_selectedIndex);
+        }
+
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => Keyboard.Focus(_filterInput));
+    }
+
+    /// <summary>
     /// Opens the palette as a free-text input with a prefix label.
     /// On Enter the typed text is passed to <paramref name="onConfirm"/>.
     /// </summary>

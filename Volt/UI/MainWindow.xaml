@@ -335,7 +335,9 @@
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
                     <TextBlock x:Name="FileTypeText" Text="Plain Text" Margin="8,0"
                                FontFamily="Segoe UI" FontSize="12"
-                               Foreground="{DynamicResource ThemeTextFg}"/>
+                               Foreground="{DynamicResource ThemeTextFg}"
+                               Cursor="Hand"
+                               MouseLeftButtonDown="OnFileTypeClick"/>
                     <Rectangle Width="1" Fill="{DynamicResource ThemeBorderBrush}"/>
                     <TextBlock x:Name="EncodingText" Text="UTF-8" Margin="8,0"
                                FontFamily="Segoe UI" FontSize="12"
