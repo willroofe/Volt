@@ -1286,7 +1286,11 @@ public partial class MainWindow
             tab.LastKnownWriteTimeUtc = File.GetLastWriteTimeUtc(tab.FilePath);
             tab.Editor.MarkClean();
             UpdateTabHeader(tab);
-            if (tab == _activeTab) UpdateTitle();
+            if (tab == _activeTab)
+            {
+                UpdateTitle();
+                UpdateFileType();
+            }
         }
         catch (IOException)
         {
