@@ -1620,11 +1620,32 @@ public partial class MainWindow
 
     private void OpenGoToLine()
     {
+        EnsurePaletteCommands();
         CmdPalette.OpenFreeInput("Go to Line: ", text =>
         {
             if (int.TryParse(text.Trim(), out int line) && line >= 1)
                 Editor?.GoToLine(line - 1);
         });
+    }
+
+    private void EnsurePaletteCommands()
+    {
+        if (Editor is not { } editor) return;
+        var commands = CommandPaletteCommands.Build(new CommandPaletteContext(
+            _tabs, _settings, ThemeManager, editor, FindBarControl, CmdPalette, () => _settings.Save(),
+            new ExplorerActions(ToggleExplorer, OpenFolderInExplorer, CloseFolderInExplorer),
+            new WorkspaceActions(
+                () => OnOpenWorkspace(this, new RoutedEventArgs()),
+                CloseCurrentWorkspace,
+                () => OnAddFolderToWorkspace(this, new RoutedEventArgs()),
+                () => OnSaveWorkspaceAs(this, new RoutedEventArgs())),
+            () => OnToggleWordWrap(this, new RoutedEventArgs()),
+            ToggleWordWrapAtWords,
+            ToggleWordWrapIndent,
+            ToggleFixedWidthTabs,
+            () => _ = AppUpdateManager.CheckForUpdatesAsync(this, showUpToDate: true),
+            OpenRecentInCommandPalette));
+        CmdPalette.SetCommands(commands);
     }
 
     private void UpdateMenuGestureText()
@@ -1660,22 +1681,7 @@ public partial class MainWindow
 
     private void OpenCommandPalette()
     {
-        if (Editor is not { } editor) return;
-        var commands = CommandPaletteCommands.Build(new CommandPaletteContext(
-            _tabs, _settings, ThemeManager, editor, FindBarControl, CmdPalette, () => _settings.Save(),
-            new ExplorerActions(ToggleExplorer, OpenFolderInExplorer, CloseFolderInExplorer),
-            new WorkspaceActions(
-                () => OnOpenWorkspace(this, new RoutedEventArgs()),
-                CloseCurrentWorkspace,
-                () => OnAddFolderToWorkspace(this, new RoutedEventArgs()),
-                () => OnSaveWorkspaceAs(this, new RoutedEventArgs())),
-            () => OnToggleWordWrap(this, new RoutedEventArgs()),
-            ToggleWordWrapAtWords,
-            ToggleWordWrapIndent,
-            ToggleFixedWidthTabs,
-            () => _ = AppUpdateManager.CheckForUpdatesAsync(this, showUpToDate: true),
-            OpenRecentInCommandPalette));
-        CmdPalette.SetCommands(commands);
+        EnsurePaletteCommands();
         CmdPalette.Open();
     }
 
