@@ -166,7 +166,7 @@ public partial class TabRegion : UserControl
         var header = new Border
         {
             Child = tabPanel,
-            Height = 33,
+            Height = UIConstants.TabBarHeight,
             MinWidth = 40,
             Cursor = Cursors.Hand,
             BorderThickness = new Thickness(0, 0, 1, 0)

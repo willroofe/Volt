@@ -9,13 +9,9 @@ namespace Volt;
 
 public partial class FindBar : UserControl
 {
-    // IMPORTANT: These margins must stay in sync with MainWindow.xaml layout heights.
-    // FindBar is now inside EditorColumnGrid (scoped to the editor panel).
-    // Top margin = TabStrip DockPanel Height (33px) + border below tab bar (1px) = 34px
-    // Bottom margin = visual padding (19px) — the status bar lives outside EditorColumnGrid
-    // If you change the tab bar height in MainWindow.xaml (DockPanel Height="33")
-    // or the border thickness below it, update FindBarTopMargin accordingly.
-    private const double FindBarTopMargin = 34;  // 33 (tab bar height) + 1 (border)
+    // Top margin = tab bar height + border below tab bar (1px).
+    // Bottom margin = visual padding (19px) — the status bar lives outside EditorColumnGrid.
+    private static readonly double FindBarTopMargin = UIConstants.TabBarHeight + 1;
     private const double FindBarBottomMargin = 19; // visual padding below the find bar
 
     private bool _matchCase;
