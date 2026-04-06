@@ -251,6 +251,11 @@
                             <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
                         </MenuItem.Icon>
                     </MenuItem>
+                    <MenuItem Header="_About" Click="OnAbout">
+                        <MenuItem.Icon>
+                            <TextBlock Text="&#xE946;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
+                        </MenuItem.Icon>
+                    </MenuItem>
                     <Separator/>
                     <MenuItem Header="E_xit" InputGestureText="Alt+F4" Click="OnExit"/>
                 </MenuItem>

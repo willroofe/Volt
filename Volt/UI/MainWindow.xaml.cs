@@ -1508,6 +1508,12 @@ public partial class MainWindow
         MenuViewBottom.IsChecked = Shell.IsRegionVisible(PanelPlacement.Bottom);
     }
 
+    private void OnAbout(object sender, RoutedEventArgs e)
+    {
+        var dlg = new AboutWindow { Owner = this };
+        dlg.ShowDialog();
+    }
+
     private void OnSettings(object sender, RoutedEventArgs e)
     {
         if (Editor is not { } editor) return;
