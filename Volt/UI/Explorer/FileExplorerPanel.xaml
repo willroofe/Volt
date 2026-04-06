@@ -4,6 +4,7 @@
              xmlns:local="clr-namespace:Volt">
     <DockPanel Background="{DynamicResource ThemeExplorerBg}">
         <Border x:Name="SearchBorder" DockPanel.Dock="Top"
+                Visibility="Collapsed"
                 Margin="4,4,4,2"
                 Background="{DynamicResource ThemeExplorerBg}"
                 BorderThickness="1" CornerRadius="3"

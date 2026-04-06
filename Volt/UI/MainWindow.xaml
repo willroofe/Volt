@@ -284,7 +284,16 @@
                         </MenuItem.Icon>
                     </MenuItem>
                     <MenuItem x:Name="MenuSaveWorkspaceAs" Header="Save Workspace As..." Click="OnSaveWorkspaceAs" IsEnabled="False"/>
-                    <MenuItem x:Name="MenuCloseWorkspace" Header="Close Workspace" Click="OnCloseWorkspace" Visibility="Collapsed"/>
+                    <MenuItem x:Name="MenuCloseWorkspace" Header="Close Workspace" Click="OnCloseWorkspace" Visibility="Collapsed">
+                        <MenuItem.Icon>
+                            <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem x:Name="MenuCloseFolder" Header="Close Folder" Click="OnCloseFolder" Visibility="Collapsed">
+                        <MenuItem.Icon>
+                            <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
+                        </MenuItem.Icon>
+                    </MenuItem>
                 </MenuItem>
                 <MenuItem Header="_Edit" Style="{StaticResource TopLevelMenuItem}"
                          ItemContainerStyle="{StaticResource MenuItemCheckableStyle}">
