@@ -1,0 +1,96 @@
+<Window x:Class="Volt.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="About Volt"
+        Width="360" Height="280"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="32" ResizeBorderThickness="0"
+                      GlassFrameThickness="-1"
+                      UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+    <DockPanel Background="{DynamicResource ThemeContentBg}">
+        <!-- Title bar -->
+        <Grid DockPanel.Dock="Top" Background="{DynamicResource ThemeChromeBrush}" Height="32">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="About Volt"
+                       VerticalAlignment="Center" Margin="12,0,0,0"
+                       FontFamily="Segoe UI" FontSize="12"
+                       Foreground="{DynamicResource ThemeTextFg}"
+                       IsHitTestVisible="False"/>
+            <Button Grid.Column="1" Style="{StaticResource CloseButton}"
+                    Content="&#xE8BB;" Click="OnClose"/>
+        </Grid>
+
+        <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource ThemeBorderBrush}"/>
+
+        <!-- Content -->
+        <Grid Margin="24,20,24,20">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Logo + info -->
+            <StackPanel Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Viewbox Width="48" Height="48" HorizontalAlignment="Center">
+                    <Canvas Width="400" Height="360">
+                        <Path Stroke="{DynamicResource ThemeTextFg}" StrokeThickness="16"
+                              StrokeLineJoin="Miter" StrokeMiterLimit="10"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                              Data="M200,50.192 L350,310 L50,310 Z"/>
+                        <Path Stroke="{DynamicResource ThemeTextFg}" StrokeThickness="16"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                              StrokeLineJoin="Round"
+                              Data="M150,136.795 L300,223.397 M100,223.397 L150,310 M150,310 L225,180.096"/>
+                    </Canvas>
+                </Viewbox>
+
+                <TextBlock Text="Volt" HorizontalAlignment="Center" Margin="0,8,0,0"
+                           FontFamily="Segoe UI" FontSize="20" FontWeight="SemiBold"
+                           Foreground="{DynamicResource ThemeTextFg}"/>
+
+                <TextBlock x:Name="VersionText" HorizontalAlignment="Center" Margin="0,4,0,0"
+                           FontFamily="Segoe UI" FontSize="12"
+                           Foreground="{DynamicResource ThemeTextFgMuted}"/>
+
+                <TextBlock x:Name="CopyrightText" HorizontalAlignment="Center" Margin="0,4,0,0"
+                           FontFamily="Segoe UI" FontSize="11"
+                           Foreground="{DynamicResource ThemeTextFgMuted}"/>
+            </StackPanel>
+
+            <!-- Update status + progress -->
+            <StackPanel Grid.Row="1">
+                <TextBlock x:Name="UpdateStatusText" HorizontalAlignment="Center"
+                           FontFamily="Segoe UI" FontSize="12"
+                           Foreground="{DynamicResource ThemeTextFgMuted}"
+                           Visibility="Hidden"/>
+
+                <ProgressBar x:Name="UpdateProgress" Height="4" Margin="0,6,0,0"
+                             Minimum="0" Maximum="100"
+                             Foreground="{DynamicResource ThemeTextFg}"
+                             Background="{DynamicResource ThemeBorderBrush}"
+                             BorderThickness="0"
+                             Visibility="Hidden"/>
+
+                <!-- Buttons -->
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Right" Margin="0,12,0,0">
+                    <Button x:Name="UpdateButton" Content="Check for Updates"
+                            Style="{StaticResource DialogButton}"
+                            Margin="0,0,8,0"
+                            Click="OnCheckForUpdates"/>
+                    <Button Content="Close"
+                            Style="{StaticResource DialogButton}"
+                            IsCancel="True"
+                            Click="OnClose"/>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+    </DockPanel>
+</Window>
