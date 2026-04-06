@@ -147,6 +147,14 @@ public partial class FileExplorerPanel : UserControl, IPanel
         _currentRootItems = new ObservableCollection<FileTreeItem> { root };
         ExplorerTree.SetRootItems(_currentRootItems);
         SearchBorder.Visibility = Visibility.Visible;
+
+        // Process any pending expand paths that were set before the tree was ready
+        if (_pendingExpandPaths is { Count: > 0 })
+        {
+            ExpandMatchingChildren(_currentRootItems);
+            TryExpandPendingInTree(_currentRootItems);
+            ExplorerTree.RefreshFlatList();
+        }
     }
 
     public void CloseFolder()
