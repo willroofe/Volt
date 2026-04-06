@@ -105,6 +105,7 @@ public partial class MainWindow
             _explorerPanel.OpenFolder(folderPath);
             if (_settings.Editor.Explorer.ExpandedPaths.Count > 0)
                 _explorerPanel.RestoreExpandedPaths(_settings.Editor.Explorer.ExpandedPaths);
+            MenuCloseFolder.Visibility = Visibility.Visible;
         }
 
         CmdPalette.Closed += (_, _) => { if (Editor is { } ed) Keyboard.Focus(ed); };
@@ -119,6 +120,7 @@ public partial class MainWindow
         _explorerPanel.AddFolderRequested += OnWorkspaceAddFolder;
         _explorerPanel.RemoveFolderRequested += OnWorkspaceRemoveFolder;
         _explorerPanel.CloseWorkspaceRequested += CloseCurrentWorkspace;
+        _explorerPanel.CloseFolderRequested += CloseFolderInExplorer;
         _explorerPanel.FileRenamed += OnExplorerFileRenamed;
         _explorerPanel.FileDeleted += OnExplorerFileDeleted;
         Shell.PanelLayoutChanged += OnPanelLayoutChanged;
@@ -495,6 +497,11 @@ public partial class MainWindow
 
     private void FocusExplorer()
     {
+        if (_explorerPanel.IsSearchFocused)
+        {
+            _activeTab?.Editor.Focus();
+            return;
+        }
         Shell.ShowPanel("file-explorer");
         _explorerPanel.FocusSearch();
     }
@@ -549,6 +556,7 @@ public partial class MainWindow
         _explorerPanel.OpenFolder(newFolderPath);
         _settings.Editor.Explorer.OpenFolderPath = newFolderPath;
         Shell.ShowPanel("file-explorer");
+        MenuCloseFolder.Visibility = Visibility.Visible;
 
         // Restore tabs for the new folder
         RestoreFolderTabs(newFolderPath);
@@ -563,7 +571,7 @@ public partial class MainWindow
 
         CloseAllTabs();
         _explorerPanel.CloseFolder();
-        Shell.HidePanel("file-explorer");
+        MenuCloseFolder.Visibility = Visibility.Collapsed;
         _settings.Editor.Explorer.OpenFolderPath = null;
         _settings.Editor.Explorer.ExpandedPaths.Clear();
         _settings.Save();
@@ -1708,6 +1716,11 @@ public partial class MainWindow
         CloseCurrentWorkspace();
     }
 
+    private void OnCloseFolder(object sender, RoutedEventArgs e)
+    {
+        CloseFolderInExplorer();
+    }
+
     private void OnAddFolderToWorkspace(object sender, RoutedEventArgs e)
     {
         using var dlg = new System.Windows.Forms.FolderBrowserDialog();
@@ -1843,6 +1856,7 @@ public partial class MainWindow
     {
         MenuCloseWorkspace.Visibility = workspaceOpen ? Visibility.Visible : Visibility.Collapsed;
         MenuSaveWorkspaceAs.IsEnabled = workspaceOpen;
+        if (workspaceOpen) MenuCloseFolder.Visibility = Visibility.Collapsed;
     }
 
     private void CloseAllTabs()

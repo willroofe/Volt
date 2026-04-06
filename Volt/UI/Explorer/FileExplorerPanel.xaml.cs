@@ -17,6 +17,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
     public event Action? AddFolderRequested;
     public event Action<string>? RemoveFolderRequested;
     public event Action? CloseWorkspaceRequested;
+    public event Action? CloseFolderRequested;
     public event Action<string, string>? FileRenamed;
     public event Action<string>? FileDeleted;
 
@@ -90,6 +91,8 @@ public partial class FileExplorerPanel : UserControl, IPanel
             SearchInput.IsKeyboardFocused ? ThemeResourceKeys.TextFgMuted : ThemeResourceKeys.MenuPopupBorder);
     }
 
+    public bool IsSearchFocused => SearchInput.IsKeyboardFocused;
+
     public void FocusSearch()
     {
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,
@@ -143,6 +146,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
         root.TreeChanged += OnTreeChanged;
         _currentRootItems = new ObservableCollection<FileTreeItem> { root };
         ExplorerTree.SetRootItems(_currentRootItems);
+        SearchBorder.Visibility = Visibility.Visible;
     }
 
     public void CloseFolder()
@@ -153,12 +157,15 @@ public partial class FileExplorerPanel : UserControl, IPanel
         SetTitle("Explorer");
         _currentRootItems = null;
         ExplorerTree.SetRootItems(null);
+        SearchInput.Clear();
+        SearchBorder.Visibility = Visibility.Collapsed;
     }
 
     public void OpenWorkspace(Workspace workspace)
     {
         _openFolderPath = null;
         RebuildWorkspaceTree(workspace);
+        SearchBorder.Visibility = Visibility.Visible;
     }
 
     public void CloseWorkspace()
@@ -168,6 +175,8 @@ public partial class FileExplorerPanel : UserControl, IPanel
         SetTitle("Explorer");
         _currentRootItems = null;
         ExplorerTree.SetRootItems(null);
+        SearchInput.Clear();
+        SearchBorder.Visibility = Visibility.Collapsed;
     }
 
     public void SelectFile(string? path) => ExplorerTree.SelectByPath(path);
@@ -303,6 +312,11 @@ public partial class FileExplorerPanel : UserControl, IPanel
                 menu.Items.Add(ContextMenuHelper.Item("Add Folder to Workspace", "\uE710", () => AddFolderRequested?.Invoke()));
                 menu.Items.Add(ContextMenuHelper.Separator());
                 menu.Items.Add(ContextMenuHelper.Item("Close Workspace", "\uE711", () => CloseWorkspaceRequested?.Invoke()));
+            }
+            else if (_openFolderPath != null)
+            {
+                if (menu.Items.Count > 0) menu.Items.Add(ContextMenuHelper.Separator());
+                menu.Items.Add(ContextMenuHelper.Item("Close Folder", "\uE711", () => CloseFolderRequested?.Invoke()));
             }
         }
         else if (item.IsDirectory)
