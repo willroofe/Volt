@@ -99,8 +99,8 @@ public class TabInfo
                     FileChangedExternally?.Invoke(this);
                 };
             }
-            _debounceTimer.Stop();
-            _debounceTimer.Start();
+            _debounceTimer?.Stop();
+            _debounceTimer?.Start();
         });
     }
 
