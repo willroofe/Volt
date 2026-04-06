@@ -423,7 +423,15 @@
                     </Grid>
                 </DockPanel>
             </Border>
-            <Border x:Name="EditorHost"/>
+            <Grid>
+                <Border x:Name="EditorHost"/>
+                <TextBlock x:Name="LoadingOverlay"
+                           Text="Loading…"
+                           FontFamily="Segoe UI" FontSize="14"
+                           Foreground="{DynamicResource ThemeTextFgMuted}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Visibility="Collapsed"/>
+            </Grid>
         </DockPanel>
         <local:FindBar x:Name="FindBarControl" />
     </Grid>

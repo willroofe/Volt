@@ -41,6 +41,7 @@ public partial class MainWindow
     {
         tab.IsLoading = false;
         HideTabSpinner(tab);
+        if (tab == _activeTab) UpdateLoadingOverlay();
         tab.FileEncoding = result.Encoding;
         tab.Editor.SetPreparedContent(result.Prepared);
         tab.LastKnownFileSize = result.FileSize;
@@ -214,8 +215,16 @@ public partial class MainWindow
         UpdateAllTabHeaders();
         tab.HeaderElement.BringIntoView();
         _explorerPanel.SelectFile(tab.FilePath);
+        UpdateLoadingOverlay();
 
         Keyboard.Focus(tab.Editor);
+    }
+
+    private void UpdateLoadingOverlay()
+    {
+        LoadingOverlay.Visibility = _activeTab is { IsLoading: true }
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void OnTabScrollViewerMouseWheel(object sender, MouseWheelEventArgs e)
