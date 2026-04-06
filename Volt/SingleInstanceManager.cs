@@ -59,7 +59,7 @@ internal sealed class SingleInstanceManager : IDisposable
                     using (var reader = new StreamReader(server))
                     {
                         var path = await reader.ReadLineAsync(token);
-                        if (!string.IsNullOrEmpty(path))
+                        if (!string.IsNullOrWhiteSpace(path))
                             FileRequested?.Invoke(path);
                     }
                 }
