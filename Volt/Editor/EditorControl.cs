@@ -1872,6 +1872,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         switch (e.Key)
         {
+            case Key.Return when ctrl && shift:
+                HandleInsertBlankLine(above: true);
+                e.Handled = true;
+                break;
+
+            case Key.Return when ctrl:
+                HandleInsertBlankLine(above: false);
+                e.Handled = true;
+                break;
+
             case Key.Return:
                 HandleReturn();
                 e.Handled = true;
@@ -2447,6 +2457,19 @@ public class EditorControl : FrameworkElement, IScrollInfo
             if (_selection.HasSelection)
                 _selection.AnchorLine++;
         }
+        _tokenCacheDirty = true;
+        FinishEdit(scope);
+    }
+
+    private void HandleInsertBlankLine(bool above)
+    {
+        ResetPreferredCol();
+        var scope = BeginEdit(_caretLine, _caretLine);
+        int insertAt = above ? _caretLine : _caretLine + 1;
+        _buffer.InsertLine(insertAt, "");
+        _caretLine = insertAt;
+        _caretCol = 0;
+        _selection.Clear();
         _tokenCacheDirty = true;
         FinishEdit(scope);
     }
