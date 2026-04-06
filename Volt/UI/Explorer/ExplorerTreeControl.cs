@@ -146,7 +146,43 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             if (_filterText == normalized) return;
             _filterText = normalized;
             _selectedRowIndex = -1;
-            RebuildFlatList();
+            if (string.IsNullOrEmpty(normalized))
+                RebuildFlatList();
+            else
+                _ = ApplyFilterAsync(normalized);
+        }
+    }
+
+    private async Task ApplyFilterAsync(string filter)
+    {
+        // Load all unloaded directories so we can search their contents.
+        // Collect first, then load — avoids per-item UI thread round-trips.
+        if (_rootItems != null)
+        {
+            var unloaded = new List<FileTreeItem>();
+            CollectUnloadedDirs(_rootItems, unloaded);
+            foreach (var dir in unloaded)
+            {
+                if (_filterText != filter) return; // filter changed — bail
+                await dir.EnsureChildrenLoaded();
+                // Newly loaded children may themselves have unloaded subdirs
+                CollectUnloadedDirs(dir.Children, unloaded);
+            }
+        }
+        if (_filterText != filter) return;
+        RebuildFlatList();
+    }
+
+    private static void CollectUnloadedDirs(IEnumerable<FileTreeItem> items, List<FileTreeItem> result)
+    {
+        foreach (var item in items)
+        {
+            if (!item.IsDirectory) continue;
+            // Placeholder check: single child with empty FullPath means not yet loaded
+            if (item.Children.Count == 1 && string.IsNullOrEmpty(item.Children[0].FullPath))
+                result.Add(item);
+            else
+                CollectUnloadedDirs(item.Children, result);
         }
     }
 
@@ -208,11 +244,16 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         if (_rootItems != null)
         {
             bool filtering = !string.IsNullOrEmpty(_filterText);
-            foreach (var item in _rootItems)
+            if (filtering)
             {
-                if (filtering)
-                    FlattenFiltered(item, 0);
-                else
+                var results = new List<FlatRow>();
+                foreach (var item in _rootItems)
+                    FlattenFiltered(item, 0, results);
+                _flatRows.AddRange(results);
+            }
+            else
+            {
+                foreach (var item in _rootItems)
                     Flatten(item, 0);
             }
         }
@@ -230,32 +271,34 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         }
     }
 
-    private bool FlattenFiltered(FileTreeItem item, int depth)
+    private bool FlattenFiltered(FileTreeItem item, int depth, List<FlatRow> output)
     {
         bool nameMatches = item.Name.Contains(_filterText, StringComparison.OrdinalIgnoreCase);
-        int insertIndex = _flatRows.Count;
-        _flatRows.Add(new FlatRow(item, depth));
-
-        bool anyChildMatch = false;
 
         // Walk children if loaded (not just a placeholder)
         bool hasLoadedChildren = item.IsDirectory && item.Children.Count > 0
             && !(item.Children.Count == 1 && string.IsNullOrEmpty(item.Children[0].FullPath));
 
+        // Collect matching descendants into a temp list — only append if this subtree has matches
+        List<FlatRow>? childRows = null;
+        bool anyChildMatch = false;
+
         if (hasLoadedChildren)
         {
+            childRows = [];
             foreach (var child in item.Children)
             {
-                if (FlattenFiltered(child, depth + 1))
+                if (FlattenFiltered(child, depth + 1, childRows))
                     anyChildMatch = true;
             }
         }
 
         if (!nameMatches && !anyChildMatch)
-        {
-            _flatRows.RemoveRange(insertIndex, _flatRows.Count - insertIndex);
             return false;
-        }
+
+        output.Add(new FlatRow(item, depth));
+        if (childRows is { Count: > 0 })
+            output.AddRange(childRows);
         return true;
     }
 
@@ -353,6 +396,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         int lastVisible = Math.Min(_flatRows.Count - 1,
             firstVisible + (int)Math.Ceiling(_viewport.Height / RowHeight));
 
+        bool filtering = !string.IsNullOrEmpty(_filterText);
         var hoverBrush = GetBrush(ThemeResourceKeys.ExplorerItemHover);
         var selectedBrush = GetBrush(ThemeResourceKeys.ExplorerItemSelected);
         var textBrush = GetBrush(ThemeResourceKeys.TextFg);
@@ -360,6 +404,13 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         var headerFgBrush = GetBrush(ThemeResourceKeys.ExplorerHeaderFg);
         var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
         EnsureGlyphCache(textBrush, mutedBrush, dpi);
+
+        if (filtering)
+        {
+            var measure = new FormattedText("X", CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight, NormalTypeface, 13, textBrush, dpi) { MaxLineCount = 1 };
+            _cachedTextHeight = measure.Height;
+        }
 
         for (int i = firstVisible; i <= lastVisible; i++)
         {
@@ -416,7 +467,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             // Name text
             double maxTextWidth = Math.Max(0, ActualWidth - x - 8);
 
-            if (!string.IsNullOrEmpty(_filterText))
+            if (filtering)
             {
                 DrawHighlightedName(dc, row.Item.Name, _filterText, x, y, maxTextWidth, textBrush, dpi);
             }
@@ -435,6 +486,8 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         }
     }
 
+    private double _cachedTextHeight;
+
     private void DrawHighlightedName(DrawingContext dc, string name, string filter,
         double x, double y, double maxWidth, Brush normalBrush, double dpi)
     {
@@ -443,10 +496,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         double limitX = x + maxWidth;
         int searchStart = 0;
 
-        // Measure text height for vertical centering
-        var measure = new FormattedText("X", CultureInfo.CurrentCulture,
-            FlowDirection.LeftToRight, NormalTypeface, 13, normalBrush, dpi) { MaxLineCount = 1 };
-        double textY = y + (RowHeight - measure.Height) / 2;
+        double textY = y + (RowHeight - _cachedTextHeight) / 2;
 
         while (searchStart < name.Length && currentX < limitX)
         {

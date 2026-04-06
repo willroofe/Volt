@@ -103,6 +103,16 @@ public class FileTreeItem : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Loads children from disk if they haven't been loaded yet (placeholder only).
+    /// Does not change IsExpanded — used by explorer search to pre-load the tree.
+    /// </summary>
+    public async Task EnsureChildrenLoaded()
+    {
+        if (!IsDirectory || !_hasPlaceholder) return;
+        await LoadChildrenCore();
+    }
+
+    /// <summary>
     /// Loads children and expands in one shot, awaitable so callers can
     /// wait for the tree to be populated before displaying it.
     /// </summary>
