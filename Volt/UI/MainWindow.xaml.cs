@@ -152,11 +152,20 @@ public partial class MainWindow
     {
         if (!File.Exists(path)) return;
         _ = OpenFileInTabAsync(path, reuseUntitled: false, activate: true);
+        BringToForeground();
+    }
 
-        // Bring window to foreground
+    private void BringToForeground()
+    {
         if (WindowState == WindowState.Minimized)
             WindowState = WindowState.Normal;
+
+        // Windows blocks background processes from stealing focus.
+        // Briefly setting Topmost is the most reliable workaround.
+        Topmost = true;
+        Topmost = false;
         Activate();
+        Focus();
     }
 
     private TabInfo CreateTab(string? filePath = null)
