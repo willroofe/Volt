@@ -46,6 +46,8 @@ public partial class CommandPalette : UserControl
     {
         _currentOptions = null;
         _activeCommand = null;
+        _freeInputCallback = null;
+        SetInputOnlyMode(false);
         _prefixText = "";
         _filterPrefix.Text = "";
         _filterInput.Text = "";
@@ -74,9 +76,12 @@ public partial class CommandPalette : UserControl
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => Keyboard.Focus(_filterInput));
     }
 
+    /// <summary>
+    /// Opens the palette as a free-text input with a prefix label.
+    /// On Enter the typed text is passed to <paramref name="onConfirm"/>.
+    /// </summary>
     public void OpenFreeInput(string prefix, Action<string> onConfirm)
     {
-        _commands = [];
         _activeCommand = null;
         _currentOptions = null;
         _freeInputCallback = onConfirm;
@@ -84,11 +89,26 @@ public partial class CommandPalette : UserControl
         _filterPrefix.Text = prefix;
         _filterInput.Text = "";
         _selectedIndex = -1;
+        SetInputOnlyMode(true);
         Visibility = Visibility.Visible;
-        _commandList.Visibility = Visibility.Collapsed;
-        _placeholder.Visibility = Visibility.Collapsed;
-        _noResults.Visibility = Visibility.Collapsed;
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => Keyboard.Focus(_filterInput));
+    }
+
+    private void SetInputOnlyMode(bool inputOnly)
+    {
+        if (inputOnly)
+        {
+            _separator.Visibility = Visibility.Collapsed;
+            _commandList.Visibility = Visibility.Collapsed;
+            _placeholder.Visibility = Visibility.Collapsed;
+            _noResults.Visibility = Visibility.Collapsed;
+            _inputArea.CornerRadius = new CornerRadius(6);
+        }
+        else
+        {
+            _separator.Visibility = Visibility.Visible;
+            _inputArea.CornerRadius = new CornerRadius(6, 6, 0, 0);
+        }
     }
 
     public void Cancel()
@@ -96,6 +116,7 @@ public partial class CommandPalette : UserControl
         if (_freeInputCallback != null)
         {
             _freeInputCallback = null;
+            SetInputOnlyMode(false);
             Visibility = Visibility.Collapsed;
             Closed?.Invoke(this, EventArgs.Empty);
             return;
@@ -121,6 +142,7 @@ public partial class CommandPalette : UserControl
 
     private void OnOverlayClick(object sender, MouseButtonEventArgs e)
     {
+        if (_freeInputCallback != null) SetInputOnlyMode(false);
         _freeInputCallback = null;
         if (_currentOptions != null)
             RevertCurrentPreview();
@@ -178,9 +200,17 @@ public partial class CommandPalette : UserControl
                 break;
 
             case Key.Back:
-                if (_filterInput.Text.Length == 0 && _currentOptions != null)
+                if (_filterInput.Text.Length == 0 && (_currentOptions != null || _freeInputCallback != null))
                 {
-                    Cancel(); // go back to top-level
+                    // Go back to top-level command search
+                    _freeInputCallback = null;
+                    SetInputOnlyMode(false);
+                    _currentOptions = null;
+                    _activeCommand = null;
+                    _prefixText = "";
+                    _filterPrefix.Text = "";
+                    _selectedIndex = -1;
+                    RefreshList();
                     e.Handled = true;
                 }
                 break;
@@ -226,6 +256,7 @@ public partial class CommandPalette : UserControl
         {
             var cb = _freeInputCallback;
             _freeInputCallback = null;
+            SetInputOnlyMode(false);
             Visibility = Visibility.Collapsed;
             Closed?.Invoke(this, EventArgs.Empty);
             cb(_filterInput.Text);
@@ -242,6 +273,8 @@ public partial class CommandPalette : UserControl
             if (cmd.Action != null)
             {
                 cmd.Action();
+                // If the action re-opened the palette (e.g. free input mode), don't close it
+                if (_freeInputCallback != null) return;
                 Visibility = Visibility.Collapsed;
                 Closed?.Invoke(this, EventArgs.Empty);
                 return;
