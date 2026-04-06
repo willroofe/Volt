@@ -55,7 +55,7 @@ public partial class App : Application
         if (_singleInstance != null)
         {
             _singleInstance.FileRequested += path =>
-                Dispatcher.Invoke(() => window.OpenFileFromIpc(path));
+                Dispatcher.BeginInvoke(() => window.OpenFileFromIpc(path));
         }
 
         MainWindow = window;

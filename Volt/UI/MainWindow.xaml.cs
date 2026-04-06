@@ -1214,6 +1214,7 @@ public partial class MainWindow
     private void OnFileChangedExternally(TabInfo tab)
     {
         if (tab.IsHandlingExternalChange) return;
+        if (tab.IsLoading) return;
         if (tab.FilePath == null || !File.Exists(tab.FilePath)) return;
 
         var diskTime = File.GetLastWriteTimeUtc(tab.FilePath);
