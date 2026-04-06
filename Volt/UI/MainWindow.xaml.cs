@@ -25,6 +25,30 @@ public partial class MainWindow
 
     private EditorControl? Editor => _activeTab?.Editor;
 
+    private record FileLoadResult(Encoding Encoding, TextBuffer.PreparedContent Prepared, long FileSize, byte[]? TailBytes);
+
+    private static Task<FileLoadResult> LoadFileDataAsync(string path, int tabSize) => Task.Run(() =>
+    {
+        var enc = FileHelper.DetectEncoding(path);
+        var text = FileHelper.ReadAllText(path, enc);
+        var prep = TextBuffer.PrepareContent(text, tabSize);
+        var size = new FileInfo(path).Length;
+        var tail = FileHelper.ReadTailVerifyBytes(path, size);
+        return new FileLoadResult(enc, prep, size, tail);
+    });
+
+    private void ApplyFileLoadResult(TabInfo tab, FileLoadResult result)
+    {
+        tab.IsLoading = false;
+        HideTabSpinner(tab);
+        tab.FileEncoding = result.Encoding;
+        tab.Editor.SetPreparedContent(result.Prepared);
+        tab.LastKnownFileSize = result.FileSize;
+        tab.TailVerifyBytes = result.TailBytes;
+        tab.StartWatching();
+        UpdateTabHeader(tab);
+    }
+
     private ThemeManager ThemeManager => App.Current.ThemeManager;
     private SyntaxManager SyntaxManager => App.Current.SyntaxManager;
 
@@ -166,15 +190,10 @@ public partial class MainWindow
         UpdateFileType();
         UpdateCaretPos();
         UpdateAllTabHeaders();
-        BringTabIntoView(tab);
+        tab.HeaderElement.BringIntoView();
         _explorerPanel.SelectFile(tab.FilePath);
 
         Keyboard.Focus(tab.Editor);
-    }
-
-    private void BringTabIntoView(TabInfo tab)
-    {
-        tab.HeaderElement.BringIntoView();
     }
 
     private void OnTabScrollViewerMouseWheel(object sender, MouseWheelEventArgs e)
@@ -586,10 +605,8 @@ public partial class MainWindow
             .ToList();
 
         foreach (var tab in affectedTabs)
-            ForceCloseTab(tab);
+            RemoveTab(tab);
     }
-
-    private void ForceCloseTab(TabInfo tab) => RemoveTab(tab);
 
     /// <summary>Checks whether any session data exists that RestoreSession will act on.</summary>
     private bool HasSessionToRestore()
@@ -644,30 +661,12 @@ public partial class MainWindow
         ShowTabSpinner(tab);
         if (activate) ActivateTab(tab);
 
-        // Offload file I/O + content parsing to a background thread
-        int tabSize = tab.Editor.TabSize;
-        var (encoding, prepared, fileSize, tailBytes) = await Task.Run(() =>
-        {
-            var enc = FileHelper.DetectEncoding(path);
-            var text = FileHelper.ReadAllText(path, enc);
-            var prep = TextBuffer.PrepareContent(text, tabSize);
-            var size = new FileInfo(path).Length;
-            var tail = FileHelper.ReadTailVerifyBytes(path, size);
-            return (enc, prep, size, tail);
-        });
-
-        tab.IsLoading = false;
-        HideTabSpinner(tab);
+        var result = await LoadFileDataAsync(path, tab.Editor.TabSize);
 
         // Tab may have been closed while we were loading
         if (!_tabs.Contains(tab)) return null;
 
-        tab.FileEncoding = encoding;
-        tab.Editor.SetPreparedContent(prepared);
-        tab.LastKnownFileSize = fileSize;
-        tab.TailVerifyBytes = tailBytes;
-        tab.StartWatching();
-        UpdateTabHeader(tab);
+        ApplyFileLoadResult(tab, result);
         return tab;
     }
 
@@ -887,33 +886,12 @@ public partial class MainWindow
 
     private async Task LoadTabContentAsync(TabInfo tab, RestoredTab rt)
     {
-        var path = rt.FilePath!;
-        int tabSize = tab.Editor.TabSize;
-        bool isDirty = rt.IsDirty;
-
-        var (encoding, prepared, fileSize, tailBytes) = await Task.Run(() =>
-        {
-            var enc = FileHelper.DetectEncoding(path);
-            var text = FileHelper.ReadAllText(path, enc);
-            var prep = TextBuffer.PrepareContent(text, tabSize);
-            var size = new FileInfo(path).Length;
-            var tail = FileHelper.ReadTailVerifyBytes(path, size);
-            return (enc, prep, size, tail);
-        });
-
+        var result = await LoadFileDataAsync(rt.FilePath!, tab.Editor.TabSize);
         if (!_tabs.Contains(tab)) return;
 
-        tab.IsLoading = false;
-        HideTabSpinner(tab);
-        tab.FileEncoding = encoding;
-        tab.Editor.SetPreparedContent(prepared);
-        if (isDirty) tab.Editor.MarkDirty();
-        tab.LastKnownFileSize = fileSize;
-        tab.TailVerifyBytes = tailBytes;
-        tab.StartWatching();
-        UpdateTabHeader(tab);
+        ApplyFileLoadResult(tab, result);
+        if (rt.IsDirty) tab.Editor.MarkDirty();
 
-        // Restore caret/scroll position now that content is loaded
         tab.Editor.SetCaretPosition(rt.CaretLine, rt.CaretCol);
         tab.Editor.SetVerticalOffset(rt.ScrollVertical);
         tab.Editor.SetHorizontalOffset(rt.ScrollHorizontal);
@@ -1050,11 +1028,7 @@ public partial class MainWindow
         LineEndingText.Text = editor.LineEnding;
     }
 
-    private void UpdateTitle()
-    {
-        if (_activeTab == null) return;
-        Title = "Volt";
-    }
+    private void UpdateTitle() => Title = "Volt";
 
     private const long MaxFileSizeBytes = 500L * 1024 * 1024;
 
@@ -1419,7 +1393,6 @@ public partial class MainWindow
         if (_activeTab == null) return;
         SaveTab(_activeTab);
     }
-
 
     private void OnSaveAs(object sender, RoutedEventArgs e)
     {
@@ -1972,29 +1945,10 @@ public partial class MainWindow
 
     private async Task LoadWorkspaceTabAsync(TabInfo tab, WorkspaceSessionTab st)
     {
-        var path = st.FilePath!;
-        int tabSize = tab.Editor.TabSize;
-
-        var (encoding, prepared, fileSize, tailBytes) = await Task.Run(() =>
-        {
-            var enc = FileHelper.DetectEncoding(path);
-            var text = FileHelper.ReadAllText(path, enc);
-            var prep = TextBuffer.PrepareContent(text, tabSize);
-            var size = new FileInfo(path).Length;
-            var tail = FileHelper.ReadTailVerifyBytes(path, size);
-            return (enc, prep, size, tail);
-        });
-
+        var result = await LoadFileDataAsync(st.FilePath!, tab.Editor.TabSize);
         if (!_tabs.Contains(tab)) return;
 
-        tab.IsLoading = false;
-        HideTabSpinner(tab);
-        tab.FileEncoding = encoding;
-        tab.Editor.SetPreparedContent(prepared);
-        tab.LastKnownFileSize = fileSize;
-        tab.TailVerifyBytes = tailBytes;
-        tab.StartWatching();
-        UpdateTabHeader(tab);
+        ApplyFileLoadResult(tab, result);
 
         tab.Editor.SetCaretPosition(st.CaretLine, st.CaretCol);
         tab.ScrollHost?.ScrollToVerticalOffset(st.ScrollY);
