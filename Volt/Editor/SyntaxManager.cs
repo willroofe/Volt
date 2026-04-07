@@ -11,7 +11,8 @@ public record SyntaxToken(int Start, int Length, string Scope);
 /// <param name="BlockCommentIndex">Index into grammar's BlockComments list, or -1 if not in a block comment.</param>
 public record LineState(char? OpenQuote, int BlockCommentIndex = -1,
     string? HeredocDelimiter = null, bool HeredocInterpolate = true,
-    char? OpenRegexDelimiter = null, int RegexClosesNeeded = 0);
+    char? OpenRegexDelimiter = null, int RegexClosesNeeded = 0,
+    bool HeredocIndented = false);
 
 public class SyntaxManager
 {
@@ -134,7 +135,9 @@ public class SyntaxManager
     {
         if (inState.HeredocDelimiter == null) return null;
 
-        bool isEnd = line.TrimStart() == inState.HeredocDelimiter;
+        bool isEnd = inState.HeredocIndented
+            ? line.TrimStart() == inState.HeredocDelimiter
+            : line == inState.HeredocDelimiter;
         outState = isEnd ? DefaultState : inState;
         if (line.Length > 0)
         {
@@ -268,7 +271,10 @@ public class SyntaxManager
             }
         }
         if (!string.IsNullOrEmpty(delimiter))
-            outState = new LineState(null, -1, delimiter, interpolate);
+        {
+            bool indented = hMatch.Value.Contains('~');
+            outState = new LineState(null, -1, delimiter, interpolate, HeredocIndented: indented);
+        }
     }
 
     private void DetectRegexPatterns(string line,
