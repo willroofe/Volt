@@ -64,6 +64,21 @@ public partial class FileExplorerPanel : UserControl, IPanel
         ExplorerTree.RedoRequested += Redo;
         ExplorerTree.NavigateAboveFirst += () => FocusSearch();
         PreviewKeyDown += OnPanelPreviewKeyDown;
+        CleanOrphanedStagingDir();
+    }
+
+    /// <summary>
+    /// Removes leftover staging directory from a previous crash.
+    /// Safe to call on startup before any undo state exists.
+    /// </summary>
+    private static void CleanOrphanedStagingDir()
+    {
+        try
+        {
+            if (Directory.Exists(DeleteStagingDir))
+                Directory.Delete(DeleteStagingDir, recursive: true);
+        }
+        catch (Exception) { }
     }
 
     private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
