@@ -1003,8 +1003,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     double pxEnd = (mCol + mLen) * _font.CharWidth;
                     double mx = _gutterWidth + GutterPadding + pxStart - _offset.X;
                     double my = mLine * _font.LineHeight - _offset.Y;
-                    dc.DrawRectangle(brush, null,
-                        new Rect(mx, my, pxEnd - pxStart, _font.LineHeight));
+                    double textLeft = _gutterWidth + GutterPadding;
+                    double clippedX = Math.Max(mx, textLeft);
+                    double clippedW = Math.Max(0, mx + (pxEnd - pxStart) - clippedX);
+                    if (clippedW > 0)
+                        dc.DrawRectangle(brush, null,
+                            new Rect(clippedX, my, clippedW, _font.LineHeight));
                 }
                 else
                 {
@@ -1042,19 +1046,26 @@ public class EditorControl : FrameworkElement, IScrollInfo
             }
             if (_bracketMatchCache is var (bl, bc, ml, mc))
             {
+                double bracketTextLeft = _gutterWidth + GutterPadding;
                 if (bl >= firstLine && bl <= lastLine && !IsLineHidden(bl))
                 {
                     var (bx, by) = GetPixelForPosition(bl, bc);
-                    dc.DrawRectangle(ThemeManager.MatchingBracketBrush,
-                        ThemeManager.MatchingBracketPen,
-                        new Rect(bx, by, _font.CharWidth, _font.LineHeight));
+                    double cbx = Math.Max(bx, bracketTextLeft);
+                    double cbw = Math.Max(0, bx + _font.CharWidth - cbx);
+                    if (cbw > 0)
+                        dc.DrawRectangle(ThemeManager.MatchingBracketBrush,
+                            ThemeManager.MatchingBracketPen,
+                            new Rect(cbx, by, cbw, _font.LineHeight));
                 }
                 if (ml >= firstLine && ml <= lastLine && !IsLineHidden(ml))
                 {
                     var (mx, my) = GetPixelForPosition(ml, mc);
-                    dc.DrawRectangle(ThemeManager.MatchingBracketBrush,
-                        ThemeManager.MatchingBracketPen,
-                        new Rect(mx, my, _font.CharWidth, _font.LineHeight));
+                    double cmx = Math.Max(mx, bracketTextLeft);
+                    double cmw = Math.Max(0, mx + _font.CharWidth - cmx);
+                    if (cmw > 0)
+                        dc.DrawRectangle(ThemeManager.MatchingBracketBrush,
+                            ThemeManager.MatchingBracketPen,
+                            new Rect(cmx, my, cmw, _font.LineHeight));
                 }
             }
         }
