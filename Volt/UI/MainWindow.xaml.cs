@@ -645,7 +645,24 @@ public partial class MainWindow
             .ToList();
 
         foreach (var tab in affectedTabs)
-            RemoveTab(tab);
+        {
+            if (tab.Editor.IsDirty)
+            {
+                // Detach from deleted file so unsaved content isn't lost
+                tab.StopWatching();
+                tab.FilePath = null;
+                UpdateTabHeader(tab);
+                if (tab == _activeTab)
+                {
+                    UpdateTitle();
+                    UpdateFileType();
+                }
+            }
+            else
+            {
+                RemoveTab(tab);
+            }
+        }
     }
 
     /// <summary>Checks whether any session data exists that RestoreSession will act on.</summary>
