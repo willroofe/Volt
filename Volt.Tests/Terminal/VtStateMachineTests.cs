@@ -31,6 +31,14 @@ public class VtStateMachineTests
         return h.Events;
     }
 
+    private static List<string> FeedBytes(byte[] bytes)
+    {
+        var h = new RecordingHandler();
+        var sm = new VtStateMachine(h);
+        sm.Feed(bytes);
+        return h.Events;
+    }
+
     [Fact]
     public void PlainAscii_EmitsPrintPerChar()
     {
@@ -134,5 +142,36 @@ public class VtStateMachineTests
         var big = new string('Z', 5000);
         var events = Feed($"\u001bP{big}\u001b\\hi");
         Assert.Equal(new[] { "Print:h", "Print:i" }, events);
+    }
+
+    [Fact]
+    public void Utf8_TwoByte_EmitsOnePrint()
+    {
+        // é = U+00E9 = 0xC3 0xA9
+        var events = FeedBytes(new byte[] { 0xC3, 0xA9 });
+        Assert.Equal(new[] { "Print:é" }, events);
+    }
+
+    [Fact]
+    public void Utf8_ThreeByte_EmitsOnePrint()
+    {
+        // ★ = U+2605 = 0xE2 0x98 0x85
+        var events = FeedBytes(new byte[] { 0xE2, 0x98, 0x85 });
+        Assert.Equal(new[] { "Print:★" }, events);
+    }
+
+    [Fact]
+    public void Utf8_InvalidLead_EmitsReplacement()
+    {
+        var events = FeedBytes(new byte[] { 0xFF });
+        Assert.Equal(new[] { "Print:\uFFFD" }, events);
+    }
+
+    [Fact]
+    public void Utf8_TruncatedSequence_EmitsReplacement()
+    {
+        // 0xC3 expects one continuation; feeding ASCII 'A' instead
+        var events = FeedBytes(new byte[] { 0xC3, 0x41 });
+        Assert.Equal(new[] { "Print:\uFFFD", "Print:A" }, events);
     }
 }
