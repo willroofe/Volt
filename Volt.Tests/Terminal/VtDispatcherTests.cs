@@ -123,4 +123,60 @@ public class VtDispatcherTests
         Feed(sm, "\u001b[10G");
         Assert.Equal((3, 9), g.Cursor);
     }
+
+    [Fact]
+    public void CsiJ0_ErasesDisplayToEnd()
+    {
+        var (g, _, sm) = Make(5, 5);
+        for (int r = 0; r < 5; r++)
+            for (int c = 0; c < 5; c++)
+                g.WriteCell(r, c, 'X', CellAttr.None);
+        g.SetCursor(2, 2);
+        Feed(sm, "\u001b[0J");
+        Assert.Equal('X', g.CellAt(2, 1).Glyph);
+        Assert.Equal(' ', g.CellAt(2, 2).Glyph);
+        Assert.Equal(' ', g.CellAt(4, 4).Glyph);
+    }
+
+    [Fact]
+    public void CsiJ2_ClearsScreen()
+    {
+        var (g, _, sm) = Make(5, 5);
+        for (int r = 0; r < 5; r++) g.WriteCell(r, 0, 'X', CellAttr.None);
+        Feed(sm, "\u001b[2J");
+        for (int r = 0; r < 5; r++) Assert.Equal(' ', g.CellAt(r, 0).Glyph);
+    }
+
+    [Fact]
+    public void CsiK0_ErasesLineToEnd()
+    {
+        var (g, _, sm) = Make(3, 5);
+        for (int c = 0; c < 5; c++) g.WriteCell(1, c, 'X', CellAttr.None);
+        g.SetCursor(1, 2);
+        Feed(sm, "\u001b[0K");
+        Assert.Equal('X', g.CellAt(1, 1).Glyph);
+        Assert.Equal(' ', g.CellAt(1, 2).Glyph);
+    }
+
+    [Fact]
+    public void CsiL_InsertLines()
+    {
+        var (g, _, sm) = Make(5, 3);
+        for (int r = 0; r < 5; r++) g.WriteCell(r, 0, (char)('A' + r), CellAttr.None);
+        g.SetCursor(1, 0);
+        Feed(sm, "\u001b[2L");
+        Assert.Equal('A', g.CellAt(0, 0).Glyph);
+        Assert.Equal(' ', g.CellAt(1, 0).Glyph);
+        Assert.Equal('B', g.CellAt(3, 0).Glyph);
+    }
+
+    [Fact]
+    public void CsiS_ScrollUp()
+    {
+        var (g, _, sm) = Make(3, 3);
+        for (int r = 0; r < 3; r++) g.WriteCell(r, 0, (char)('A' + r), CellAttr.None);
+        Feed(sm, "\u001b[1S");
+        Assert.Equal('B', g.CellAt(0, 0).Glyph);
+        Assert.Equal('C', g.CellAt(1, 0).Glyph);
+    }
 }

@@ -26,18 +26,29 @@ public sealed class VtDispatcher : IVtEventHandler
 
     public void CsiDispatch(char final, ReadOnlySpan<int> p, ReadOnlySpan<char> i)
     {
-        int p0 = P(p, 0, 1);
-        int p1 = P(p, 1, 1);
+        int p0default1 = P(p, 0, 1);
+        int p1default1 = P(p, 1, 1);
+        int p0raw = p.Length > 0 ? p[0] : 0;
         switch (final)
         {
-            case 'A': CursorUp(p0); break;
-            case 'B': CursorDown(p0); break;
-            case 'C': CursorForward(p0); break;
-            case 'D': CursorBack(p0); break;
-            case 'E': CarriageReturn(); CursorDown(p0); break;
-            case 'F': CarriageReturn(); CursorUp(p0); break;
-            case 'G': CursorHorizontalAbsolute(p0); break;
-            case 'H': case 'f': CursorPosition(p0, p1); break;
+            case 'A': CursorUp(p0default1); break;
+            case 'B': CursorDown(p0default1); break;
+            case 'C': CursorForward(p0default1); break;
+            case 'D': CursorBack(p0default1); break;
+            case 'E': CarriageReturn(); CursorDown(p0default1); break;
+            case 'F': CarriageReturn(); CursorUp(p0default1); break;
+            case 'G': CursorHorizontalAbsolute(p0default1); break;
+            case 'H': case 'f': CursorPosition(p0default1, p1default1); break;
+            case 'J': EraseDisplay(p0raw); break;
+            case 'K': EraseLine(p0raw); break;
+            case 'L': _grid.InsertLines(p0default1); break;
+            case 'M': _grid.DeleteLines(p0default1); break;
+            case 'S': _grid.ScrollUp(p0default1); break;
+            case 'T': _grid.ScrollDown(p0default1); break;
+            case 'r':
+                if (p.Length == 0) _grid.SetScrollRegion(0, _grid.Rows - 1);
+                else _grid.SetScrollRegion(p0default1 - 1, p1default1 - 1);
+                break;
             default: break;
         }
     }
@@ -91,5 +102,15 @@ public sealed class VtDispatcher : IVtEventHandler
         int next = ((c / 8) + 1) * 8;
         if (next >= _grid.Cols) next = _grid.Cols - 1;
         _grid.SetCursor(r, next);
+    }
+
+    private void EraseDisplay(int mode)
+    {
+        _grid.EraseInDisplay(mode switch { 1 => EraseMode.ToStart, 2 => EraseMode.All, _ => EraseMode.ToEnd });
+    }
+
+    private void EraseLine(int mode)
+    {
+        _grid.EraseInLine(mode switch { 1 => EraseMode.ToStart, 2 => EraseMode.All, _ => EraseMode.ToEnd });
     }
 }
