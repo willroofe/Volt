@@ -119,4 +119,20 @@ public class VtStateMachineTests
         Assert.StartsWith("Osc:0:", events[0]);
         Assert.True(events[0].Length <= 64 * 1024 + 10);
     }
+
+    [Fact]
+    public void Dcs_ConsumedWithoutEvents_PrintAfterDcsStillWorks()
+    {
+        // DCS q ... ST (sixel-like) then plain 'A'
+        var events = Feed("\u001bPq1;2;3data\u001b\\A");
+        Assert.Equal(new[] { "Print:A" }, events);
+    }
+
+    [Fact]
+    public void Dcs_LongStringNeverDispatches()
+    {
+        var big = new string('Z', 5000);
+        var events = Feed($"\u001bP{big}\u001b\\hi");
+        Assert.Equal(new[] { "Print:h", "Print:i" }, events);
+    }
 }
