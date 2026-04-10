@@ -54,12 +54,34 @@ public partial class TerminalPanel : UserControl, IPanel
         }
         catch (System.ComponentModel.Win32Exception ex)
         {
-            ThemedMessageBox.Show(Application.Current.MainWindow, $"Could not start terminal:\n{ex.Message}\n\nShell: {shell}", "Terminal");
+            ThemedMessageBox.Show(Application.Current.MainWindow,
+                $"Could not start terminal:\n{ex.Message}\n\nShell: {shell}\nCwd: {startDir}",
+                "Terminal");
+            return;
+        }
+        catch (Exception ex)
+        {
+            ThemedMessageBox.Show(Application.Current.MainWindow,
+                $"Unexpected error starting terminal:\n\n{ex.GetType().Name}: {ex.Message}\n\nShell: {shell}\nCwd: {startDir}\n\n{ex.StackTrace}",
+                "Terminal");
             return;
         }
 
+        // Fast-exit detector — if the shell exits within 2 seconds of creation,
+        // surface the exit code so we can diagnose misconfiguration.
+        var sessionStart = DateTime.UtcNow;
         s.TitleChanged += () => { TitleChanged?.Invoke(); Dispatcher.BeginInvoke(new Action(RebuildTabs)); };
-        s.Exited += _ => Dispatcher.BeginInvoke(new Action(() => CloseSession(s)));
+        s.Exited += code => Dispatcher.BeginInvoke(new Action(() =>
+        {
+            var elapsed = DateTime.UtcNow - sessionStart;
+            if (elapsed < TimeSpan.FromSeconds(2))
+            {
+                ThemedMessageBox.Show(Application.Current.MainWindow,
+                    $"Shell exited immediately (code 0x{code:X8}, {elapsed.TotalMilliseconds:F0} ms).\n\nShell: {shell}\nArgs: {args ?? "(none)"}\nCwd: {startDir}",
+                    "Terminal");
+            }
+            CloseSession(s);
+        }));
         _sessions.Add(s);
         SetActive(s);
         if (Application.Current.MainWindow is MainWindow mw)
