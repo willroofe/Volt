@@ -15,6 +15,11 @@ internal record WorkspaceActions(
     Action AddFolder,
     Action SaveAs);
 
+/// <summary>Terminal-related actions for the command palette.</summary>
+internal record TerminalActions(
+    Action Toggle,
+    Action NewSession);
+
 /// <summary>Groups the dependencies needed to build the command palette list.</summary>
 internal record CommandPaletteContext(
     List<TabInfo> Tabs,
@@ -32,7 +37,8 @@ internal record CommandPaletteContext(
     Action ToggleFixedWidthTabs,
     Action CheckForUpdates,
     Action OpenRecent,
-    Action<string?> SetLanguage);
+    Action<string?> SetLanguage,
+    TerminalActions Terminal);
 
 /// <summary>
 /// Builds the command list for the command palette, keeping the 90 lines of
@@ -175,6 +181,10 @@ internal static class CommandPaletteCommands
             new("Workspace: Add Folder to Workspace", Action: workspace.AddFolder),
 
             new("Workspace: Save Workspace As...", Action: workspace.SaveAs),
+
+            new("Terminal: Toggle", Action: ctx.Terminal.Toggle),
+
+            new("Terminal: New Session", Action: ctx.Terminal.NewSession),
 
             new("Check for Updates", Action: ctx.CheckForUpdates),
 

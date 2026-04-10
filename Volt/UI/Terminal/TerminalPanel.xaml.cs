@@ -50,6 +50,8 @@ public partial class TerminalPanel : UserControl, IPanel
         s.Exited += _ => Dispatcher.BeginInvoke(new Action(() => CloseSession(s)));
         _sessions.Add(s);
         SetActive(s);
+        if (Application.Current.MainWindow is MainWindow mw)
+            mw.RegisterTerminalAllowlist(s.View);
         RebuildTabs();
     }
 
