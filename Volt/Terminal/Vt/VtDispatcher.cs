@@ -50,6 +50,8 @@ public sealed class VtDispatcher : IVtEventHandler
                 else _grid.SetScrollRegion(p0default1 - 1, p1default1 - 1);
                 break;
             case 'm': HandleSgr(p); break;
+            case 'h': HandleMode(p, i, set: true); break;
+            case 'l': HandleMode(p, i, set: false); break;
             default: break;
         }
     }
@@ -176,4 +178,28 @@ public sealed class VtDispatcher : IVtEventHandler
     private void RemoveAttr(CellAttr a) { var p = _grid.Pen; p.Attr &= ~a; _grid.Pen = p; }
     private void SetPenFg(int i) { var p = _grid.Pen; p.FgIndex = i; _grid.Pen = p; }
     private void SetPenBg(int i) { var p = _grid.Pen; p.BgIndex = i; _grid.Pen = p; }
+
+    private void HandleMode(ReadOnlySpan<int> p, ReadOnlySpan<char> i, bool set)
+    {
+        bool isPrivate = i.Length > 0 && i[0] == '?';
+        if (!isPrivate) return;
+        for (int k = 0; k < p.Length; k++)
+        {
+            int mode = p[k];
+            switch (mode)
+            {
+                case 25:
+                    _grid.CursorVisible = set;
+                    break;
+                case 1049:
+                    if (set) _grid.SwitchToAltBuffer();
+                    else _grid.SwitchToMainBuffer();
+                    break;
+                case 1000: case 1002: case 1003: case 1006: case 2004:
+                    // Mouse/bracketed-paste modes — deferred to post-v1, silently acknowledged
+                    break;
+                default: break;
+            }
+        }
+    }
 }

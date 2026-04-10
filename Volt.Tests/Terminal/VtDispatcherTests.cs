@@ -240,4 +240,28 @@ public class VtDispatcherTests
         Assert.Equal(CellAttr.Bold, g.CellAt(0, 0).Attr);
         Assert.Equal(1, g.CellAt(0, 0).FgIndex);
     }
+
+    [Fact]
+    public void Dec1049h_SwitchesToAltBuffer()
+    {
+        var (g, _, sm) = Make();
+        Feed(sm, "main");
+        Feed(sm, "\u001b[?1049h");
+        Feed(sm, "alt");
+        Assert.True(g.UsingAltBuffer);
+        Assert.Equal('a', g.CellAt(0, 0).Glyph);
+        Feed(sm, "\u001b[?1049l");
+        Assert.False(g.UsingAltBuffer);
+        Assert.Equal('m', g.CellAt(0, 0).Glyph);
+    }
+
+    [Fact]
+    public void Dec25l_HidesCursor()
+    {
+        var (g, _, sm) = Make();
+        Feed(sm, "\u001b[?25l");
+        Assert.False(g.CursorVisible);
+        Feed(sm, "\u001b[?25h");
+        Assert.True(g.CursorVisible);
+    }
 }
