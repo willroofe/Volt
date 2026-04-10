@@ -67,8 +67,8 @@ public static class ConPtyHost
             if (!InitializeProcThreadAttributeList(attrList, 1, 0, ref listSize))
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "InitializeProcThreadAttributeList failed");
 
-            // UpdateProcThreadAttribute expects a pointer to the HPCON value, not the value itself.
-            // Allocate unmanaged memory to hold the handle value so we can pass its address.
+            // UpdateProcThreadAttribute for PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE:
+            // lpValue must point to the HPCON handle value; cbSize = sizeof(HPCON).
             hpconValuePtr = Marshal.AllocHGlobal(IntPtr.Size);
             Marshal.WriteIntPtr(hpconValuePtr, hpcon);
             if (!UpdateProcThreadAttribute(attrList, 0, (IntPtr)PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
@@ -86,7 +86,12 @@ public static class ConPtyHost
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "CreateProcess failed");
 
             CloseHandle(pi.hThread);
+            // Keep pi.hProcess open while calling GetProcessById — the open handle keeps
+            // the kernel process object alive even if the process has already exited,
+            // preventing GetProcessById from throwing ArgumentException for fast-exit processes
+            // like `cmd /c echo hello`. Close pi.hProcess after attaching.
             process = Process.GetProcessById(pi.dwProcessId);
+            CloseHandle(pi.hProcess);
 
             var result = new PtyHandles
             {
