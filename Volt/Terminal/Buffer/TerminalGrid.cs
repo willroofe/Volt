@@ -30,6 +30,7 @@ public sealed partial class TerminalGrid
     public int ScrollBottom { get; private set; }
 
     public event Action? Changed;
+    public event Action? BellRang;
 
     public TerminalGrid(int rows, int cols, int scrollbackLines)
     {
@@ -103,6 +104,8 @@ public sealed partial class TerminalGrid
         Cursor = (r, c);
         _pendingWrap = false;
     }
+
+    public void Bell() => BellRang?.Invoke();
 
     public void PutGlyph(char ch)
     {
