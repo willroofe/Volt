@@ -120,7 +120,39 @@ public partial class TerminalPanel : UserControl, IPanel
 
     private string ResolveStartingDirectory()
     {
-        // TODO(Task 37): implement full cwd resolution using MainWindow workspace/folder/active file
+        if (Application.Current.MainWindow is not MainWindow mw)
+            return Environment.GetEnvironmentVariable("USERPROFILE") ?? ".";
+
+        var workspace = mw.ActiveWorkspace;
+        var activeFile = mw.ActiveFilePath;
+        var openFolder = mw.OpenFolderPath;
+
+        // Rule 1: No workspace, single file open (no folder) → file's directory
+        if (workspace == null && openFolder == null && !string.IsNullOrEmpty(activeFile))
+        {
+            var dir = Path.GetDirectoryName(activeFile);
+            if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) return dir;
+        }
+
+        // Rule 2: No workspace, single folder open → folder root (regardless of active file)
+        if (workspace == null && !string.IsNullOrEmpty(openFolder) && Directory.Exists(openFolder))
+            return openFolder;
+
+        // Rule 3: Workspace with active tab → file's parent directory
+        if (workspace != null && !string.IsNullOrEmpty(activeFile))
+        {
+            var dir = Path.GetDirectoryName(activeFile);
+            if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) return dir;
+        }
+
+        // Rule 4: Workspace with no active tab → first folder in workspace
+        if (workspace != null && workspace.Folders.Count > 0)
+        {
+            var first = workspace.Folders[0];
+            if (Directory.Exists(first)) return first;
+        }
+
+        // Rule 5: Fallback
         return Environment.GetEnvironmentVariable("USERPROFILE") ?? ".";
     }
 
