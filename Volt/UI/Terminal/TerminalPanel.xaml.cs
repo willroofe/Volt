@@ -225,6 +225,31 @@ public partial class TerminalPanel : UserControl, IPanel
         return "cmd.exe";
     }
 
+    /// <summary>Settings UI choice for shell — maps to resolved executable paths.</summary>
+    internal enum TerminalShellPreference
+    {
+        PowerShell,
+        CommandPrompt,
+    }
+
+    /// <summary>Maps a persisted shell path to the settings dropdown (pwsh/ps → PowerShell, cmd → Command Prompt).</summary>
+    internal static TerminalShellPreference ClassifyShellPath(string? shellPath)
+    {
+        if (string.IsNullOrWhiteSpace(shellPath)) return TerminalShellPreference.PowerShell;
+        var file = Path.GetFileName(shellPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (file.Equals("cmd.exe", StringComparison.OrdinalIgnoreCase))
+            return TerminalShellPreference.CommandPrompt;
+        return TerminalShellPreference.PowerShell;
+    }
+
+    /// <summary>Full path to the chosen shell (<see cref="FindInPath"/>), same resolution as <see cref="NewSession"/>.</summary>
+    internal static string ResolveShellPath(TerminalShellPreference preference)
+    {
+        if (preference == TerminalShellPreference.CommandPrompt)
+            return FindInPath("cmd.exe") ?? "cmd.exe";
+        return FindInPath("pwsh.exe") ?? FindInPath("powershell.exe") ?? "powershell.exe";
+    }
+
     private static string? FindInPath(string exe)
     {
         var paths = Environment.GetEnvironmentVariable("PATH")?.Split(';') ?? Array.Empty<string>();

@@ -12,7 +12,8 @@ public record SettingsSnapshot(
     bool FindSeedWithSelection, bool FixedWidthTabs,
     bool WordWrap, bool WordWrapAtWords, bool WordWrapIndent,
     bool IndentGuides, string CommandPalettePosition,
-    Dictionary<VoltCommand, KeyCombo> KeyBindings);
+    Dictionary<VoltCommand, KeyCombo> KeyBindings,
+    string? TerminalShellPath, string? TerminalShellArgs, int TerminalScrollbackLines);
 
 public partial class SettingsWindow : Window
 {
@@ -33,8 +34,11 @@ public partial class SettingsWindow : Window
     public bool IndentGuides { get; private set; }
     public string CommandPalettePosition { get; private set; }
     public Dictionary<VoltCommand, KeyCombo> KeyBindings => new(_pendingBindings);
+    public string? TerminalShellPath { get; private set; }
+    public string? TerminalShellArgs { get; private set; }
+    public int TerminalScrollbackLines { get; private set; }
 
-    private enum SettingsSection { Theme, CommandPalette, Keybinds, Font, Caret, Tabs, Find, Explorer, WordWrap, Indentation }
+    private enum SettingsSection { Theme, CommandPalette, Keybinds, Font, Caret, Tabs, Find, Explorer, Terminal, WordWrap, Indentation }
 
     public event EventHandler? Applied;
 
@@ -67,6 +71,14 @@ public partial class SettingsWindow : Window
 
         foreach (var (cmd, combo) in snapshot.KeyBindings)
             _pendingBindings[cmd] = combo;
+
+        TerminalShellPath = snapshot.TerminalShellPath;
+        TerminalShellArgs = snapshot.TerminalShellArgs;
+        TerminalScrollbackLines = snapshot.TerminalScrollbackLines;
+        var shellPref = TerminalPanel.ClassifyShellPath(snapshot.TerminalShellPath);
+        TerminalShellBox.SelectedIndex = (int)shellPref;
+        TerminalShellArgsBox.Text = snapshot.TerminalShellArgs ?? "";
+        TerminalScrollbackBox.Text = snapshot.TerminalScrollbackLines.ToString();
 
         int index = Array.IndexOf(AppSettings.TabSizeOptions, snapshot.TabSize);
         TabSizeBox.SelectedIndex = index >= 0 ? index : 1;
@@ -352,6 +364,7 @@ public partial class SettingsWindow : Window
         (NavKeybinds, KeybindsScroller), (NavFont, FontScroller),
         (NavCaret, CaretScroller), (NavTabs, TabsScroller),
         (NavFind, FindScroller), (NavExplorer, ExplorerScroller),
+        (NavTerminal, TerminalScroller),
         (NavWordWrap, WordWrapScroller), (NavIndentation, IndentationScroller),
     ];
 
@@ -377,6 +390,7 @@ public partial class SettingsWindow : Window
     private void OnNavTabs(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Tabs);
     private void OnNavFind(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Find);
     private void OnNavExplorer(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Explorer);
+    private void OnNavTerminal(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Terminal);
     private void OnNavWordWrap(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.WordWrap);
     private void OnNavIndentation(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Indentation);
 
@@ -400,6 +414,15 @@ public partial class SettingsWindow : Window
         WordWrapAtWords = WordWrapAtWordsBox.SelectedIndex == 0;
         WordWrapIndent = WordWrapIndentBox.SelectedIndex == 0;
         IndentGuides = IndentGuidesBox.SelectedIndex == 0;
+
+        var shellChoice = (TerminalPanel.TerminalShellPreference)Math.Clamp(TerminalShellBox.SelectedIndex, 0, 1);
+        TerminalShellPath = TerminalPanel.ResolveShellPath(shellChoice);
+        TerminalShellArgs = string.IsNullOrWhiteSpace(TerminalShellArgsBox.Text)
+            ? null
+            : TerminalShellArgsBox.Text.Trim();
+        if (!int.TryParse(TerminalScrollbackBox.Text.Trim(), out int sb) || sb < 100)
+            sb = 10_000;
+        TerminalScrollbackLines = Math.Clamp(sb, 100, 1_000_000);
     }
 
     private void OnApply(object sender, RoutedEventArgs e)
