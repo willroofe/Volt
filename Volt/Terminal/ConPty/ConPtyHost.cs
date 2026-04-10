@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -41,6 +42,12 @@ public static class ConPtyHost
         IntPtr hpconValuePtr = IntPtr.Zero;
         Process? process = null;
 
+        // Temporarily strip DOTNET_* variables from Volt's own process environment so
+        // the child inherits a clean env. Without this, pwsh.exe (built against .NET 8)
+        // tries to load Volt's .NET 10 runtime via the inherited DOTNET_ROOT and dies
+        // with STATUS_DLL_INIT_FAILED (0xC0000142).
+        var savedDotnetVars = StripDotnetEnvVars();
+
         try
         {
             if (!CreatePipe(out inputReadSide, out inputWriteSide, IntPtr.Zero, 0))
@@ -80,6 +87,9 @@ public static class ConPtyHost
             si.lpAttributeList = attrList;
 
             string cmdLine = string.IsNullOrEmpty(args) ? $"\"{shellExe}\"" : $"\"{shellExe}\" {args}";
+            // lpEnvironment = IntPtr.Zero → child inherits Volt's process env, which we
+            // just stripped of DOTNET_* vars. Uses normal Windows env inheritance, which
+            // is well-tested (no hand-built block that could miss hidden drive vars).
             if (!CreateProcess(null, cmdLine, IntPtr.Zero, IntPtr.Zero, false,
                 EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
                 IntPtr.Zero, cwd, ref si, out var pi))
@@ -127,6 +137,42 @@ public static class ConPtyHost
             if (hpconValuePtr != IntPtr.Zero) { try { Marshal.FreeHGlobal(hpconValuePtr); } catch { } }
             try { if (process != null && !process.HasExited) process.Kill(); } catch { }
             throw;
+        }
+        finally
+        {
+            // Always restore Volt's own env vars, even on exception paths.
+            RestoreDotnetEnvVars(savedDotnetVars);
+        }
+    }
+
+    private static readonly string[] DotnetVarsToStrip =
+    {
+        "DOTNET_ROOT",
+        "DOTNET_ROOT(x86)",
+        "DOTNET_ROOT_X64",
+        "DOTNET_ROOT_X86",
+        "DOTNET_BUNDLE_EXTRACT_BASE_DIR",
+    };
+
+    private static List<(string Name, string? Value)> StripDotnetEnvVars()
+    {
+        var saved = new List<(string, string?)>(DotnetVarsToStrip.Length);
+        foreach (var name in DotnetVarsToStrip)
+        {
+            var value = Environment.GetEnvironmentVariable(name);
+            saved.Add((name, value));
+            if (value != null)
+                Environment.SetEnvironmentVariable(name, null);
+        }
+        return saved;
+    }
+
+    private static void RestoreDotnetEnvVars(List<(string Name, string? Value)> saved)
+    {
+        foreach (var (name, value) in saved)
+        {
+            if (value != null)
+                Environment.SetEnvironmentVariable(name, value);
         }
     }
 }
