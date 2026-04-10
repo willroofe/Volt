@@ -55,14 +55,100 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     {
         base.OnRender(dc);
 
-        // Paint the background — colors may come from the theme's terminal section
-        var bgColor = AnsiPalette.DefaultBg();
-        var bg = new SolidColorBrush(bgColor);
+        var defaultBgColor = AnsiPalette.DefaultBg();
+        var bg = new SolidColorBrush(defaultBgColor);
         bg.Freeze();
         dc.DrawRectangle(bg, null, new Rect(RenderSize));
 
-        // Task 30 implements the grid rendering; this skeleton draws just the background.
         if (_grid == null) return;
+
+        var defaultFgColor = AnsiPalette.DefaultFg();
+        var defaultFg = new SolidColorBrush(defaultFgColor);
+        defaultFg.Freeze();
+
+        double y = 0;
+        double cellWidth = _font.CharWidth;
+        double cellHeight = _font.LineHeight;
+
+        for (int row = 0; row < _grid.Rows; row++)
+        {
+            RenderRow(dc, row, y, cellWidth, cellHeight, defaultFg);
+            y += cellHeight;
+        }
+
+        DrawCursor(dc, cellWidth, cellHeight);
+    }
+
+    private void RenderRow(DrawingContext dc, int row, double y, double cellWidth, double cellHeight, Brush defaultFg)
+    {
+        int col = 0;
+        while (col < _grid!.Cols)
+        {
+            // Snapshot the attributes of the first cell in this run
+            ref readonly var first = ref _grid.CellAt(row, col);
+            int runStart = col;
+            int fg = first.FgIndex;
+            int bg = first.BgIndex;
+            var attr = first.Attr;
+            col++;
+
+            // Extend the run while adjacent cells share (fg, bg, attr)
+            while (col < _grid.Cols)
+            {
+                ref readonly var c = ref _grid.CellAt(row, col);
+                if (c.FgIndex != fg || c.BgIndex != bg || c.Attr != attr) break;
+                col++;
+            }
+
+            int runLen = col - runStart;
+
+            // Draw background run if non-default
+            if (bg != -1)
+            {
+                var bgColor = bg < -1 ? AnsiPalette.ResolveTrueColor(_grid.GetTrueColor(bg)) : AnsiPalette.ResolveDefault(bg);
+                var bgBrush = new SolidColorBrush(bgColor);
+                bgBrush.Freeze();
+                dc.DrawRectangle(bgBrush, null, new Rect(runStart * cellWidth, y, runLen * cellWidth, cellHeight));
+            }
+
+            // Resolve foreground brush
+            Brush fgBrush;
+            if (fg == -1)
+            {
+                fgBrush = defaultFg;
+            }
+            else
+            {
+                var fgColor = fg < -1 ? AnsiPalette.ResolveTrueColor(_grid.GetTrueColor(fg)) : AnsiPalette.ResolveDefault(fg);
+                var br = new SolidColorBrush(fgColor);
+                br.Freeze();
+                fgBrush = br;
+            }
+
+            // Build the character run string
+            var chars = new char[runLen];
+            for (int i = 0; i < runLen; i++)
+            {
+                char g = _grid.CellAt(row, runStart + i).Glyph;
+                chars[i] = g == '\0' ? ' ' : g;
+            }
+            var str = new string(chars);
+
+            _font.DrawGlyphRun(dc, str, 0, runLen, runStart * cellWidth, y, fgBrush);
+        }
+    }
+
+    private void DrawCursor(DrawingContext dc, double cellWidth, double cellHeight)
+    {
+        if (_grid == null || !_grid.CursorVisible) return;
+        var (r, c) = _grid.Cursor;
+        if (r < 0 || r >= _grid.Rows || c < 0 || c >= _grid.Cols) return;
+        var rect = new Rect(c * cellWidth, r * cellHeight, cellWidth, cellHeight);
+        var br = new SolidColorBrush(AnsiPalette.DefaultFg());
+        br.Freeze();
+        // 40% alpha for an inverse-looking cursor
+        br.Opacity = 0.5;
+        dc.DrawRectangle(br, null, rect);
     }
 
     // --- IScrollInfo stubs (fleshed out in Task 32) ---
