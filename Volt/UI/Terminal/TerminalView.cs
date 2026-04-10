@@ -242,6 +242,14 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     /// </summary>
     public void AddAllowlistedShortcut(Key key, ModifierKeys mods) => _allowlist.Add((key, mods));
 
+    /// <summary>After the user types or pastes, snap scroll to the live area so the shell cursor is visible.</summary>
+    private void FollowCursorAfterUserInput()
+    {
+        _stickToBottom = true;
+        ScrollOwner?.InvalidateScrollInfo();
+        InvalidateVisual();
+    }
+
     private double ViewportWidthPx => _viewport.Width > 0 ? _viewport.Width : ActualWidth;
     private double ViewportHeightPx => _viewport.Height > 0 ? _viewport.Height : ActualHeight;
 
@@ -288,6 +296,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         // Ctrl+C with no selection → SIGINT (v1: always SIGINT since selection isn't implemented yet)
         if (mods == ModifierKeys.Control && e.Key == Key.C)
         {
+            FollowCursorAfterUserInput();
             InputBytes?.Invoke(new byte[] { 0x03 });
             e.Handled = true;
             return;
@@ -297,6 +306,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         var bytes = KeyEncoder.Encode(e.Key, mods);
         if (bytes != null)
         {
+            FollowCursorAfterUserInput();
             InputBytes?.Invoke(bytes);
             e.Handled = true;
         }
@@ -309,6 +319,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         // Skip control characters that OnKeyDown already handled
         if (e.Text.Length == 1 && e.Text[0] < 0x20 && e.Text[0] != '\r' && e.Text[0] != '\t') return;
         var bytes = System.Text.Encoding.UTF8.GetBytes(e.Text);
+        FollowCursorAfterUserInput();
         InputBytes?.Invoke(bytes);
         e.Handled = true;
     }
@@ -339,6 +350,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     private void DoPaste()
     {
         if (!Clipboard.ContainsText()) return;
+        FollowCursorAfterUserInput();
         var text = Clipboard.GetText();
         var bytes = System.Text.Encoding.UTF8.GetBytes(text);
         // Chunk at 4 KB to avoid blocking the UI thread on absurdly large pastes
