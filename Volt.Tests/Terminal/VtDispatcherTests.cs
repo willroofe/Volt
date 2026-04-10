@@ -179,4 +179,65 @@ public class VtDispatcherTests
         Assert.Equal('B', g.CellAt(0, 0).Glyph);
         Assert.Equal('C', g.CellAt(1, 0).Glyph);
     }
+
+    [Fact]
+    public void Sgr_Reset_RestoresDefaults()
+    {
+        var (g, _, sm) = Make();
+        Feed(sm, "\u001b[1;31m");
+        Feed(sm, "\u001b[0m");
+        Feed(sm, "X");
+        Assert.Equal(CellAttr.None, g.CellAt(0, 0).Attr);
+        Assert.Equal(-1, g.CellAt(0, 0).FgIndex);
+    }
+
+    [Fact]
+    public void Sgr_Bold_SetsAttr()
+    {
+        var (g, _, sm) = Make();
+        Feed(sm, "\u001b[1mX");
+        Assert.Equal(CellAttr.Bold, g.CellAt(0, 0).Attr);
+    }
+
+    [Fact]
+    public void Sgr_AnsiFg_31_SetsRed()
+    {
+        var (g, _, sm) = Make();
+        Feed(sm, "\u001b[31mX");
+        Assert.Equal(1, g.CellAt(0, 0).FgIndex);
+    }
+
+    [Fact]
+    public void Sgr_AnsiBrightFg_91_SetsBrightRed()
+    {
+        var (g, _, sm) = Make();
+        Feed(sm, "\u001b[91mX");
+        Assert.Equal(9, g.CellAt(0, 0).FgIndex);
+    }
+
+    [Fact]
+    public void Sgr_Xterm256_Fg()
+    {
+        var (g, _, sm) = Make();
+        Feed(sm, "\u001b[38;5;214mX");
+        Assert.Equal(214, g.CellAt(0, 0).FgIndex);
+    }
+
+    [Fact]
+    public void Sgr_TrueColor_Fg()
+    {
+        var (g, _, sm) = Make();
+        Feed(sm, "\u001b[38;2;10;20;30mX");
+        int fg = g.CellAt(0, 0).FgIndex;
+        Assert.True(fg < -1, "Truecolor index should be encoded as < -1");
+    }
+
+    [Fact]
+    public void Sgr_CombinedBoldRed()
+    {
+        var (g, _, sm) = Make();
+        Feed(sm, "\u001b[1;31mX");
+        Assert.Equal(CellAttr.Bold, g.CellAt(0, 0).Attr);
+        Assert.Equal(1, g.CellAt(0, 0).FgIndex);
+    }
 }

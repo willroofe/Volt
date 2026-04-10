@@ -49,6 +49,7 @@ public sealed class VtDispatcher : IVtEventHandler
                 if (p.Length == 0) _grid.SetScrollRegion(0, _grid.Rows - 1);
                 else _grid.SetScrollRegion(p0default1 - 1, p1default1 - 1);
                 break;
+            case 'm': HandleSgr(p); break;
             default: break;
         }
     }
@@ -113,4 +114,66 @@ public sealed class VtDispatcher : IVtEventHandler
     {
         _grid.EraseInLine(mode switch { 1 => EraseMode.ToStart, 2 => EraseMode.All, _ => EraseMode.ToEnd });
     }
+
+    private void HandleSgr(ReadOnlySpan<int> p)
+    {
+        if (p.Length == 0)
+        {
+            ResetPen();
+            return;
+        }
+        for (int i = 0; i < p.Length; i++)
+        {
+            int n = p[i];
+            switch (n)
+            {
+                case 0: ResetPen(); break;
+                case 1: AddAttr(CellAttr.Bold); break;
+                case 2: AddAttr(CellAttr.Dim); break;
+                case 3: AddAttr(CellAttr.Italic); break;
+                case 4: AddAttr(CellAttr.Underline); break;
+                case 7: AddAttr(CellAttr.Inverse); break;
+                case 9: AddAttr(CellAttr.Strikethrough); break;
+                case 22: RemoveAttr(CellAttr.Bold | CellAttr.Dim); break;
+                case 23: RemoveAttr(CellAttr.Italic); break;
+                case 24: RemoveAttr(CellAttr.Underline); break;
+                case 27: RemoveAttr(CellAttr.Inverse); break;
+                case 29: RemoveAttr(CellAttr.Strikethrough); break;
+                case 39: SetPenFg(-1); break;
+                case 49: SetPenBg(-1); break;
+                default:
+                    if (n >= 30 && n <= 37) SetPenFg(n - 30);
+                    else if (n >= 40 && n <= 47) SetPenBg(n - 40);
+                    else if (n >= 90 && n <= 97) SetPenFg(8 + (n - 90));
+                    else if (n >= 100 && n <= 107) SetPenBg(8 + (n - 100));
+                    else if (n == 38 && i + 1 < p.Length)
+                    {
+                        if (p[i + 1] == 5 && i + 2 < p.Length) { SetPenFg(p[i + 2]); i += 2; }
+                        else if (p[i + 1] == 2 && i + 4 < p.Length)
+                        {
+                            uint argb = 0xFF000000u | ((uint)p[i + 2] << 16) | ((uint)p[i + 3] << 8) | (uint)p[i + 4];
+                            SetPenFg(_grid.RegisterTrueColor(argb));
+                            i += 4;
+                        }
+                    }
+                    else if (n == 48 && i + 1 < p.Length)
+                    {
+                        if (p[i + 1] == 5 && i + 2 < p.Length) { SetPenBg(p[i + 2]); i += 2; }
+                        else if (p[i + 1] == 2 && i + 4 < p.Length)
+                        {
+                            uint argb = 0xFF000000u | ((uint)p[i + 2] << 16) | ((uint)p[i + 3] << 8) | (uint)p[i + 4];
+                            SetPenBg(_grid.RegisterTrueColor(argb));
+                            i += 4;
+                        }
+                    }
+                    break;
+            }
+        }
+    }
+
+    private void ResetPen() { _grid.Pen = new Cell { FgIndex = -1, BgIndex = -1, Attr = CellAttr.None, Glyph = ' ' }; }
+    private void AddAttr(CellAttr a) { var p = _grid.Pen; p.Attr |= a; _grid.Pen = p; }
+    private void RemoveAttr(CellAttr a) { var p = _grid.Pen; p.Attr &= ~a; _grid.Pen = p; }
+    private void SetPenFg(int i) { var p = _grid.Pen; p.FgIndex = i; _grid.Pen = p; }
+    private void SetPenBg(int i) { var p = _grid.Pen; p.BgIndex = i; _grid.Pen = p; }
 }
