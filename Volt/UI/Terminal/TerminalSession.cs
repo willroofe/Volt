@@ -1,5 +1,6 @@
 // Volt/UI/Terminal/TerminalSession.cs
 using System;
+using System.IO;
 
 namespace Volt;
 
@@ -14,8 +15,8 @@ namespace Volt;
 /// </summary>
 public sealed class TerminalSession : IDisposable
 {
-    public string Title { get; private set; } = "Terminal";
-    public event Action? TitleChanged;
+    /// <summary>Short label for the session tab (e.g. PowerShell, Command Prompt), not the executable path.</summary>
+    public string Title { get; }
     public event Action<int>? Exited;
 
     public TerminalGrid Grid { get; }
@@ -33,13 +34,13 @@ public sealed class TerminalSession : IDisposable
         _shellExe = shellExe;
         _args = args;
         _cwd = cwd;
+        Title = ShellTabLabel(shellExe);
 
         Grid = new TerminalGrid(rows, cols, scrollbackLines);
         Dispatcher = new VtDispatcher(Grid);
         Parser = new VtStateMachine(Dispatcher);
         View = new TerminalView { Grid = Grid };
 
-        Dispatcher.TitleChanged += t => { Title = t; TitleChanged?.Invoke(); };
         View.InputBytes += bytes => Pty?.Write(bytes);
         View.SizeRequested += OnViewSizeRequested;
     }
@@ -70,5 +71,17 @@ public sealed class TerminalSession : IDisposable
     public void Dispose()
     {
         try { Pty?.Dispose(); } catch { }
+    }
+
+    /// <summary>Maps the shell executable to a short tab title; ignores VT OSC title sequences.</summary>
+    internal static string ShellTabLabel(string shellExe)
+    {
+        if (string.IsNullOrWhiteSpace(shellExe)) return "Shell";
+        var trimmed = shellExe.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var file = Path.GetFileName(trimmed);
+        if (file.Equals("pwsh.exe", StringComparison.OrdinalIgnoreCase)) return "PowerShell";
+        if (file.Equals("powershell.exe", StringComparison.OrdinalIgnoreCase)) return "PowerShell";
+        if (file.Equals("cmd.exe", StringComparison.OrdinalIgnoreCase)) return "Command Prompt";
+        return Path.GetFileNameWithoutExtension(file);
     }
 }
