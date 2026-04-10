@@ -1,8 +1,9 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 
 namespace Volt;
 
@@ -12,10 +13,12 @@ public partial class TerminalPanel : UserControl, IPanel
     private TerminalSession? _active;
 
     public string PanelId => "terminal";
-    public string Title => _active?.Title ?? "Terminal";
+    public string Title => "Terminal";
     public string? IconGlyph => "\uE756"; // Segoe MDL2 CommandPrompt
     public new UIElement Content => this;
+#pragma warning disable CS0067 // Title is fixed; event required by IPanel for other panels
     public event Action? TitleChanged;
+#pragma warning restore CS0067
 
     public TerminalPanel()
     {
@@ -65,7 +68,6 @@ public partial class TerminalPanel : UserControl, IPanel
             return;
         }
 
-        s.TitleChanged += () => { TitleChanged?.Invoke(); Dispatcher.BeginInvoke(new Action(RebuildTabs)); };
         s.Exited += _ => Dispatcher.BeginInvoke(new Action(() => CloseSession(s)));
         _sessions.Add(s);
         SetActive(s);
@@ -93,21 +95,79 @@ public partial class TerminalPanel : UserControl, IPanel
         _active = s;
         ActiveContent.Content = s?.View;
         if (s != null) s.View.Focus();
-        TitleChanged?.Invoke();
+        ApplyActiveTabStyle();
     }
 
     private void RebuildTabs()
     {
-        var items = new List<object>();
+        TabStrip.Children.Clear();
         foreach (var s in _sessions)
+            TabStrip.Children.Add(CreateSessionTab(s));
+        ApplyActiveTabStyle();
+    }
+
+    private void ApplyActiveTabStyle()
+    {
+        foreach (var child in TabStrip.Children)
         {
-            var btn = new Button { Content = s.Title, MinWidth = 80, Margin = new Thickness(2, 0, 2, 0) };
-            var captured = s;
-            btn.Click += (_, _) => SetActive(captured);
-            btn.MouseRightButtonUp += (_, _) => CloseSession(captured);
-            items.Add(btn);
+            if (child is Border b && b.Tag is TerminalSession sess)
+            {
+                b.SetResourceReference(Border.BackgroundProperty,
+                    sess == _active ? ThemeResourceKeys.TabActive : ThemeResourceKeys.ExplorerHeaderBg);
+            }
         }
-        TabsList.ItemsSource = items;
+    }
+
+    private Border CreateSessionTab(TerminalSession s)
+    {
+        var textBlock = new TextBlock
+        {
+            Text = s.Title,
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(10, 0, 4, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxWidth = 120
+        };
+        textBlock.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFg);
+
+        var closeBtn = new Button { Margin = new Thickness(0, 0, 6, 0) };
+        if (Application.Current?.TryFindResource("TabCloseButton") is Style closeStyle)
+            closeBtn.Style = closeStyle;
+        var captured = s;
+        closeBtn.Click += (_, _) => CloseSession(captured);
+
+        var tabPanel = new DockPanel { VerticalAlignment = VerticalAlignment.Center };
+        DockPanel.SetDock(closeBtn, Dock.Right);
+        tabPanel.Children.Add(closeBtn);
+        tabPanel.Children.Add(textBlock);
+
+        var header = new Border
+        {
+            Tag = s,
+            Child = tabPanel,
+            Height = UIConstants.TabBarHeight,
+            MinWidth = 40,
+            Cursor = Cursors.Hand,
+            BorderThickness = new Thickness(0, 0, 1, 0)
+        };
+        header.SetResourceReference(Border.BorderBrushProperty, ThemeResourceKeys.TabBorder);
+        header.SetResourceReference(Border.BackgroundProperty, ThemeResourceKeys.ExplorerHeaderBg);
+
+        header.MouseLeftButtonDown += (_, e) =>
+        {
+            SetActive(captured);
+            e.Handled = true;
+        };
+        header.MouseRightButtonUp += (_, e) =>
+        {
+            CloseSession(captured);
+            e.Handled = true;
+        };
+
+        return header;
     }
 
     private void OnAddClicked(object sender, RoutedEventArgs e) => NewSession();
