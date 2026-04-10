@@ -39,7 +39,6 @@ public static class ConPtyHost
         SafeFileHandle? outputWriteSide = null;
         IntPtr hpcon = IntPtr.Zero;
         IntPtr attrList = IntPtr.Zero;
-        IntPtr hpconValuePtr = IntPtr.Zero;
         Process? process = null;
 
         // Temporarily strip DOTNET_* variables from Volt's own process environment so
@@ -75,11 +74,14 @@ public static class ConPtyHost
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "InitializeProcThreadAttributeList failed");
 
             // UpdateProcThreadAttribute for PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE:
-            // lpValue must point to the HPCON handle value; cbSize = sizeof(HPCON).
-            hpconValuePtr = Marshal.AllocHGlobal(IntPtr.Size);
-            Marshal.WriteIntPtr(hpconValuePtr, hpcon);
+            // Despite lpValue being documented as PVOID (pointer), for this specific
+            // attribute the kernel expects the HPCON value itself in lpValue, NOT a
+            // pointer to it. This matches Microsoft's official C++ and C# ConPTY
+            // samples. Passing a pointer-to-hpcon causes 0xC0000142 in the child
+            // because Windows associates the child's pseudoconsole with the pointer
+            // value (a heap address), and the child's CRT fails console init.
             if (!UpdateProcThreadAttribute(attrList, 0, (IntPtr)PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
-                    hpconValuePtr, (IntPtr)IntPtr.Size, IntPtr.Zero, IntPtr.Zero))
+                    hpcon, (IntPtr)IntPtr.Size, IntPtr.Zero, IntPtr.Zero))
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "UpdateProcThreadAttribute failed");
 
             var si = new STARTUPINFOEX();
@@ -88,10 +90,13 @@ public static class ConPtyHost
 
             string cmdLine = string.IsNullOrEmpty(args) ? $"\"{shellExe}\"" : $"\"{shellExe}\" {args}";
             // lpEnvironment = IntPtr.Zero → child inherits Volt's process env, which we
-            // just stripped of DOTNET_* vars. Uses normal Windows env inheritance, which
-            // is well-tested (no hand-built block that could miss hidden drive vars).
+            // just stripped of DOTNET_* vars.
+            // IMPORTANT: do NOT set CREATE_UNICODE_ENVIRONMENT here. That flag describes
+            // the encoding of lpEnvironment if we pass one; combined with a NULL env it
+            // can cause Windows' loader to fail DllMain in the child (0xC0000142). Match
+            // Microsoft's official ConPTY sample which uses EXTENDED_STARTUPINFO_PRESENT only.
             if (!CreateProcess(null, cmdLine, IntPtr.Zero, IntPtr.Zero, false,
-                EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
+                EXTENDED_STARTUPINFO_PRESENT,
                 IntPtr.Zero, cwd, ref si, out var pi))
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "CreateProcess failed");
 
@@ -111,12 +116,10 @@ public static class ConPtyHost
                 Process = process
             };
 
-            // Clean up attr list and hpcon pointer buffer; handles now belong to result
+            // Clean up attr list; handles now belong to result
             DeleteProcThreadAttributeList(attrList);
             LocalFree(attrList);
             attrList = IntPtr.Zero;
-            Marshal.FreeHGlobal(hpconValuePtr);
-            hpconValuePtr = IntPtr.Zero;
             inputWriteSide = null;
             outputReadSide = null;
             hpcon = IntPtr.Zero;
@@ -134,7 +137,6 @@ public static class ConPtyHost
                 try { DeleteProcThreadAttributeList(attrList); } catch { }
                 try { LocalFree(attrList); } catch { }
             }
-            if (hpconValuePtr != IntPtr.Zero) { try { Marshal.FreeHGlobal(hpconValuePtr); } catch { } }
             try { if (process != null && !process.HasExited) process.Kill(); } catch { }
             throw;
         }
