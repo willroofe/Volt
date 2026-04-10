@@ -29,6 +29,9 @@ public sealed class TerminalSession : IDisposable
     private readonly string? _args;
     private readonly string _cwd;
 
+    /// <summary>Process working directory passed to the pseudoconsole.</summary>
+    public string WorkingDirectory => _cwd;
+
     public TerminalSession(string shellExe, string? args, string cwd, short rows, short cols, int scrollbackLines)
     {
         _shellExe = shellExe;

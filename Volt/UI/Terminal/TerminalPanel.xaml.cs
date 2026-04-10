@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -23,6 +24,29 @@ public partial class TerminalPanel : UserControl, IPanel
     public TerminalPanel()
     {
         InitializeComponent();
+    }
+
+    public int SessionCount => _sessions.Count;
+
+    /// <summary>Closes all instance tabs and opens <paramref name="count"/> new ones using current shell settings.</summary>
+    public void ResetToSessionCount(int count, TerminalPreferences? prefs)
+    {
+        count = Math.Max(0, count);
+        foreach (var s in _sessions.ToList())
+            CloseSession(s);
+        for (int i = 0; i < count; i++)
+            NewSession(prefs?.GetWorkingDirectoryForInstance(i));
+    }
+
+    /// <summary>Spawn cwd for each instance tab, in order (same length as <see cref="SessionCount"/>).</summary>
+    public List<string> GetPersistedStartingDirectoriesPerSession()
+    {
+        return _sessions.Select(s =>
+        {
+            var raw = s.WorkingDirectory;
+            if (string.IsNullOrEmpty(raw)) return "";
+            try { return Path.GetFullPath(raw); } catch { return raw; }
+        }).ToList();
     }
 
     public void NewSession(string? cwd = null)
