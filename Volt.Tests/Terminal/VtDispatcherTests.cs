@@ -60,4 +60,67 @@ public class VtDispatcherTests
         Feed(sm, "\u001b]0;Window Title\a");
         Assert.Equal("Window Title", title);
     }
+
+    [Fact]
+    public void CsiA_CursorUp()
+    {
+        var (g, _, sm) = Make();
+        g.SetCursor(5, 3);
+        Feed(sm, "\u001b[2A");
+        Assert.Equal((3, 3), g.Cursor);
+    }
+
+    [Fact]
+    public void CsiB_CursorDown_Default1()
+    {
+        var (g, _, sm) = Make();
+        g.SetCursor(5, 3);
+        Feed(sm, "\u001b[B");
+        Assert.Equal((6, 3), g.Cursor);
+    }
+
+    [Fact]
+    public void CsiC_CursorForward()
+    {
+        var (g, _, sm) = Make();
+        g.SetCursor(5, 3);
+        Feed(sm, "\u001b[3C");
+        Assert.Equal((5, 6), g.Cursor);
+    }
+
+    [Fact]
+    public void CsiD_CursorBack()
+    {
+        var (g, _, sm) = Make();
+        g.SetCursor(5, 8);
+        Feed(sm, "\u001b[3D");
+        Assert.Equal((5, 5), g.Cursor);
+    }
+
+    [Fact]
+    public void CsiH_CursorPosition_OneIndexed()
+    {
+        var (g, _, sm) = Make();
+        Feed(sm, "\u001b[5;10H");
+        // VT is 1-indexed, grid 0-indexed
+        Assert.Equal((4, 9), g.Cursor);
+    }
+
+    [Fact]
+    public void CsiH_NoParams_GoesToOrigin()
+    {
+        var (g, _, sm) = Make();
+        g.SetCursor(5, 5);
+        Feed(sm, "\u001b[H");
+        Assert.Equal((0, 0), g.Cursor);
+    }
+
+    [Fact]
+    public void CsiG_CursorHorizontalAbsolute()
+    {
+        var (g, _, sm) = Make();
+        g.SetCursor(3, 5);
+        Feed(sm, "\u001b[10G");
+        Assert.Equal((3, 9), g.Cursor);
+    }
 }
