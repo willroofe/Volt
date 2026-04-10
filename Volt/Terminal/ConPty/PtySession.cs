@@ -29,8 +29,20 @@ public sealed class PtySession : IDisposable
         _output = new FileStream(_handles.Output, FileAccess.Read);
         _uiDispatcher = Dispatcher.CurrentDispatcher;
         _readTask = Task.Run(ReadLoop);
-        _handles.Process.EnableRaisingEvents = true;
-        _handles.Process.Exited += OnProcessExited;
+        try
+        {
+            _handles.Process.EnableRaisingEvents = true;
+            _handles.Process.Exited += OnProcessExited;
+            // Check HasExited after subscribing to handle the race where the process
+            // exits between EnableRaisingEvents and the event subscription.
+            if (_handles.Process.HasExited)
+                OnProcessExited(null, EventArgs.Empty);
+        }
+        catch (InvalidOperationException)
+        {
+            // Process already exited before EnableRaisingEvents could be set.
+            OnProcessExited(null, EventArgs.Empty);
+        }
     }
 
     public void Write(ReadOnlySpan<byte> data)
