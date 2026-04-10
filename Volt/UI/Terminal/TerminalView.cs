@@ -173,10 +173,11 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         var (r, c) = _grid.Cursor;
         if (r < 0 || r >= _grid.Rows || c < 0 || c >= _grid.Cols) return;
         var rect = new Rect(c * cellWidth, r * cellHeight, cellWidth, cellHeight);
-        var br = new SolidColorBrush(AnsiPalette.DefaultFg());
+        // Bake the alpha into the color so the brush can be frozen
+        var fg = AnsiPalette.DefaultFg();
+        var cursorColor = Color.FromArgb(0x80, fg.R, fg.G, fg.B);
+        var br = new SolidColorBrush(cursorColor);
         br.Freeze();
-        // 40% alpha for an inverse-looking cursor
-        br.Opacity = 0.5;
         dc.DrawRectangle(br, null, rect);
     }
 
