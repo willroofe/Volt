@@ -26,6 +26,10 @@ public partial class MainWindow
     internal TerminalPanel TerminalPanel => _terminalPanel;
     internal string? _startupFilePath;
 
+    internal string? ActiveFilePath => _activeTab?.FilePath;
+    internal string? OpenFolderPath => _explorerPanel.OpenFolderPath;
+    internal Workspace? ActiveWorkspace => _workspaceManager.CurrentWorkspace;
+
     private EditorControl? Editor => _activeTab?.Editor;
 
     private record FileLoadResult(Encoding Encoding, TextBuffer.PreparedContent Prepared, long FileSize, byte[]? TailBytes);
