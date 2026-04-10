@@ -1,6 +1,8 @@
 // Volt/UI/Terminal/TerminalSession.cs
 using System;
 using System.IO;
+using System.Windows;
+using System.Windows.Controls;
 
 namespace Volt;
 
@@ -24,6 +26,8 @@ public sealed class TerminalSession : IDisposable
     public VtStateMachine Parser { get; }
     public VtDispatcher Dispatcher { get; }
     public TerminalView View { get; }
+    /// <summary>Themed <see cref="ScrollViewer"/> hosting <see cref="View"/> (IScrollInfo).</summary>
+    public ScrollViewer ScrollHost { get; }
 
     private readonly string _shellExe;
     private readonly string? _args;
@@ -43,6 +47,16 @@ public sealed class TerminalSession : IDisposable
         Dispatcher = new VtDispatcher(Grid);
         Parser = new VtStateMachine(Dispatcher);
         View = new TerminalView { Grid = Grid };
+        ScrollHost = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            CanContentScroll = true,
+            Content = View,
+            Focusable = false,
+        };
+        if (Application.Current?.FindResource("ThemedScrollViewer") is ControlTemplate scrollTemplate)
+            ScrollHost.Template = scrollTemplate;
 
         View.InputBytes += bytes => Pty?.Write(bytes);
         View.SizeRequested += OnViewSizeRequested;

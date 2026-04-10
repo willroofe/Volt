@@ -14,16 +14,22 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     private readonly DrawingVisual _cursorVisual = new();
     private readonly FontManager _font = new();
     private TerminalGrid? _grid;
+    private double _verticalOffset;
+    /// <summary>When true, new output keeps the viewport pinned to the bottom (live view).</summary>
+    private bool _stickToBottom = true;
+    private Size _viewport;
 
     protected override int VisualChildrenCount => 2;
     protected override Visual GetVisualChild(int index) => index == 0 ? _textVisual : _cursorVisual;
 
     public TerminalView()
     {
+        ClipToBounds = true;
         AddVisualChild(_textVisual);
         AddVisualChild(_cursorVisual);
         Focusable = true;
         FocusVisualStyle = null;
+        CanVerticallyScroll = true;
 
         // Subscribe to theme changes so rendering updates colors
         if (Application.Current is App app)
@@ -47,7 +53,11 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     private void OnGridChanged()
     {
         // Coalesce via WPF layout — InvalidateVisual queues a redraw at the next frame
-        Dispatcher.BeginInvoke(new Action(InvalidateVisual), System.Windows.Threading.DispatcherPriority.Render);
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            InvalidateVisual();
+            ScrollOwner?.InvalidateScrollInfo();
+        }), System.Windows.Threading.DispatcherPriority.Render);
     }
 
     private void OnThemeChanged(object? sender, EventArgs e) => InvalidateVisual();
@@ -71,8 +81,11 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         double cellWidth = _font.CharWidth;
         double cellHeight = _font.LineHeight;
         if (cellWidth <= 0 || cellHeight <= 0) return;
-        int cols = Math.Max(1, (int)(ActualWidth / cellWidth));
-        int rows = Math.Max(1, (int)(ActualHeight / cellHeight));
+        double vw = ViewportWidthPx;
+        double vh = ViewportHeightPx;
+        if (vw <= 0 || vh <= 0) return;
+        int cols = Math.Max(1, (int)(vw / cellWidth));
+        int rows = Math.Max(1, (int)(vh / cellHeight));
         if (cols != _grid.Cols || rows != _grid.Rows)
         {
             _grid.Resize(rows, cols);
@@ -91,30 +104,62 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
 
         if (_grid == null) return;
 
+        double cellWidth = _font.CharWidth;
+        double cellHeight = _font.LineHeight;
+        if (cellHeight <= 0 || cellWidth <= 0) return;
+
+        int totalLines = _grid.ScrollbackCount + _grid.Rows;
+        double totalHeight = totalLines * cellHeight;
+        double viewportH = ViewportHeightPx;
+        double viewportW = ViewportWidthPx;
+        double maxOffset = Math.Max(0, totalHeight - viewportH);
+        double beforeStick = _verticalOffset;
+        if (_stickToBottom)
+            _verticalOffset = maxOffset;
+        else
+            _verticalOffset = Math.Clamp(_verticalOffset, 0, maxOffset);
+        if (Math.Abs(beforeStick - _verticalOffset) > 0.01)
+            ScrollOwner?.InvalidateScrollInfo();
+
         var defaultFgColor = AnsiPalette.DefaultFg();
         var defaultFg = new SolidColorBrush(defaultFgColor);
         defaultFg.Freeze();
 
-        double y = 0;
-        double cellWidth = _font.CharWidth;
-        double cellHeight = _font.LineHeight;
+        int firstLine = (int)Math.Floor(_verticalOffset / cellHeight);
+        int lastLine = (int)Math.Ceiling((_verticalOffset + viewportH) / cellHeight);
+        lastLine = Math.Min(lastLine, totalLines) - 1;
 
-        for (int row = 0; row < _grid.Rows; row++)
+        dc.PushClip(new RectangleGeometry(new Rect(0, 0, viewportW, viewportH)));
+        dc.PushTransform(new TranslateTransform(0, -_verticalOffset));
+        for (int logicalLine = firstLine; logicalLine <= lastLine; logicalLine++)
         {
-            RenderRow(dc, row, y, cellWidth, cellHeight, defaultFg);
-            y += cellHeight;
+            if (logicalLine < 0 || logicalLine >= totalLines) continue;
+            double y = logicalLine * cellHeight;
+            int gridRow = LogicalLineToGridRow(_grid, logicalLine);
+            RenderGridRow(dc, gridRow, y, cellWidth, cellHeight, defaultFg);
         }
+        dc.Pop();
+        dc.Pop();
 
         DrawCursor(dc, cellWidth, cellHeight);
     }
 
-    private void RenderRow(DrawingContext dc, int row, double y, double cellWidth, double cellHeight, Brush defaultFg)
+    /// <summary>Maps a vertical slice through scrollback + main (0 = oldest scrollback line).</summary>
+    private static int LogicalLineToGridRow(TerminalGrid grid, int logicalLine)
+    {
+        int sb = grid.ScrollbackCount;
+        if (logicalLine < sb)
+            return -(sb - logicalLine);
+        return logicalLine - sb;
+    }
+
+    private void RenderGridRow(DrawingContext dc, int gridRow, double y, double cellWidth, double cellHeight, Brush defaultFg)
     {
         int col = 0;
         while (col < _grid!.Cols)
         {
             // Snapshot the attributes of the first cell in this run
-            ref readonly var first = ref _grid.CellAt(row, col);
+            ref readonly var first = ref _grid.CellAt(gridRow, col);
             int runStart = col;
             int fg = first.FgIndex;
             int bg = first.BgIndex;
@@ -124,7 +169,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
             // Extend the run while adjacent cells share (fg, bg, attr)
             while (col < _grid.Cols)
             {
-                ref readonly var c = ref _grid.CellAt(row, col);
+                ref readonly var c = ref _grid.CellAt(gridRow, col);
                 if (c.FgIndex != fg || c.BgIndex != bg || c.Attr != attr) break;
                 col++;
             }
@@ -158,7 +203,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
             var chars = new char[runLen];
             for (int i = 0; i < runLen; i++)
             {
-                char g = _grid.CellAt(row, runStart + i).Glyph;
+                char g = _grid.CellAt(gridRow, runStart + i).Glyph;
                 chars[i] = g == '\0' ? ' ' : g;
             }
             var str = new string(chars);
@@ -172,7 +217,10 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         if (_grid == null || !_grid.CursorVisible) return;
         var (r, c) = _grid.Cursor;
         if (r < 0 || r >= _grid.Rows || c < 0 || c >= _grid.Cols) return;
-        var rect = new Rect(c * cellWidth, r * cellHeight, cellWidth, cellHeight);
+        int cursorLogicalLine = _grid.ScrollbackCount + r;
+        double cursorY = cursorLogicalLine * cellHeight - _verticalOffset;
+        if (cursorY + cellHeight < 0 || cursorY > ViewportHeightPx) return;
+        var rect = new Rect(c * cellWidth, cursorY, cellWidth, cellHeight);
         // Bake the alpha into the color so the brush can be frozen
         var fg = AnsiPalette.DefaultFg();
         var cursorColor = Color.FromArgb(0x80, fg.R, fg.G, fg.B);
@@ -193,6 +241,25 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     /// Call from MainWindow during startup.
     /// </summary>
     public void AddAllowlistedShortcut(Key key, ModifierKeys mods) => _allowlist.Add((key, mods));
+
+    private double ViewportWidthPx => _viewport.Width > 0 ? _viewport.Width : ActualWidth;
+    private double ViewportHeightPx => _viewport.Height > 0 ? _viewport.Height : ActualHeight;
+
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        double w = double.IsInfinity(availableSize.Width) ? 400 : availableSize.Width;
+        double h = double.IsInfinity(availableSize.Height) ? 300 : availableSize.Height;
+        _viewport = new Size(w, h);
+        ScrollOwner?.InvalidateScrollInfo();
+        return _viewport;
+    }
+
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        _viewport = finalSize;
+        ScrollOwner?.InvalidateScrollInfo();
+        return finalSize;
+    }
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
@@ -260,7 +327,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         if (cellHeight <= 0) return;
         double delta = e.Delta > 0 ? -3 : 3;
         double maxOffset = Math.Max(0, ExtentHeight - ViewportHeight);
-        SetVerticalOffset(Math.Clamp(VerticalOffset + delta * cellHeight, 0, maxOffset));
+        SetVerticalOffset(Math.Clamp(_verticalOffset + delta * cellHeight, 0, maxOffset));
         e.Handled = true;
     }
 
@@ -285,29 +352,54 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         }
     }
 
-    // --- IScrollInfo stubs (fleshed out in Task 32) ---
+    // --- IScrollInfo (ScrollViewer + themed scrollbar) ---
     public bool CanVerticallyScroll { get; set; }
     public bool CanHorizontallyScroll { get; set; }
-    public double ExtentWidth => ActualWidth;
+    public double ExtentWidth => ViewportWidthPx;
     public double ExtentHeight => _grid == null ? 0 : (_grid.Rows + _grid.ScrollbackCount) * _font.LineHeight;
-    public double ViewportWidth => ActualWidth;
-    public double ViewportHeight => ActualHeight;
+    public double ViewportWidth => ViewportWidthPx;
+    public double ViewportHeight => ViewportHeightPx;
     public double HorizontalOffset => 0;
-    public double VerticalOffset { get; private set; }
+    public double VerticalOffset => _verticalOffset;
     public ScrollViewer? ScrollOwner { get; set; }
-    public void LineUp() { }
-    public void LineDown() { }
+    public void LineUp() => SetVerticalOffset(_verticalOffset - _font.LineHeight);
+    public void LineDown() => SetVerticalOffset(_verticalOffset + _font.LineHeight);
     public void LineLeft() { }
     public void LineRight() { }
-    public void PageUp() { }
-    public void PageDown() { }
+    public void PageUp() => SetVerticalOffset(_verticalOffset - ViewportHeightPx);
+    public void PageDown() => SetVerticalOffset(_verticalOffset + ViewportHeightPx);
     public void PageLeft() { }
     public void PageRight() { }
-    public void MouseWheelUp() { }
-    public void MouseWheelDown() { }
+    public void MouseWheelUp() => LineUp();
+    public void MouseWheelDown() => LineDown();
     public void MouseWheelLeft() { }
     public void MouseWheelRight() { }
     public void SetHorizontalOffset(double offset) { }
-    public void SetVerticalOffset(double offset) { VerticalOffset = offset; InvalidateVisual(); }
+
+    public void SetVerticalOffset(double offset)
+    {
+        if (_grid == null)
+        {
+            _verticalOffset = offset;
+            ScrollOwner?.InvalidateScrollInfo();
+            InvalidateVisual();
+            return;
+        }
+        double cellHeight = _font.LineHeight;
+        if (cellHeight <= 0)
+        {
+            _verticalOffset = offset;
+            ScrollOwner?.InvalidateScrollInfo();
+            InvalidateVisual();
+            return;
+        }
+        int totalLines = _grid.ScrollbackCount + _grid.Rows;
+        double totalHeight = totalLines * cellHeight;
+        double maxOffset = Math.Max(0, totalHeight - ViewportHeightPx);
+        _verticalOffset = Math.Clamp(offset, 0, maxOffset);
+        _stickToBottom = _verticalOffset >= maxOffset - 0.5;
+        ScrollOwner?.InvalidateScrollInfo();
+        InvalidateVisual();
+    }
     public Rect MakeVisible(Visual visual, Rect rectangle) => rectangle;
 }

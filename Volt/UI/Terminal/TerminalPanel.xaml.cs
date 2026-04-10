@@ -126,7 +126,7 @@ public partial class TerminalPanel : UserControl, IPanel
     private void SetActive(TerminalSession? s)
     {
         _active = s;
-        ActiveContent.Content = s?.View;
+        ActiveContent.Content = s?.ScrollHost;
         if (s != null)
         {
             s.View.Focus();
