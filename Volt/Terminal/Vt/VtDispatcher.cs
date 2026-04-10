@@ -26,8 +26,35 @@ public sealed class VtDispatcher : IVtEventHandler
 
     public void CsiDispatch(char final, ReadOnlySpan<int> p, ReadOnlySpan<char> i)
     {
-        // Task 19+ handles each CSI final; v1 skeleton ignores.
+        int p0 = P(p, 0, 1);
+        int p1 = P(p, 1, 1);
+        switch (final)
+        {
+            case 'A': CursorUp(p0); break;
+            case 'B': CursorDown(p0); break;
+            case 'C': CursorForward(p0); break;
+            case 'D': CursorBack(p0); break;
+            case 'E': CarriageReturn(); CursorDown(p0); break;
+            case 'F': CarriageReturn(); CursorUp(p0); break;
+            case 'G': CursorHorizontalAbsolute(p0); break;
+            case 'H': case 'f': CursorPosition(p0, p1); break;
+            default: break;
+        }
     }
+
+    private static int P(ReadOnlySpan<int> p, int index, int defaultIfZeroOrMissing)
+    {
+        if (index >= p.Length) return defaultIfZeroOrMissing;
+        int v = p[index];
+        return v == 0 ? defaultIfZeroOrMissing : v;
+    }
+
+    private void CursorUp(int n)      { var (r, c) = _grid.Cursor; _grid.SetCursor(r - n, c); }
+    private void CursorDown(int n)    { var (r, c) = _grid.Cursor; _grid.SetCursor(r + n, c); }
+    private void CursorForward(int n) { var (r, c) = _grid.Cursor; _grid.SetCursor(r, c + n); }
+    private void CursorBack(int n)    { var (r, c) = _grid.Cursor; _grid.SetCursor(r, c - n); }
+    private void CursorHorizontalAbsolute(int col) { var (r, _) = _grid.Cursor; _grid.SetCursor(r, col - 1); }
+    private void CursorPosition(int row, int col)  { _grid.SetCursor(row - 1, col - 1); }
 
     public void EscDispatch(char final, ReadOnlySpan<char> i) { }
 
