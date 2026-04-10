@@ -187,7 +187,13 @@ public partial class TerminalPanel : UserControl, IPanel
         };
         header.MouseRightButtonUp += (_, e) =>
         {
-            CloseSession(captured);
+            if (header.ContextMenu == null)
+            {
+                var menu = ContextMenuHelper.Create();
+                menu.Items.Add(ContextMenuHelper.Item("Close", "\uE711", () => CloseSession(captured)));
+                header.ContextMenu = menu;
+            }
+            header.ContextMenu.IsOpen = true;
             e.Handled = true;
         };
 
