@@ -44,6 +44,9 @@ public sealed class VtStateMachine
     private bool _inOsc;
     private bool _oscEscapePending;
 
+    // DCS state tracking
+    private bool _dcsEscapePending;
+
     public VtStateMachine(IVtEventHandler handler) { _h = handler; }
 
     public void Feed(ReadOnlySpan<byte> bytes)
@@ -54,7 +57,15 @@ public sealed class VtStateMachine
 
     private void Step(byte b)
     {
-        // ST (ESC\) terminator handling for OSC
+        // DCS ST terminator: ESC \ while in DCS → Ground
+        if (_dcsEscapePending)
+        {
+            if (b == 0x5C) { _state = State.Ground; _dcsEscapePending = false; return; }
+            _dcsEscapePending = false;
+            // fall through
+        }
+
+        // OSC ST terminator: ESC \ while in OSC → DispatchOsc
         if (_state == State.OscString && _oscEscapePending)
         {
             if (b == 0x5C) { DispatchOsc(); return; }
@@ -67,6 +78,12 @@ public sealed class VtStateMachine
         if (b == 0x1B)
         {
             if (_state == State.OscString) { _oscEscapePending = true; return; }
+            if (_state == State.DcsPassthrough || _state == State.DcsIgnore
+                || _state == State.DcsEntry || _state == State.DcsParam || _state == State.DcsIntermediate)
+            {
+                _dcsEscapePending = true;
+                return;
+            }
             EnterEscape();
             return;
         }
@@ -81,6 +98,11 @@ public sealed class VtStateMachine
             case State.CsiIntermediate:    StepCsiIntermediate(b); break;
             case State.CsiIgnore:          StepCsiIgnore(b); break;
             case State.OscString:          StepOsc(b); break;
+            case State.DcsEntry:           StepDcsEntry(b); break;
+            case State.DcsParam:           StepDcsParam(b); break;
+            case State.DcsIntermediate:    StepDcsIntermediate(b); break;
+            case State.DcsPassthrough:     StepDcsPassthrough(b); break;
+            case State.DcsIgnore:          StepDcsIgnore(b); break;
         }
     }
 
@@ -106,6 +128,7 @@ public sealed class VtStateMachine
         if (b >= 0x20 && b <= 0x2F) { CollectIntermediate((char)b); _state = State.EscapeIntermediate; return; }
         if (b == 0x5B) { _state = State.CsiEntry; return; }      // [
         if (b == 0x5D) { _oscBuf.Clear(); _inOsc = true; _state = State.OscString; return; } // ]
+        if (b == 0x50) { _state = State.DcsEntry; return; }      // P
         if (b >= 0x30 && b <= 0x7E)
         {
             _h.EscDispatch((char)b, _intermediates.AsSpan(0, _intermediateCount));
@@ -220,4 +243,33 @@ public sealed class VtStateMachine
         _oscEscapePending = false;
         _state = State.Ground;
     }
+
+    private void StepDcsEntry(byte b)
+    {
+        if (b >= 0x30 && b <= 0x39) { _state = State.DcsParam; return; }
+        if (b == 0x3B) { _state = State.DcsParam; return; }
+        if (b >= 0x3C && b <= 0x3F) { _state = State.DcsParam; return; }
+        if (b >= 0x20 && b <= 0x2F) { _state = State.DcsIntermediate; return; }
+        if (b >= 0x40 && b <= 0x7E) { _state = State.DcsPassthrough; return; }
+        _state = State.DcsIgnore;
+    }
+
+    private void StepDcsParam(byte b)
+    {
+        if (b >= 0x30 && b <= 0x39) return;
+        if (b == 0x3B) return;
+        if (b >= 0x20 && b <= 0x2F) { _state = State.DcsIntermediate; return; }
+        if (b >= 0x40 && b <= 0x7E) { _state = State.DcsPassthrough; return; }
+        if (b >= 0x3C && b <= 0x3F) { _state = State.DcsIgnore; return; }
+    }
+
+    private void StepDcsIntermediate(byte b)
+    {
+        if (b >= 0x20 && b <= 0x2F) return;
+        if (b >= 0x40 && b <= 0x7E) { _state = State.DcsPassthrough; return; }
+        _state = State.DcsIgnore;
+    }
+
+    private void StepDcsPassthrough(byte b) { /* consume silently */ }
+    private void StepDcsIgnore(byte b) { /* consume silently */ }
 }
