@@ -47,6 +47,10 @@ public sealed class VtStateMachine
     // DCS state tracking
     private bool _dcsEscapePending;
 
+    // UTF-8 decode state
+    private int _utf8Remaining;
+    private int _utf8Codepoint;
+
     public VtStateMachine(IVtEventHandler handler) { _h = handler; }
 
     public void Feed(ReadOnlySpan<byte> bytes)
@@ -108,10 +112,35 @@ public sealed class VtStateMachine
 
     private void StepGround(byte b)
     {
-        if (b <= 0x1F) { _h.Execute(b); return; }
-        if (b == 0x7F) { /* DEL — ignored in Ground */ return; }
-        // 0x20..0x7E printable ASCII; 0x80+ UTF-8 continuation handled in Task 14
-        _h.Print((char)b);
+        if (b <= 0x1F) { FlushUtf8Error(); _h.Execute(b); return; }
+        if (b == 0x7F) { FlushUtf8Error(); return; }
+
+        if (_utf8Remaining > 0)
+        {
+            if ((b & 0xC0) != 0x80) { _h.Print('\uFFFD'); _utf8Remaining = 0; StepGround(b); return; }
+            _utf8Codepoint = (_utf8Codepoint << 6) | (b & 0x3F);
+            _utf8Remaining--;
+            if (_utf8Remaining == 0)
+            {
+                if (_utf8Codepoint <= 0xFFFF)
+                    _h.Print((char)_utf8Codepoint);
+                else
+                    _h.Print('\uFFFD'); // surrogate pairs deferred; v1 treats them as replacement
+            }
+            return;
+        }
+
+        if (b < 0x80) { _h.Print((char)b); return; }
+
+        if ((b & 0xE0) == 0xC0) { _utf8Codepoint = b & 0x1F; _utf8Remaining = 1; return; }
+        if ((b & 0xF0) == 0xE0) { _utf8Codepoint = b & 0x0F; _utf8Remaining = 2; return; }
+        if ((b & 0xF8) == 0xF0) { _utf8Codepoint = b & 0x07; _utf8Remaining = 3; return; }
+        _h.Print('\uFFFD');
+    }
+
+    private void FlushUtf8Error()
+    {
+        if (_utf8Remaining > 0) { _h.Print('\uFFFD'); _utf8Remaining = 0; }
     }
 
     private void EnterEscape()
