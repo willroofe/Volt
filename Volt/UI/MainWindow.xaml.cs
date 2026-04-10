@@ -1670,7 +1670,8 @@ public partial class MainWindow
             _settings.Editor.Find.SeedWithSelection, _settings.Editor.FixedWidthTabs,
             _settings.Editor.WordWrap, _settings.Editor.WordWrapAtWords, _settings.Editor.WordWrapIndent,
             _settings.Editor.IndentGuides, _settings.Application.CommandPalettePosition,
-            _keyBindingManager.GetAllBindings());
+            _keyBindingManager.GetAllBindings(),
+            _settings.Editor.TerminalShellPath, _settings.Editor.TerminalShellArgs, _settings.Editor.TerminalScrollbackLines);
         var dlg = new SettingsWindow(ThemeManager, snapshot) { Owner = this };
         dlg.Applied += (_, _) => ApplySettingsFromDialog(dlg);
         if (dlg.ShowDialog() == true)
@@ -1695,6 +1696,9 @@ public partial class MainWindow
         _settings.Editor.WordWrapAtWords = dlg.WordWrapAtWords;
         _settings.Editor.WordWrapIndent = dlg.WordWrapIndent;
         _settings.Editor.IndentGuides = dlg.IndentGuides;
+        _settings.Editor.TerminalShellPath = dlg.TerminalShellPath;
+        _settings.Editor.TerminalShellArgs = dlg.TerminalShellArgs;
+        _settings.Editor.TerminalScrollbackLines = dlg.TerminalScrollbackLines;
         _keyBindingManager.SetAll(dlg.KeyBindings);
         _settings.KeyBindings = _keyBindingManager.GetSaveState();
         _settings.Save();
