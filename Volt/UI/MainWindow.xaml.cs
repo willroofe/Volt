@@ -20,7 +20,10 @@ public partial class MainWindow
 
     private readonly TabHeaderFactory _tabHeaderFactory = new();
     private readonly FileExplorerPanel _explorerPanel = new();
+    private readonly TerminalPanel _terminalPanel = new();
     private readonly KeyBindingManager _keyBindingManager = new();
+
+    internal TerminalPanel TerminalPanel => _terminalPanel;
     internal string? _startupFilePath;
 
     private EditorControl? Editor => _activeTab?.Editor;
@@ -96,6 +99,7 @@ public partial class MainWindow
 
         // Register explorer panel with shell
         Shell.RegisterPanel(_explorerPanel, PanelPlacement.Left, 250);
+        Shell.RegisterPanel(_terminalPanel, PanelPlacement.Bottom, 240);
         RestorePanelLayout();
         SyncViewMenuChecks();
 
@@ -513,6 +517,26 @@ public partial class MainWindow
     private void ToggleExplorer()
     {
         Shell.TogglePanel("file-explorer");
+    }
+
+    /// <summary>
+    /// Registers the set of Volt-global shortcuts that should bubble past
+    /// a focused terminal view so global actions keep working.
+    /// Called by TerminalPanel when a new session is created.
+    /// </summary>
+    internal void RegisterTerminalAllowlist(TerminalView view)
+    {
+        // Command palette: Ctrl+Shift+P
+        view.AddAllowlistedShortcut(Key.P, ModifierKeys.Control | ModifierKeys.Shift);
+        // Switch editor tabs: Ctrl+Tab / Ctrl+Shift+Tab
+        view.AddAllowlistedShortcut(Key.Tab, ModifierKeys.Control);
+        view.AddAllowlistedShortcut(Key.Tab, ModifierKeys.Control | ModifierKeys.Shift);
+        // Settings: Ctrl+Alt+S (mapped to VoltCommand.Settings)
+        view.AddAllowlistedShortcut(Key.S, ModifierKeys.Control | ModifierKeys.Alt);
+        // Toggle explorer: Ctrl+B
+        view.AddAllowlistedShortcut(Key.B, ModifierKeys.Control);
+        // Toggle terminal panel itself: Ctrl+`
+        view.AddAllowlistedShortcut(Key.OemTilde, ModifierKeys.Control);
     }
 
     private void FocusExplorer()
@@ -1672,7 +1696,14 @@ public partial class MainWindow
             case VoltCommand.UnfoldBlock: _activeTab?.Editor.UnfoldAtCaret(); break;
             case VoltCommand.GoToLine: OpenGoToLine(); break;
             case VoltCommand.FocusExplorer: FocusExplorer(); break;
+            case VoltCommand.ToggleTerminal: ToggleTerminalPanel(); break;
         }
+    }
+
+    private void ToggleTerminalPanel()
+    {
+        Shell.TogglePanel("terminal");
+        SyncViewMenuChecks();
     }
 
     private void OpenGoToLine()
@@ -1702,7 +1733,10 @@ public partial class MainWindow
             ToggleFixedWidthTabs,
             () => _ = AppUpdateManager.CheckForUpdatesAsync(this, showUpToDate: true),
             OpenRecentInCommandPalette,
-            SetActiveTabLanguage));
+            SetActiveTabLanguage,
+            new TerminalActions(
+                () => ToggleTerminalPanel(),
+                () => { Shell.ShowPanel("terminal"); _terminalPanel.NewSession(); })));
         CmdPalette.SetCommands(commands);
     }
 
