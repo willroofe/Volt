@@ -57,5 +57,15 @@
     "function": "#D8B860",
     "hashkey": "#5B9EF0",
     "escape": "#8888C0"
+  },
+  "terminal": {
+    "background": "#000000",
+    "foreground": "#C8D3E0",
+    "ansi": [
+      "#0A0E14", "#E08070", "#6DB3A0", "#D8B860",
+      "#5B9EF0", "#D4A0E8", "#70C0E8", "#C8D3E0",
+      "#3D4A5C", "#F09A88", "#88CEBE", "#F5D280",
+      "#82B8FF", "#E2BAF2", "#96D6F5", "#E8F0FA"
+    ]
   }
 }
