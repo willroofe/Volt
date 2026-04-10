@@ -18,6 +18,8 @@ public sealed partial class TerminalGrid
     public bool CursorVisible { get; set; } = true;
     public bool UsingAltBuffer { get; private set; }
     public GridRegion Dirty => _dirty;
+    public int ScrollTop { get; private set; }
+    public int ScrollBottom { get; private set; }
 
     public event Action? Changed;
 
@@ -28,6 +30,8 @@ public sealed partial class TerminalGrid
         _scrollbackLines = Math.Max(0, scrollbackLines);
         _main = AllocBlank(Rows, Cols);
         _dirty = new GridRegion();
+        ScrollTop = 0;
+        ScrollBottom = Rows - 1;
     }
 
     private static Cell[,] AllocBlank(int rows, int cols)
@@ -106,15 +110,68 @@ public sealed partial class TerminalGrid
         Changed?.Invoke();
     }
 
+    public void SetScrollRegion(int top, int bottom)
+    {
+        ScrollTop = Math.Clamp(top, 0, Rows - 1);
+        ScrollBottom = Math.Clamp(bottom, ScrollTop, Rows - 1);
+    }
+
     public void ScrollUp(int n)
     {
-        // Stub — fully implemented in Task 5; this minimum lets PutGlyph wrap at bottom.
-        for (int row = 0; row < Rows - n; row++)
+        int top = ScrollTop;
+        int bot = ScrollBottom;
+        n = Math.Clamp(n, 0, bot - top + 1);
+        if (n == 0) return;
+        // Push scrolled-off rows into scrollback (main buffer only, full-screen scroll only)
+        if (!UsingAltBuffer && top == 0 && bot == Rows - 1)
+            PushToScrollback(n);
+
+        for (int row = top; row <= bot - n; row++)
             for (int col = 0; col < Cols; col++)
                 ActiveBuffer[row, col] = ActiveBuffer[row + n, col];
-        for (int row = Rows - n; row < Rows; row++)
+        for (int row = bot - n + 1; row <= bot; row++)
             for (int col = 0; col < Cols; col++)
                 ActiveBuffer[row, col] = Cell.Blank;
-        _dirty.MarkDirtyRange(0, Rows - 1);
+        _dirty.MarkDirtyRange(top, bot);
+        Changed?.Invoke();
     }
+
+    public void ScrollDown(int n)
+    {
+        int top = ScrollTop;
+        int bot = ScrollBottom;
+        n = Math.Clamp(n, 0, bot - top + 1);
+        if (n == 0) return;
+        for (int row = bot; row >= top + n; row--)
+            for (int col = 0; col < Cols; col++)
+                ActiveBuffer[row, col] = ActiveBuffer[row - n, col];
+        for (int row = top; row < top + n; row++)
+            for (int col = 0; col < Cols; col++)
+                ActiveBuffer[row, col] = Cell.Blank;
+        _dirty.MarkDirtyRange(top, bot);
+        Changed?.Invoke();
+    }
+
+    public void InsertLines(int n)
+    {
+        var (r, _) = Cursor;
+        if (r < ScrollTop || r > ScrollBottom) return;
+        int savedTop = ScrollTop;
+        SetScrollRegion(r, ScrollBottom);
+        ScrollDown(n);
+        SetScrollRegion(savedTop, ScrollBottom);
+    }
+
+    public void DeleteLines(int n)
+    {
+        var (r, _) = Cursor;
+        if (r < ScrollTop || r > ScrollBottom) return;
+        int savedTop = ScrollTop;
+        SetScrollRegion(r, ScrollBottom);
+        ScrollUp(n);
+        SetScrollRegion(savedTop, ScrollBottom);
+    }
+
+    // Scrollback — actual implementation in Task 6; stub here so ScrollUp compiles.
+    private void PushToScrollback(int n) { /* Task 6 */ }
 }
