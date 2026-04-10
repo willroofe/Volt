@@ -24,10 +24,22 @@ public partial class TerminalPanel : UserControl, IPanel
 
     public void NewSession(string? cwd = null)
     {
-        // TODO(Task 35): pull TerminalShellPath, TerminalShellArgs, TerminalScrollbackLines from AppSettings
-        var shell = ResolveDefaultShell();
-        string? args = null;
-        int scrollback = 10_000;
+        var app = Application.Current as App;
+        var editor = app?.Settings.Editor;
+
+        var shell = editor?.TerminalShellPath;
+        if (string.IsNullOrEmpty(shell))
+        {
+            shell = ResolveDefaultShell();
+            if (editor != null)
+            {
+                editor.TerminalShellPath = shell;
+                app!.Settings.Save();
+            }
+        }
+
+        var args = editor?.TerminalShellArgs;
+        int scrollback = editor?.TerminalScrollbackLines ?? 10_000;
         var startDir = cwd ?? ResolveStartingDirectory();
 
         TerminalSession s;
