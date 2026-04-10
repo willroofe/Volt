@@ -220,4 +220,66 @@ public class TerminalGridTests
         }
         Assert.Equal(0, g.ScrollbackCount);
     }
+
+    [Fact]
+    public void SwitchToAltBuffer_PreservesMainBuffer()
+    {
+        var g = new TerminalGrid(3, 3, 10);
+        g.WriteCell(0, 0, 'A', CellAttr.None);
+        g.WriteCell(1, 1, 'B', CellAttr.None);
+        g.SwitchToAltBuffer();
+        g.WriteCell(0, 0, 'X', CellAttr.None);
+        Assert.Equal('X', g.CellAt(0, 0).Glyph);
+        g.SwitchToMainBuffer();
+        Assert.Equal('A', g.CellAt(0, 0).Glyph);
+        Assert.Equal('B', g.CellAt(1, 1).Glyph);
+    }
+
+    [Fact]
+    public void EraseInLine_ToEnd_ClearsFromCursor()
+    {
+        var g = new TerminalGrid(3, 5, 10);
+        for (int c = 0; c < 5; c++) g.WriteCell(1, c, 'X', CellAttr.None);
+        g.SetCursor(1, 2);
+        g.EraseInLine(EraseMode.ToEnd);
+        Assert.Equal('X', g.CellAt(1, 0).Glyph);
+        Assert.Equal('X', g.CellAt(1, 1).Glyph);
+        Assert.Equal(' ', g.CellAt(1, 2).Glyph);
+        Assert.Equal(' ', g.CellAt(1, 4).Glyph);
+    }
+
+    [Fact]
+    public void EraseInLine_ToStart_ClearsUpToCursor()
+    {
+        var g = new TerminalGrid(3, 5, 10);
+        for (int c = 0; c < 5; c++) g.WriteCell(1, c, 'X', CellAttr.None);
+        g.SetCursor(1, 2);
+        g.EraseInLine(EraseMode.ToStart);
+        Assert.Equal(' ', g.CellAt(1, 0).Glyph);
+        Assert.Equal(' ', g.CellAt(1, 2).Glyph);
+        Assert.Equal('X', g.CellAt(1, 3).Glyph);
+    }
+
+    [Fact]
+    public void EraseInLine_All_ClearsRow()
+    {
+        var g = new TerminalGrid(3, 5, 10);
+        for (int c = 0; c < 5; c++) g.WriteCell(1, c, 'X', CellAttr.None);
+        g.SetCursor(1, 2);
+        g.EraseInLine(EraseMode.All);
+        for (int c = 0; c < 5; c++) Assert.Equal(' ', g.CellAt(1, c).Glyph);
+    }
+
+    [Fact]
+    public void EraseInDisplay_All_ClearsEverything()
+    {
+        var g = new TerminalGrid(3, 3, 10);
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 3; c++)
+                g.WriteCell(r, c, 'X', CellAttr.None);
+        g.EraseInDisplay(EraseMode.All);
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 3; c++)
+                Assert.Equal(' ', g.CellAt(r, c).Glyph);
+    }
 }
