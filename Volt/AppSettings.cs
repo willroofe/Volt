@@ -60,6 +60,9 @@ public class EditorSettings
     public ExplorerSettings Explorer { get; set; } = new();
     public List<PanelSlotConfig> PanelLayouts { get; set; } = [];
     public List<RegionState> OpenRegions { get; set; } = [];
+    public string? TerminalShellPath { get; set; }
+    public string? TerminalShellArgs { get; set; }
+    public int TerminalScrollbackLines { get; set; } = 10_000;
 }
 
 public class SessionTab
