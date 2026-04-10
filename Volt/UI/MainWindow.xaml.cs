@@ -1786,7 +1786,12 @@ public partial class MainWindow
 
     private void ToggleTerminalPanel()
     {
-        Shell.TogglePanel("terminal");
+        if (!Shell.IsPanelVisible("terminal"))
+            Shell.ShowPanel("terminal");
+        if (_terminalPanel.SessionCount == 0)
+            _terminalPanel.NewSession();
+        else
+            Dispatcher.BeginInvoke(new Action(() => _terminalPanel.TryFocusActiveSession()), System.Windows.Threading.DispatcherPriority.Input);
         SyncViewMenuChecks();
     }
 
@@ -1820,7 +1825,11 @@ public partial class MainWindow
             SetActiveTabLanguage,
             new TerminalActions(
                 () => ToggleTerminalPanel(),
-                () => { Shell.ShowPanel("terminal"); _terminalPanel.NewSession(); })));
+                () =>
+                {
+                    Shell.ShowPanel("terminal");
+                    _terminalPanel.NewSession();
+                })));
         CmdPalette.SetCommands(commands);
     }
 
