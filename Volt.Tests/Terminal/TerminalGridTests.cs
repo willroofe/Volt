@@ -176,4 +176,48 @@ public class TerminalGridTests
         Assert.Equal(' ', g.CellAt(3, 0).Glyph);
         Assert.Equal(' ', g.CellAt(4, 0).Glyph);
     }
+
+    [Fact]
+    public void ScrollbackRow_RetrievesOldestFirst()
+    {
+        var g = new TerminalGrid(3, 3, scrollbackLines: 10);
+        // Fill and scroll 5 times
+        for (int iter = 0; iter < 5; iter++)
+        {
+            g.WriteCell(0, 0, (char)('A' + iter), CellAttr.None);
+            g.ScrollUp(1);
+        }
+        Assert.Equal(5, g.ScrollbackCount);
+        // Row -1 is newest in scrollback; row -5 is oldest
+        Assert.Equal('E', g.CellAt(-1, 0).Glyph);
+        Assert.Equal('A', g.CellAt(-5, 0).Glyph);
+    }
+
+    [Fact]
+    public void Scrollback_EvictsOldestOnOverflow()
+    {
+        var g = new TerminalGrid(3, 3, scrollbackLines: 4);
+        for (int iter = 0; iter < 10; iter++)
+        {
+            g.WriteCell(0, 0, (char)('0' + iter), CellAttr.None);
+            g.ScrollUp(1);
+        }
+        Assert.Equal(4, g.ScrollbackCount);
+        // Last 4 scrolled off are '6','7','8','9'
+        Assert.Equal('9', g.CellAt(-1, 0).Glyph);
+        Assert.Equal('6', g.CellAt(-4, 0).Glyph);
+    }
+
+    [Fact]
+    public void AltBuffer_DoesNotWriteToScrollback()
+    {
+        var g = new TerminalGrid(3, 3, scrollbackLines: 10);
+        g.SwitchToAltBuffer();
+        for (int i = 0; i < 5; i++)
+        {
+            g.WriteCell(0, 0, 'X', CellAttr.None);
+            g.ScrollUp(1);
+        }
+        Assert.Equal(0, g.ScrollbackCount);
+    }
 }

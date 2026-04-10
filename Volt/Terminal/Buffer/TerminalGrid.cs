@@ -12,6 +12,12 @@ public sealed partial class TerminalGrid
     public Cell Pen = new Cell { FgIndex = -1, BgIndex = -1, Attr = CellAttr.None, Glyph = ' ' };
     private bool _pendingWrap;
 
+    private Cell[][] _scrollback = Array.Empty<Cell[]>();
+    private int _scrollbackHead; // points at oldest
+    private int _scrollbackCount;
+
+    public int ScrollbackCount => _scrollbackCount;
+
     public int Rows { get; private set; }
     public int Cols { get; private set; }
     public (int row, int col) Cursor { get; private set; }
@@ -45,13 +51,36 @@ public sealed partial class TerminalGrid
 
     public ref Cell CellAt(int row, int col)
     {
-        if (row < 0 || row >= Rows || col < 0 || col >= Cols)
-            return ref _sink;
-        return ref ActiveBuffer[row, col];
+        if (col < 0 || col >= Cols) return ref _sink;
+        if (row >= 0 && row < Rows)
+            return ref ActiveBuffer[row, col];
+        // Negative row = scrollback; -1 = newest, -N = oldest still live
+        int scrollbackIndex = _scrollbackCount + row; // row is negative → positive offset from head
+        if (scrollbackIndex < 0 || scrollbackIndex >= _scrollbackCount) return ref _sink;
+        int ringIndex = (_scrollbackHead + scrollbackIndex) % _scrollbackLines;
+        return ref _scrollback[ringIndex][col];
     }
 
     private static Cell _sink = Cell.Blank;
     private Cell[,] ActiveBuffer => UsingAltBuffer ? _alt! : _main;
+
+    private void EnsureScrollbackCapacity()
+    {
+        if (_scrollback.Length == _scrollbackLines) return;
+        _scrollback = new Cell[_scrollbackLines][];
+    }
+
+    private void PushRowToScrollback(Cell[] row)
+    {
+        if (_scrollbackLines == 0) return;
+        EnsureScrollbackCapacity();
+        int writeIndex = (_scrollbackHead + _scrollbackCount) % _scrollbackLines;
+        _scrollback[writeIndex] = row;
+        if (_scrollbackCount < _scrollbackLines)
+            _scrollbackCount++;
+        else
+            _scrollbackHead = (_scrollbackHead + 1) % _scrollbackLines;
+    }
 
     public void WriteCell(int row, int col, char ch, CellAttr attr)
     {
@@ -172,6 +201,27 @@ public sealed partial class TerminalGrid
         SetScrollRegion(savedTop, ScrollBottom);
     }
 
-    // Scrollback — actual implementation in Task 6; stub here so ScrollUp compiles.
-    private void PushToScrollback(int n) { /* Task 6 */ }
+    private void PushToScrollback(int n)
+    {
+        for (int i = 0; i < n; i++)
+        {
+            var row = new Cell[Cols];
+            for (int c = 0; c < Cols; c++) row[c] = ActiveBuffer[i, c];
+            PushRowToScrollback(row);
+        }
+    }
+
+    public void SwitchToAltBuffer()
+    {
+        if (UsingAltBuffer) return;
+        _alt = AllocBlank(Rows, Cols);
+        UsingAltBuffer = true;
+    }
+
+    public void SwitchToMainBuffer()
+    {
+        if (!UsingAltBuffer) return;
+        _alt = null;
+        UsingAltBuffer = false;
+    }
 }
