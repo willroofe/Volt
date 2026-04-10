@@ -107,4 +107,73 @@ public class TerminalGridTests
         Assert.Equal(4, cell.BgIndex);
         Assert.Equal(CellAttr.Bold, cell.Attr);
     }
+
+    [Fact]
+    public void SetScrollRegion_ClampsAndApplies()
+    {
+        var g = new TerminalGrid(24, 80, 100);
+        g.SetScrollRegion(5, 15);
+        Assert.Equal(5, g.ScrollTop);
+        Assert.Equal(15, g.ScrollBottom);
+    }
+
+    [Fact]
+    public void ScrollUp_WithinRegion_LeavesOutsideRowsAlone()
+    {
+        var g = new TerminalGrid(10, 5, 100);
+        for (int r = 0; r < 10; r++)
+            for (int c = 0; c < 5; c++)
+                g.WriteCell(r, c, (char)('0' + r), CellAttr.None);
+        g.SetScrollRegion(3, 6);
+        g.ScrollUp(1);
+        Assert.Equal('0', g.CellAt(0, 0).Glyph); // untouched
+        Assert.Equal('2', g.CellAt(2, 0).Glyph); // untouched
+        Assert.Equal('4', g.CellAt(3, 0).Glyph); // row 4 moved into row 3
+        Assert.Equal('6', g.CellAt(5, 0).Glyph); // row 6 moved into row 5
+        Assert.Equal(' ', g.CellAt(6, 0).Glyph); // row 6 cleared
+        Assert.Equal('7', g.CellAt(7, 0).Glyph); // untouched
+    }
+
+    [Fact]
+    public void ScrollDown_ShiftsRowsAndBlanksTop()
+    {
+        var g = new TerminalGrid(5, 3, 100);
+        for (int r = 0; r < 5; r++)
+            for (int c = 0; c < 3; c++)
+                g.WriteCell(r, c, (char)('A' + r), CellAttr.None);
+        g.ScrollDown(2);
+        Assert.Equal(' ', g.CellAt(0, 0).Glyph);
+        Assert.Equal(' ', g.CellAt(1, 0).Glyph);
+        Assert.Equal('A', g.CellAt(2, 0).Glyph);
+        Assert.Equal('B', g.CellAt(3, 0).Glyph);
+        Assert.Equal('C', g.CellAt(4, 0).Glyph);
+    }
+
+    [Fact]
+    public void InsertLines_ShiftsDownAndBlanksAtCursor()
+    {
+        var g = new TerminalGrid(5, 3, 100);
+        for (int r = 0; r < 5; r++) g.WriteCell(r, 0, (char)('A' + r), CellAttr.None);
+        g.SetCursor(1, 0);
+        g.InsertLines(2);
+        Assert.Equal('A', g.CellAt(0, 0).Glyph);
+        Assert.Equal(' ', g.CellAt(1, 0).Glyph);
+        Assert.Equal(' ', g.CellAt(2, 0).Glyph);
+        Assert.Equal('B', g.CellAt(3, 0).Glyph);
+        Assert.Equal('C', g.CellAt(4, 0).Glyph);
+    }
+
+    [Fact]
+    public void DeleteLines_ShiftsUpAndBlanksAtBottom()
+    {
+        var g = new TerminalGrid(5, 3, 100);
+        for (int r = 0; r < 5; r++) g.WriteCell(r, 0, (char)('A' + r), CellAttr.None);
+        g.SetCursor(1, 0);
+        g.DeleteLines(2);
+        Assert.Equal('A', g.CellAt(0, 0).Glyph);
+        Assert.Equal('D', g.CellAt(1, 0).Glyph);
+        Assert.Equal('E', g.CellAt(2, 0).Glyph);
+        Assert.Equal(' ', g.CellAt(3, 0).Glyph);
+        Assert.Equal(' ', g.CellAt(4, 0).Glyph);
+    }
 }
