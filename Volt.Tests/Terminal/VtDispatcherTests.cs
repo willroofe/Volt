@@ -264,4 +264,45 @@ public class VtDispatcherTests
         Feed(sm, "\u001b[?25h");
         Assert.True(g.CursorVisible);
     }
+
+    [Fact]
+    public void CsiAt_InsertsBlanksAtCursor()
+    {
+        var (g, _, sm) = Make(3, 6);
+        Feed(sm, "ABCDEF");
+        g.SetCursor(0, 2);
+        Feed(sm, "\u001b[2@");
+        Assert.Equal('A', g.CellAt(0, 0).Glyph);
+        Assert.Equal('B', g.CellAt(0, 1).Glyph);
+        Assert.Equal(' ', g.CellAt(0, 2).Glyph);
+        Assert.Equal(' ', g.CellAt(0, 3).Glyph);
+        Assert.Equal('C', g.CellAt(0, 4).Glyph);
+    }
+
+    [Fact]
+    public void CsiP_DeletesCharsAtCursor()
+    {
+        var (g, _, sm) = Make(3, 6);
+        Feed(sm, "ABCDEF");
+        g.SetCursor(0, 2);
+        Feed(sm, "\u001b[2P");
+        Assert.Equal('A', g.CellAt(0, 0).Glyph);
+        Assert.Equal('B', g.CellAt(0, 1).Glyph);
+        Assert.Equal('E', g.CellAt(0, 2).Glyph);
+        Assert.Equal('F', g.CellAt(0, 3).Glyph);
+        Assert.Equal(' ', g.CellAt(0, 4).Glyph);
+    }
+
+    [Fact]
+    public void CsiN6_ReportsCursorPosition()
+    {
+        var (g, d, sm) = Make();
+        g.SetCursor(4, 9);
+        byte[]? sent = null;
+        d.ResponseRequested += r => sent = r;
+        Feed(sm, "\u001b[6n");
+        Assert.NotNull(sent);
+        var s = System.Text.Encoding.ASCII.GetString(sent!);
+        Assert.Equal("\u001b[5;10R", s);
+    }
 }

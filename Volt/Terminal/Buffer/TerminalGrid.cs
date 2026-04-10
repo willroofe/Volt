@@ -221,6 +221,30 @@ public sealed partial class TerminalGrid
         SetScrollRegion(savedTop, ScrollBottom);
     }
 
+    public void InsertChars(int n)
+    {
+        var (r, c) = Cursor;
+        n = Math.Clamp(n, 0, Cols - c);
+        for (int col = Cols - 1; col >= c + n; col--)
+            ActiveBuffer[r, col] = ActiveBuffer[r, col - n];
+        for (int col = c; col < c + n; col++)
+            ActiveBuffer[r, col] = Cell.Blank;
+        _dirty.MarkDirty(r);
+        Changed?.Invoke();
+    }
+
+    public void DeleteChars(int n)
+    {
+        var (r, c) = Cursor;
+        n = Math.Clamp(n, 0, Cols - c);
+        for (int col = c; col < Cols - n; col++)
+            ActiveBuffer[r, col] = ActiveBuffer[r, col + n];
+        for (int col = Cols - n; col < Cols; col++)
+            ActiveBuffer[r, col] = Cell.Blank;
+        _dirty.MarkDirty(r);
+        Changed?.Invoke();
+    }
+
     private void PushToScrollback(int n)
     {
         for (int i = 0; i < n; i++)

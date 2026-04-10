@@ -6,6 +6,7 @@ public sealed class VtDispatcher : IVtEventHandler
 {
     private readonly TerminalGrid _grid;
     public event Action<string>? TitleChanged;
+    public event Action<byte[]>? ResponseRequested;
 
     public VtDispatcher(TerminalGrid grid) { _grid = grid; }
 
@@ -31,6 +32,7 @@ public sealed class VtDispatcher : IVtEventHandler
         int p0raw = p.Length > 0 ? p[0] : 0;
         switch (final)
         {
+            case '@': _grid.InsertChars(p0default1); break;
             case 'A': CursorUp(p0default1); break;
             case 'B': CursorDown(p0default1); break;
             case 'C': CursorForward(p0default1); break;
@@ -43,8 +45,10 @@ public sealed class VtDispatcher : IVtEventHandler
             case 'K': EraseLine(p0raw); break;
             case 'L': _grid.InsertLines(p0default1); break;
             case 'M': _grid.DeleteLines(p0default1); break;
+            case 'P': _grid.DeleteChars(p0default1); break;
             case 'S': _grid.ScrollUp(p0default1); break;
             case 'T': _grid.ScrollDown(p0default1); break;
+            case 'n': HandleDsr(p0raw); break;
             case 'r':
                 if (p.Length == 0) _grid.SetScrollRegion(0, _grid.Rows - 1);
                 else _grid.SetScrollRegion(p0default1 - 1, p1default1 - 1);
@@ -201,5 +205,13 @@ public sealed class VtDispatcher : IVtEventHandler
                 default: break;
             }
         }
+    }
+
+    private void HandleDsr(int mode)
+    {
+        if (mode != 6) return;
+        var (r, c) = _grid.Cursor;
+        var response = $"\u001b[{r + 1};{c + 1}R";
+        ResponseRequested?.Invoke(System.Text.Encoding.ASCII.GetBytes(response));
     }
 }
