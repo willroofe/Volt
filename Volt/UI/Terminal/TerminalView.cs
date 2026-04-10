@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -149,6 +150,96 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         // 40% alpha for an inverse-looking cursor
         br.Opacity = 0.5;
         dc.DrawRectangle(br, null, rect);
+    }
+
+    public event Action<byte[]>? InputBytes; // raised when bytes should go to pty
+
+    private readonly HashSet<(Key key, ModifierKeys mods)> _allowlist = new();
+
+    /// <summary>
+    /// Register a Volt-global shortcut that should bubble past the terminal
+    /// instead of being forwarded as VT input bytes to the shell.
+    /// Call from MainWindow during startup.
+    /// </summary>
+    public void AddAllowlistedShortcut(Key key, ModifierKeys mods) => _allowlist.Add((key, mods));
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (e.Handled) return;
+
+        var mods = Keyboard.Modifiers;
+
+        // Reserved Volt shortcuts — bubble up unhandled so MainWindow handles them
+        if (_allowlist.Contains((e.Key, mods))) return;
+
+        // Terminal-managed copy/paste
+        if (mods == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.C)
+        {
+            DoCopy();
+            e.Handled = true;
+            return;
+        }
+        if (mods == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.V)
+        {
+            DoPaste();
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+C with no selection → SIGINT (v1: always SIGINT since selection isn't implemented yet)
+        if (mods == ModifierKeys.Control && e.Key == Key.C)
+        {
+            InputBytes?.Invoke(new byte[] { 0x03 });
+            e.Handled = true;
+            return;
+        }
+
+        // Encode via KeyEncoder
+        var bytes = KeyEncoder.Encode(e.Key, mods);
+        if (bytes != null)
+        {
+            InputBytes?.Invoke(bytes);
+            e.Handled = true;
+        }
+    }
+
+    protected override void OnTextInput(TextCompositionEventArgs e)
+    {
+        base.OnTextInput(e);
+        if (e.Handled || string.IsNullOrEmpty(e.Text)) return;
+        // Skip control characters that OnKeyDown already handled
+        if (e.Text.Length == 1 && e.Text[0] < 0x20 && e.Text[0] != '\r' && e.Text[0] != '\t') return;
+        var bytes = System.Text.Encoding.UTF8.GetBytes(e.Text);
+        InputBytes?.Invoke(bytes);
+        e.Handled = true;
+    }
+
+    protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
+    {
+        base.OnMouseLeftButtonDown(e);
+        Focus();
+    }
+
+    private void DoCopy()
+    {
+        // Selection support deferred to post-v1; this stub does nothing for now.
+    }
+
+    private void DoPaste()
+    {
+        if (!Clipboard.ContainsText()) return;
+        var text = Clipboard.GetText();
+        var bytes = System.Text.Encoding.UTF8.GetBytes(text);
+        // Chunk at 4 KB to avoid blocking the UI thread on absurdly large pastes
+        const int chunkSize = 4096;
+        for (int i = 0; i < bytes.Length; i += chunkSize)
+        {
+            int len = Math.Min(chunkSize, bytes.Length - i);
+            var slice = new byte[len];
+            System.Buffer.BlockCopy(bytes, i, slice, 0, len);
+            InputBytes?.Invoke(slice);
+        }
     }
 
     // --- IScrollInfo stubs (fleshed out in Task 32) ---
