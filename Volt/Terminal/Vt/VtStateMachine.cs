@@ -41,6 +41,8 @@ public sealed class VtStateMachine
     // OSC string buffer
     private readonly System.Text.StringBuilder _oscBuf = new(256);
     private const int OscMaxLength = 64 * 1024;
+    private bool _inOsc;
+    private bool _oscEscapePending;
 
     public VtStateMachine(IVtEventHandler handler) { _h = handler; }
 
@@ -52,8 +54,22 @@ public sealed class VtStateMachine
 
     private void Step(byte b)
     {
-        if (b == 0x18 || b == 0x1A) { _state = State.Ground; _h.Execute(b); return; }
-        if (b == 0x1B) { EnterEscape(); return; }
+        // ST (ESC\) terminator handling for OSC
+        if (_state == State.OscString && _oscEscapePending)
+        {
+            if (b == 0x5C) { DispatchOsc(); return; }
+            _oscEscapePending = false;
+            if (_oscBuf.Length < OscMaxLength) _oscBuf.Append('\u001b');
+            // fall through
+        }
+
+        if (b == 0x18 || b == 0x1A) { _state = State.Ground; _inOsc = false; _h.Execute(b); return; }
+        if (b == 0x1B)
+        {
+            if (_state == State.OscString) { _oscEscapePending = true; return; }
+            EnterEscape();
+            return;
+        }
 
         switch (_state)
         {
@@ -64,6 +80,7 @@ public sealed class VtStateMachine
             case State.CsiParam:           StepCsiParam(b); break;
             case State.CsiIntermediate:    StepCsiIntermediate(b); break;
             case State.CsiIgnore:          StepCsiIgnore(b); break;
+            case State.OscString:          StepOsc(b); break;
         }
     }
 
@@ -88,7 +105,7 @@ public sealed class VtStateMachine
         if (b <= 0x1F) { _h.Execute(b); return; }
         if (b >= 0x20 && b <= 0x2F) { CollectIntermediate((char)b); _state = State.EscapeIntermediate; return; }
         if (b == 0x5B) { _state = State.CsiEntry; return; }      // [
-        if (b == 0x5D) { _oscBuf.Clear(); _state = State.OscString; return; } // ]
+        if (b == 0x5D) { _oscBuf.Clear(); _inOsc = true; _state = State.OscString; return; } // ]
         if (b >= 0x30 && b <= 0x7E)
         {
             _h.EscDispatch((char)b, _intermediates.AsSpan(0, _intermediateCount));
@@ -170,6 +187,37 @@ public sealed class VtStateMachine
         _paramCount = 0;
         _paramHasDigits = false;
         _intermediateCount = 0;
+        _state = State.Ground;
+    }
+
+    private void StepOsc(byte b)
+    {
+        // BEL (0x07) terminates OSC
+        if (b == 0x07) { DispatchOsc(); return; }
+        // Otherwise accumulate up to the length limit
+        if (_oscBuf.Length < OscMaxLength)
+            _oscBuf.Append((char)b);
+    }
+
+    private void DispatchOsc()
+    {
+        var full = _oscBuf.ToString();
+        int semi = full.IndexOf(';');
+        int cmd = 0;
+        string data = "";
+        if (semi < 0)
+        {
+            int.TryParse(full, out cmd);
+        }
+        else
+        {
+            int.TryParse(full.AsSpan(0, semi), out cmd);
+            data = full.Substring(semi + 1);
+        }
+        _h.OscDispatch(cmd, data);
+        _oscBuf.Clear();
+        _inOsc = false;
+        _oscEscapePending = false;
         _state = State.Ground;
     }
 }
