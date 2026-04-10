@@ -44,4 +44,48 @@ public class VtStateMachineTests
         var events = Feed("\b\t\n\r\a");
         Assert.Equal(new[] { "Exec:08", "Exec:09", "Exec:0A", "Exec:0D", "Exec:07" }, events);
     }
+
+    [Fact]
+    public void SimpleEscape_EmitsEscDispatch()
+    {
+        var events = Feed("\u001b7");
+        Assert.Equal(new[] { "Esc:7" }, events);
+    }
+
+    [Fact]
+    public void Csi_CursorUp_NoParam()
+    {
+        var events = Feed("\u001b[A");
+        Assert.Equal(new[] { "Csi:[0]A" }, events);
+    }
+
+    [Fact]
+    public void Csi_CursorPositionTwoParams()
+    {
+        var events = Feed("\u001b[32;45H");
+        Assert.Equal(new[] { "Csi:[32,45]H" }, events);
+    }
+
+    [Fact]
+    public void Csi_EmptyLeadingParam_IsZero()
+    {
+        var events = Feed("\u001b[;5H");
+        Assert.Equal(new[] { "Csi:[0,5]H" }, events);
+    }
+
+    [Fact]
+    public void Csi_PrivateMode_WithIntermediate()
+    {
+        var events = Feed("\u001b[?1049h");
+        Assert.Equal(new[] { "Csi:?[1049]h" }, events);
+    }
+
+    [Fact]
+    public void Csi_ParamOverflow_IsClamped()
+    {
+        var events = Feed("\u001b[99999999999999999A");
+        Assert.Single(events);
+        Assert.StartsWith("Csi:", events[0]);
+        Assert.EndsWith("A", events[0]);
+    }
 }
