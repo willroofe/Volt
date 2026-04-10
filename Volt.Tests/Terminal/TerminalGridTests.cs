@@ -282,4 +282,45 @@ public class TerminalGridTests
             for (int c = 0; c < 3; c++)
                 Assert.Equal(' ', g.CellAt(r, c).Glyph);
     }
+
+    [Fact]
+    public void Resize_Larger_PadsWithBlanks()
+    {
+        var g = new TerminalGrid(3, 3, 10);
+        g.WriteCell(0, 0, 'A', CellAttr.None);
+        g.Resize(5, 5);
+        Assert.Equal(5, g.Rows);
+        Assert.Equal(5, g.Cols);
+        Assert.Equal('A', g.CellAt(0, 0).Glyph);
+        Assert.Equal(' ', g.CellAt(4, 4).Glyph);
+    }
+
+    [Fact]
+    public void Resize_Smaller_TruncatesAndClampsCursor()
+    {
+        var g = new TerminalGrid(10, 10, 10);
+        g.SetCursor(9, 9);
+        g.Resize(5, 5);
+        Assert.Equal(5, g.Rows);
+        Assert.Equal(5, g.Cols);
+        Assert.Equal((4, 4), g.Cursor);
+    }
+
+    [Fact]
+    public void Resize_PreservesCursorIfInBounds()
+    {
+        var g = new TerminalGrid(10, 10, 10);
+        g.SetCursor(3, 3);
+        g.Resize(5, 5);
+        Assert.Equal((3, 3), g.Cursor);
+    }
+
+    [Fact]
+    public void Resize_ZeroDimensions_ClampsToOne()
+    {
+        var g = new TerminalGrid(5, 5, 10);
+        g.Resize(0, 0);
+        Assert.Equal(1, g.Rows);
+        Assert.Equal(1, g.Cols);
+    }
 }

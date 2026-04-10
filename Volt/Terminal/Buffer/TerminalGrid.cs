@@ -282,4 +282,32 @@ public sealed partial class TerminalGrid
         if (rowEnd >= rowStart) _dirty.MarkDirtyRange(rowStart, rowEnd);
         Changed?.Invoke();
     }
+
+    public void Resize(int rows, int cols)
+    {
+        rows = Math.Max(1, rows);
+        cols = Math.Max(1, cols);
+        if (rows == Rows && cols == Cols) return;
+
+        var newMain = AllocBlank(rows, cols);
+        int copyRows = Math.Min(Rows, rows);
+        int copyCols = Math.Min(Cols, cols);
+        for (int r = 0; r < copyRows; r++)
+            for (int c = 0; c < copyCols; c++)
+                newMain[r, c] = _main[r, c];
+        _main = newMain;
+
+        if (_alt != null)
+            _alt = AllocBlank(rows, cols);
+
+        Rows = rows;
+        Cols = cols;
+        ScrollTop = 0;
+        ScrollBottom = Rows - 1;
+        var (cr, cc) = Cursor;
+        Cursor = (Math.Clamp(cr, 0, Rows - 1), Math.Clamp(cc, 0, Cols - 1));
+        _pendingWrap = false;
+        _dirty.MarkDirtyRange(0, Rows - 1);
+        Changed?.Invoke();
+    }
 }
