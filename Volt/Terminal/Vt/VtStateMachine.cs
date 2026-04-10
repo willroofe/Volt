@@ -214,7 +214,7 @@ public sealed class VtStateMachine
 
     private void AccumulateParamDigit(byte b)
     {
-        if (_paramCount == 0) _paramCount = 1;
+        EnsureFirstParam();  // Initialize if first digit
         int idx = _paramCount - 1;
         long v = (long)_params[idx] * 10 + (b - (byte)'0');
         if (v > int.MaxValue) v = int.MaxValue;   // clamp overflow
