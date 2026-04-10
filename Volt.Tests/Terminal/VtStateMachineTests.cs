@@ -88,4 +88,35 @@ public class VtStateMachineTests
         Assert.StartsWith("Csi:", events[0]);
         Assert.EndsWith("A", events[0]);
     }
+
+    [Fact]
+    public void Osc_SetTitle_BelTerminated()
+    {
+        var events = Feed("\u001b]0;My Title\a");
+        Assert.Equal(new[] { "Osc:0:My Title" }, events);
+    }
+
+    [Fact]
+    public void Osc_SetTitle_StTerminated()
+    {
+        var events = Feed("\u001b]2;Hello\u001b\\");
+        Assert.Equal(new[] { "Osc:2:Hello" }, events);
+    }
+
+    [Fact]
+    public void Osc_NoSemicolon_EmitsEmptyData()
+    {
+        var events = Feed("\u001b]0\a");
+        Assert.Equal(new[] { "Osc:0:" }, events);
+    }
+
+    [Fact]
+    public void Osc_OversizedString_Truncated()
+    {
+        var big = new string('X', 70_000);
+        var events = Feed($"\u001b]0;{big}\a");
+        Assert.Single(events);
+        Assert.StartsWith("Osc:0:", events[0]);
+        Assert.True(events[0].Length <= 64 * 1024 + 10);
+    }
 }
