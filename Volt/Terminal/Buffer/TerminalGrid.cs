@@ -3,6 +3,8 @@ using System.Collections.Generic;
 
 namespace Volt;
 
+public enum EraseMode { ToEnd, ToStart, All }
+
 public sealed partial class TerminalGrid
 {
     private Cell[,] _main;
@@ -211,11 +213,21 @@ public sealed partial class TerminalGrid
         }
     }
 
+    // Saved main-buffer state when alt buffer is active
+    private (int row, int col) _mainSavedCursor;
+    private Cell _mainSavedPen;
+
     public void SwitchToAltBuffer()
     {
         if (UsingAltBuffer) return;
+        _mainSavedCursor = Cursor;
+        _mainSavedPen = Pen;
         _alt = AllocBlank(Rows, Cols);
         UsingAltBuffer = true;
+        Cursor = (0, 0);
+        _pendingWrap = false;
+        _dirty.MarkDirtyRange(0, Rows - 1);
+        Changed?.Invoke();
     }
 
     public void SwitchToMainBuffer()
@@ -223,5 +235,51 @@ public sealed partial class TerminalGrid
         if (!UsingAltBuffer) return;
         _alt = null;
         UsingAltBuffer = false;
+        Cursor = _mainSavedCursor;
+        Pen = _mainSavedPen;
+        _pendingWrap = false;
+        _dirty.MarkDirtyRange(0, Rows - 1);
+        Changed?.Invoke();
+    }
+
+    public void EraseInLine(EraseMode mode)
+    {
+        var (r, c) = Cursor;
+        int start, end;
+        switch (mode)
+        {
+            case EraseMode.ToEnd:   start = c; end = Cols - 1; break;
+            case EraseMode.ToStart: start = 0; end = c;        break;
+            default:                start = 0; end = Cols - 1; break;
+        }
+        for (int col = start; col <= end; col++)
+            ActiveBuffer[r, col] = Cell.Blank;
+        _dirty.MarkDirty(r);
+        Changed?.Invoke();
+    }
+
+    public void EraseInDisplay(EraseMode mode)
+    {
+        var (r, c) = Cursor;
+        int rowStart, rowEnd;
+        switch (mode)
+        {
+            case EraseMode.ToEnd:
+                EraseInLine(EraseMode.ToEnd);
+                rowStart = r + 1; rowEnd = Rows - 1;
+                break;
+            case EraseMode.ToStart:
+                EraseInLine(EraseMode.ToStart);
+                rowStart = 0; rowEnd = r - 1;
+                break;
+            default:
+                rowStart = 0; rowEnd = Rows - 1;
+                break;
+        }
+        for (int row = rowStart; row <= rowEnd; row++)
+            for (int col = 0; col < Cols; col++)
+                ActiveBuffer[row, col] = Cell.Blank;
+        if (rowEnd >= rowStart) _dirty.MarkDirtyRange(rowStart, rowEnd);
+        Changed?.Invoke();
     }
 }
