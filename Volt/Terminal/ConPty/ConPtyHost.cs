@@ -47,6 +47,12 @@ public static class ConPtyHost
         // with STATUS_DLL_INIT_FAILED (0xC0000142).
         var savedDotnetVars = StripDotnetEnvVars();
 
+        // Inject Windows Terminal identification env vars so PSReadLine and other
+        // tools use their "modern terminal" rendering path. Without WT_SESSION,
+        // PSReadLine falls back to legacy rendering that has buggy multi-line
+        // prompt cursor tracking.
+        var savedWtVars = SetWtEnvVars();
+
         try
         {
             if (!CreatePipe(out inputReadSide, out inputWriteSide, IntPtr.Zero, 0))
@@ -144,7 +150,34 @@ public static class ConPtyHost
         {
             // Always restore Volt's own env vars, even on exception paths.
             RestoreDotnetEnvVars(savedDotnetVars);
+            RestoreEnvVars(savedWtVars);
         }
+    }
+
+    private static List<(string Name, string? Value)> SetWtEnvVars()
+    {
+        // Pretend to be Windows Terminal so PSReadLine uses its modern rendering path.
+        var vars = new (string Name, string Value)[]
+        {
+            ("WT_SESSION", Guid.NewGuid().ToString()),
+            ("WT_PROFILE_ID", Guid.NewGuid().ToString()),
+            ("TERM_PROGRAM", "Volt"),
+            ("COLORTERM", "truecolor"),
+            ("TERM", "xterm-256color"),
+        };
+        var saved = new List<(string, string?)>(vars.Length);
+        foreach (var (name, value) in vars)
+        {
+            saved.Add((name, Environment.GetEnvironmentVariable(name)));
+            Environment.SetEnvironmentVariable(name, value);
+        }
+        return saved;
+    }
+
+    private static void RestoreEnvVars(List<(string Name, string? Value)> saved)
+    {
+        foreach (var (name, value) in saved)
+            Environment.SetEnvironmentVariable(name, value);
     }
 
     private static readonly string[] DotnetVarsToStrip =

@@ -64,7 +64,7 @@ public class VtStateMachineTests
     public void Csi_CursorUp_NoParam()
     {
         var events = Feed("\u001b[A");
-        Assert.Equal(new[] { "Csi:[0]A" }, events);
+        Assert.Equal(new[] { "Csi:[]A" }, events);
     }
 
     [Fact]

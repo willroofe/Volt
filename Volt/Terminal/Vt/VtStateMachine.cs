@@ -229,9 +229,13 @@ public sealed class VtStateMachine
 
     private void DispatchCsi(char final)
     {
-        _h.CsiDispatch(final,
-            _params.AsSpan(0, Math.Max(_paramCount, 1)),
-            _intermediates.AsSpan(0, _intermediateCount));
+        // When _paramCount is 0, pass an empty span — do NOT read _params[0]. It is not
+        // cleared between sequences; using Math.Max(..., 1) leaked stale parameters into
+        // sequences like CSI A (CUU default 1), breaking PSReadLine cursor tracking.
+        ReadOnlySpan<int> paramSpan = _paramCount == 0
+            ? ReadOnlySpan<int>.Empty
+            : _params.AsSpan(0, _paramCount);
+        _h.CsiDispatch(final, paramSpan, _intermediates.AsSpan(0, _intermediateCount));
         _paramCount = 0;
         _intermediateCount = 0;
         _state = State.Ground;

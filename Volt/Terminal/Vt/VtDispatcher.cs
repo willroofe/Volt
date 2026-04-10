@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 
 namespace Volt;
 
@@ -8,12 +9,38 @@ public sealed class VtDispatcher : IVtEventHandler
     public event Action<string>? TitleChanged;
     public event Action<byte[]>? ResponseRequested;
 
+    // Saved cursor + pen state for DECSC / DECRC (ESC 7 / ESC 8 and CSI s / CSI u)
+    private (int row, int col) _savedCursor;
+    private Cell _savedPen;
+
+    // Diagnostic trace — set TraceLogPath to a file to capture VT events + cursor state
+    public static string? TraceLogPath;
+    private static readonly object _traceLock = new();
+    private void Trace(string msg)
+    {
+        if (TraceLogPath == null) return;
+        lock (_traceLock)
+        {
+            try
+            {
+                var (r, c) = _grid.Cursor;
+                File.AppendAllText(TraceLogPath, $"[{r},{c}] {msg}\n");
+            }
+            catch { }
+        }
+    }
+
     public VtDispatcher(TerminalGrid grid) { _grid = grid; }
 
-    public void Print(char ch) => _grid.PutGlyph(ch);
+    public void Print(char ch)
+    {
+        Trace($"Print '{(ch < 0x20 ? "?" : ch.ToString())}' (0x{(int)ch:X2})");
+        _grid.PutGlyph(ch);
+    }
 
     public void Execute(byte ctrl)
     {
+        Trace($"Execute 0x{ctrl:X2}");
         switch (ctrl)
         {
             case 0x07: _grid.Bell(); break;
@@ -27,6 +54,12 @@ public sealed class VtDispatcher : IVtEventHandler
 
     public void CsiDispatch(char final, ReadOnlySpan<int> p, ReadOnlySpan<char> i)
     {
+        if (TraceLogPath != null)
+        {
+            var ps = p.Length == 0 ? "" : string.Join(",", p.ToArray());
+            var ins = i.Length == 0 ? "" : new string(i);
+            Trace($"CSI {ins}[{ps}]{final}");
+        }
         int p0default1 = P(p, 0, 1);
         int p1default1 = P(p, 1, 1);
         int p0raw = p.Length > 0 ? p[0] : 0;
@@ -48,16 +81,47 @@ public sealed class VtDispatcher : IVtEventHandler
             case 'P': _grid.DeleteChars(p0default1); break;
             case 'S': _grid.ScrollUp(p0default1); break;
             case 'T': _grid.ScrollDown(p0default1); break;
+            case 'X': EraseChars(p0default1); break;                // ECH
+            case 'd': VerticalPositionAbsolute(p0default1); break;  // VPA
             case 'n': HandleDsr(p0raw); break;
             case 'r':
                 if (p.Length == 0) _grid.SetScrollRegion(0, _grid.Rows - 1);
                 else _grid.SetScrollRegion(p0default1 - 1, p1default1 - 1);
                 break;
+            case 's': SaveCursor(); break;                          // SCOSC
+            case 'u': RestoreCursor(); break;                       // SCORC
             case 'm': HandleSgr(p); break;
             case 'h': HandleMode(p, i, set: true); break;
             case 'l': HandleMode(p, i, set: false); break;
             default: break;
         }
+    }
+
+    private void SaveCursor()
+    {
+        _savedCursor = _grid.Cursor;
+        _savedPen = _grid.Pen;
+    }
+
+    private void RestoreCursor()
+    {
+        _grid.SetCursor(_savedCursor.row, _savedCursor.col);
+        _grid.Pen = _savedPen;
+    }
+
+    private void VerticalPositionAbsolute(int row)
+    {
+        var (_, c) = _grid.Cursor;
+        _grid.SetCursor(row - 1, c);
+    }
+
+    private void EraseChars(int n)
+    {
+        // ECH: erase n characters starting at cursor, do NOT move cursor
+        var (r, c) = _grid.Cursor;
+        int end = Math.Min(c + n, _grid.Cols);
+        for (int col = c; col < end; col++)
+            _grid.WriteCell(r, col, ' ', CellAttr.None);
     }
 
     private static int P(ReadOnlySpan<int> p, int index, int defaultIfZeroOrMissing)
@@ -74,10 +138,35 @@ public sealed class VtDispatcher : IVtEventHandler
     private void CursorHorizontalAbsolute(int col) { var (r, _) = _grid.Cursor; _grid.SetCursor(r, col - 1); }
     private void CursorPosition(int row, int col)  { _grid.SetCursor(row - 1, col - 1); }
 
-    public void EscDispatch(char final, ReadOnlySpan<char> i) { }
+    public void EscDispatch(char final, ReadOnlySpan<char> i)
+    {
+        Trace($"ESC {(i.Length == 0 ? "" : new string(i))}{final}");
+        // ESC sequences that don't use CSI/OSC/DCS framing.
+        switch (final)
+        {
+            case '7': SaveCursor(); break;      // DECSC — save cursor + pen
+            case '8': RestoreCursor(); break;   // DECRC — restore cursor + pen
+            case 'D':                           // IND — index (cursor down, scroll if at bottom)
+                LineFeed();
+                break;
+            case 'M':                           // RI — reverse index (cursor up, scroll if at top)
+            {
+                var (r, c) = _grid.Cursor;
+                if (r > 0) _grid.SetCursor(r - 1, c);
+                else _grid.ScrollDown(1);
+                break;
+            }
+            case 'E':                           // NEL — next line (CRLF)
+                CarriageReturn();
+                LineFeed();
+                break;
+            default: break;
+        }
+    }
 
     public void OscDispatch(int command, string data)
     {
+        Trace($"OSC {command} \"{data}\"");
         if (command == 0 || command == 1 || command == 2)
             TitleChanged?.Invoke(data);
     }
