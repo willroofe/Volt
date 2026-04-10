@@ -32,7 +32,6 @@ public sealed class VtStateMachine
     // Collected parameters for CSI/DCS
     private readonly int[] _params = new int[32];
     private int _paramCount;
-    private bool _paramHasDigits;
 
     // Collected intermediates
     private readonly char[] _intermediates = new char[4];
@@ -41,7 +40,6 @@ public sealed class VtStateMachine
     // OSC string buffer
     private readonly System.Text.StringBuilder _oscBuf = new(256);
     private const int OscMaxLength = 64 * 1024;
-    private bool _inOsc;
     private bool _oscEscapePending;
 
     // DCS state tracking
@@ -78,7 +76,7 @@ public sealed class VtStateMachine
             // fall through
         }
 
-        if (b == 0x18 || b == 0x1A) { _state = State.Ground; _inOsc = false; _h.Execute(b); return; }
+        if (b == 0x18 || b == 0x1A) { _state = State.Ground; _h.Execute(b); return; }
         if (b == 0x1B)
         {
             if (_state == State.OscString) { _oscEscapePending = true; return; }
@@ -146,7 +144,6 @@ public sealed class VtStateMachine
     private void EnterEscape()
     {
         _paramCount = 0;
-        _paramHasDigits = false;
         _intermediateCount = 0;
         _state = State.Escape;
     }
@@ -156,7 +153,7 @@ public sealed class VtStateMachine
         if (b <= 0x1F) { _h.Execute(b); return; }
         if (b >= 0x20 && b <= 0x2F) { CollectIntermediate((char)b); _state = State.EscapeIntermediate; return; }
         if (b == 0x5B) { _state = State.CsiEntry; return; }      // [
-        if (b == 0x5D) { _oscBuf.Clear(); _inOsc = true; _state = State.OscString; return; } // ]
+        if (b == 0x5D) { _oscBuf.Clear(); _state = State.OscString; return; } // ]
         if (b == 0x50) { _state = State.DcsEntry; return; }      // P
         if (b >= 0x30 && b <= 0x7E)
         {
@@ -212,8 +209,8 @@ public sealed class VtStateMachine
         if (b >= 0x40 && b <= 0x7E) { _state = State.Ground; return; }
     }
 
-    private void EnsureFirstParam() { if (_paramCount == 0) { _paramCount = 1; _params[0] = 0; _paramHasDigits = false; } }
-    private void NextParam() { if (_paramCount < _params.Length) { _paramCount++; _params[_paramCount - 1] = 0; _paramHasDigits = false; } }
+    private void EnsureFirstParam() { if (_paramCount == 0) { _paramCount = 1; _params[0] = 0; } }
+    private void NextParam() { if (_paramCount < _params.Length) { _paramCount++; _params[_paramCount - 1] = 0; } }
 
     private void AccumulateParamDigit(byte b)
     {
@@ -222,7 +219,6 @@ public sealed class VtStateMachine
         long v = (long)_params[idx] * 10 + (b - (byte)'0');
         if (v > int.MaxValue) v = int.MaxValue;   // clamp overflow
         _params[idx] = (int)v;
-        _paramHasDigits = true;
     }
 
     private void CollectIntermediate(char c)
@@ -237,7 +233,6 @@ public sealed class VtStateMachine
             _params.AsSpan(0, Math.Max(_paramCount, 1)),
             _intermediates.AsSpan(0, _intermediateCount));
         _paramCount = 0;
-        _paramHasDigits = false;
         _intermediateCount = 0;
         _state = State.Ground;
     }
@@ -268,7 +263,6 @@ public sealed class VtStateMachine
         }
         _h.OscDispatch(cmd, data);
         _oscBuf.Clear();
-        _inOsc = false;
         _oscEscapePending = false;
         _state = State.Ground;
     }
