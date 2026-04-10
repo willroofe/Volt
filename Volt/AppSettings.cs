@@ -46,6 +46,34 @@ public class ExplorerSettings
     public List<string> ExpandedPaths { get; set; } = [];
 }
 
+/// <summary>Per–session-context terminal UI state (global session, folder, or workspace).</summary>
+public class TerminalPreferences
+{
+    public string? ShellPath { get; set; }
+    public string? ShellArgs { get; set; }
+    public int ScrollbackLines { get; set; } = 10_000;
+    /// <summary>How many terminal instance tabs were open (0 allowed).</summary>
+    public int OpenSessionCount { get; set; } = 1;
+    /// <summary>One working directory per terminal instance tab, in tab order (parallel to <see cref="OpenSessionCount"/>).</summary>
+    public List<string>? InitialWorkingDirectories { get; set; }
+    /// <summary>Legacy: single cwd used for every instance when <see cref="InitialWorkingDirectories"/> is absent.</summary>
+    public string? InitialWorkingDirectory { get; set; }
+
+    /// <summary>Resolved cwd for the instance at <paramref name="index"/> when recreating terminals.</summary>
+    public string? GetWorkingDirectoryForInstance(int index)
+    {
+        if (InitialWorkingDirectories is { Count: > 0 })
+        {
+            if (index < InitialWorkingDirectories.Count)
+                return NullIfEmpty(InitialWorkingDirectories[index]);
+            return null;
+        }
+        return NullIfEmpty(InitialWorkingDirectory);
+    }
+
+    private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
+}
+
 public class EditorSettings
 {
     public int TabSize { get; set; } = 4;
@@ -79,6 +107,7 @@ public class SessionSettings
 {
     public List<SessionTab> Tabs { get; set; } = [];
     public int ActiveTabIndex { get; set; }
+    public TerminalPreferences? Terminal { get; set; }
 
     public static string TabContentPath(int index) => Path.Combine(AppPaths.SessionDir, $"tab-{index}.txt");
 
