@@ -52,6 +52,34 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
 
     private void OnThemeChanged(object? sender, EventArgs e) => InvalidateVisual();
 
+    protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+    {
+        base.OnRenderSizeChanged(sizeInfo);
+        _resizeDebounce ??= new System.Windows.Threading.DispatcherTimer(
+            TimeSpan.FromMilliseconds(50),
+            System.Windows.Threading.DispatcherPriority.Background,
+            OnResizeTick,
+            Dispatcher);
+        _resizeDebounce.Stop();
+        _resizeDebounce.Start();
+    }
+
+    private void OnResizeTick(object? sender, EventArgs e)
+    {
+        _resizeDebounce?.Stop();
+        if (_grid == null) return;
+        double cellWidth = _font.CharWidth;
+        double cellHeight = _font.LineHeight;
+        if (cellWidth <= 0 || cellHeight <= 0) return;
+        int cols = Math.Max(1, (int)(ActualWidth / cellWidth));
+        int rows = Math.Max(1, (int)(ActualHeight / cellHeight));
+        if (cols != _grid.Cols || rows != _grid.Rows)
+        {
+            _grid.Resize(rows, cols);
+            SizeRequested?.Invoke(rows, cols);
+        }
+    }
+
     protected override void OnRender(DrawingContext dc)
     {
         base.OnRender(dc);
@@ -153,8 +181,10 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     }
 
     public event Action<byte[]>? InputBytes; // raised when bytes should go to pty
+    public event Action<int, int>? SizeRequested; // (rows, cols) fired after grid.Resize
 
     private readonly HashSet<(Key key, ModifierKeys mods)> _allowlist = new();
+    private System.Windows.Threading.DispatcherTimer? _resizeDebounce;
 
     /// <summary>
     /// Register a Volt-global shortcut that should bubble past the terminal
@@ -219,6 +249,18 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     {
         base.OnMouseLeftButtonDown(e);
         Focus();
+    }
+
+    protected override void OnMouseWheel(MouseWheelEventArgs e)
+    {
+        base.OnMouseWheel(e);
+        if (_grid == null) return;
+        double cellHeight = _font.LineHeight;
+        if (cellHeight <= 0) return;
+        double delta = e.Delta > 0 ? -3 : 3;
+        double maxOffset = Math.Max(0, ExtentHeight - ViewportHeight);
+        SetVerticalOffset(Math.Clamp(VerticalOffset + delta * cellHeight, 0, maxOffset));
+        e.Handled = true;
     }
 
     private void DoCopy()
