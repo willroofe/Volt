@@ -24,6 +24,11 @@ public partial class TerminalPanel : UserControl, IPanel
 
     public void NewSession(string? cwd = null)
     {
+        // DIAGNOSTIC: write a VT trace to %TEMP%/volt-terminal-trace.log for this session
+        var tracePath = Path.Combine(Path.GetTempPath(), "volt-terminal-trace.log");
+        try { File.Delete(tracePath); } catch { }
+        VtDispatcher.TraceLogPath = tracePath;
+
         var app = Application.Current as App;
         var editor = app?.Settings.Editor;
 

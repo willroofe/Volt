@@ -1,3 +1,4 @@
+using System.Text;
 using Xunit;
 using Volt;
 
@@ -322,5 +323,17 @@ public class TerminalGridTests
         g.Resize(0, 0);
         Assert.Equal(1, g.Rows);
         Assert.Equal(1, g.Cols);
+    }
+
+    [Fact]
+    public void VtParser_CursorUp_DefaultNotStaleAfterCup()
+    {
+        // Regression: CSI with no numeric params must not reuse _params[0] from a prior CSI.
+        // Otherwise CSI A after CSI 10;10H moves up 10 rows (PSReadLine then misplaces the caret).
+        var g = new TerminalGrid(24, 80, 0);
+        var d = new VtDispatcher(g);
+        var sm = new VtStateMachine(d);
+        sm.Feed(Encoding.ASCII.GetBytes("\u001b[10;10H\u001b[A"));
+        Assert.Equal((8, 9), g.Cursor);
     }
 }
