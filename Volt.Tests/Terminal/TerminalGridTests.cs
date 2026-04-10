@@ -57,4 +57,54 @@ public class TerminalGridTests
         g.WriteCell(1, 1, 'X', CellAttr.None);
         Assert.Equal(1, fired);
     }
+
+    [Fact]
+    public void SetCursor_ClampsToGrid()
+    {
+        var g = new TerminalGrid(24, 80, 100);
+        g.SetCursor(5, 10);
+        Assert.Equal((5, 10), g.Cursor);
+        g.SetCursor(999, 999);
+        Assert.Equal((23, 79), g.Cursor);
+        g.SetCursor(-5, -5);
+        Assert.Equal((0, 0), g.Cursor);
+    }
+
+    [Fact]
+    public void PutGlyph_WritesAtCursorAndAdvances()
+    {
+        var g = new TerminalGrid(24, 80, 100);
+        g.SetCursor(2, 3);
+        g.PutGlyph('H');
+        g.PutGlyph('i');
+        Assert.Equal('H', g.CellAt(2, 3).Glyph);
+        Assert.Equal('i', g.CellAt(2, 4).Glyph);
+        Assert.Equal((2, 5), g.Cursor);
+    }
+
+    [Fact]
+    public void PutGlyph_AtRightEdge_SetsPendingWrap()
+    {
+        var g = new TerminalGrid(24, 80, 100);
+        g.SetCursor(0, 79);
+        g.PutGlyph('A');
+        // Cursor stays at last col with pending wrap; next glyph wraps to next line col 0
+        Assert.Equal('A', g.CellAt(0, 79).Glyph);
+        g.PutGlyph('B');
+        Assert.Equal('B', g.CellAt(1, 0).Glyph);
+        Assert.Equal((1, 1), g.Cursor);
+    }
+
+    [Fact]
+    public void Pen_CarriesAttributesIntoPutGlyph()
+    {
+        var g = new TerminalGrid(24, 80, 100);
+        g.Pen = new Cell { FgIndex = 1, BgIndex = 4, Attr = CellAttr.Bold };
+        g.PutGlyph('X');
+        var cell = g.CellAt(0, 0);
+        Assert.Equal('X', cell.Glyph);
+        Assert.Equal(1, cell.FgIndex);
+        Assert.Equal(4, cell.BgIndex);
+        Assert.Equal(CellAttr.Bold, cell.Attr);
+    }
 }

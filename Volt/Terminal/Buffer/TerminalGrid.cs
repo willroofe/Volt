@@ -9,6 +9,8 @@ public sealed partial class TerminalGrid
     private Cell[,]? _alt;
     private readonly int _scrollbackLines;
     private GridRegion _dirty;
+    public Cell Pen = new Cell { FgIndex = -1, BgIndex = -1, Attr = CellAttr.None, Glyph = ' ' };
+    private bool _pendingWrap;
 
     public int Rows { get; private set; }
     public int Cols { get; private set; }
@@ -58,4 +60,61 @@ public sealed partial class TerminalGrid
     }
 
     public void ClearDirty() => _dirty.Clear();
+
+    public void SetCursor(int row, int col)
+    {
+        int r = Math.Clamp(row, 0, Rows - 1);
+        int c = Math.Clamp(col, 0, Cols - 1);
+        Cursor = (r, c);
+        _pendingWrap = false;
+    }
+
+    public void PutGlyph(char ch)
+    {
+        var (r, c) = Cursor;
+        if (_pendingWrap)
+        {
+            _pendingWrap = false;
+            if (r + 1 < Rows)
+            {
+                r++;
+                c = 0;
+            }
+            else
+            {
+                ScrollUp(1);
+                c = 0;
+            }
+        }
+
+        ref var cell = ref ActiveBuffer[r, c];
+        cell.Glyph = ch;
+        cell.FgIndex = Pen.FgIndex;
+        cell.BgIndex = Pen.BgIndex;
+        cell.Attr = Pen.Attr;
+        _dirty.MarkDirty(r);
+
+        if (c + 1 >= Cols)
+        {
+            _pendingWrap = true;
+            Cursor = (r, c);
+        }
+        else
+        {
+            Cursor = (r, c + 1);
+        }
+        Changed?.Invoke();
+    }
+
+    public void ScrollUp(int n)
+    {
+        // Stub — fully implemented in Task 5; this minimum lets PutGlyph wrap at bottom.
+        for (int row = 0; row < Rows - n; row++)
+            for (int col = 0; col < Cols; col++)
+                ActiveBuffer[row, col] = ActiveBuffer[row + n, col];
+        for (int row = Rows - n; row < Rows; row++)
+            for (int col = 0; col < Cols; col++)
+                ActiveBuffer[row, col] = Cell.Blank;
+        _dirty.MarkDirtyRange(0, Rows - 1);
+    }
 }
