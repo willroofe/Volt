@@ -14,6 +14,21 @@ public sealed partial class TerminalGrid
     public Cell Pen = new Cell { FgIndex = -1, BgIndex = -1, Attr = CellAttr.None, Glyph = ' ' };
     private bool _pendingWrap;
 
+    private readonly List<uint> _trueColors = new();
+
+    public int RegisterTrueColor(uint argb)
+    {
+        _trueColors.Add(argb);
+        return -(_trueColors.Count + 1); // -2, -3, -4, ...
+    }
+
+    public uint GetTrueColor(int encodedIndex)
+    {
+        int idx = -encodedIndex - 2;
+        if (idx < 0 || idx >= _trueColors.Count) return 0xFFFFFFFF;
+        return _trueColors[idx];
+    }
+
     private Cell[][] _scrollback = Array.Empty<Cell[]>();
     private int _scrollbackHead; // points at oldest
     private int _scrollbackCount;
