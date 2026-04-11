@@ -27,6 +27,9 @@ public class WorkspaceSession
 
     [JsonPropertyName("expandedPaths")]
     public List<string> ExpandedPaths { get; set; } = [];
+
+    [JsonPropertyName("terminal")]
+    public TerminalPreferences? Terminal { get; set; }
 }
 
 public class WorkspaceSessionTab

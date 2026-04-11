@@ -20,10 +20,17 @@ public partial class MainWindow
 
     private readonly TabHeaderFactory _tabHeaderFactory = new();
     private readonly FileExplorerPanel _explorerPanel = new();
+    private readonly TerminalPanel _terminalPanel = new();
     private readonly KeyBindingManager _keyBindingManager = new();
+
+    internal TerminalPanel TerminalPanel => _terminalPanel;
     internal string? _startupFilePath;
 
-    private EditorControl? Editor => _activeTab?.Editor;
+    internal string? ActiveFilePath => _activeTab?.FilePath;
+    internal string? OpenFolderPath => _explorerPanel.OpenFolderPath;
+    internal Workspace? ActiveWorkspace => _workspaceManager.CurrentWorkspace;
+
+    internal EditorControl? Editor => _activeTab?.Editor;
 
     private record FileLoadResult(Encoding Encoding, TextBuffer.PreparedContent Prepared, long FileSize, byte[]? TailBytes);
 
@@ -96,6 +103,7 @@ public partial class MainWindow
 
         // Register explorer panel with shell
         Shell.RegisterPanel(_explorerPanel, PanelPlacement.Left, 250);
+        Shell.RegisterPanel(_terminalPanel, PanelPlacement.Bottom, 240);
         RestorePanelLayout();
         SyncViewMenuChecks();
 
@@ -486,6 +494,7 @@ public partial class MainWindow
     {
         foreach (var tab in _tabs)
             ApplySettingsToEditor(tab.Editor);
+        _terminalPanel.SyncEditorAppearanceFromSettings();
         FindBarControl.SetPosition(_settings.Editor.Find.BarPosition);
         FindBarControl.SeedWithSelection = _settings.Editor.Find.SeedWithSelection;
         CmdPalette.SetPosition(_settings.Application.CommandPalettePosition);
@@ -513,6 +522,26 @@ public partial class MainWindow
     private void ToggleExplorer()
     {
         Shell.TogglePanel("file-explorer");
+    }
+
+    /// <summary>
+    /// Registers the set of Volt-global shortcuts that should bubble past
+    /// a focused terminal view so global actions keep working.
+    /// Called by TerminalPanel when a new session is created.
+    /// </summary>
+    internal void RegisterTerminalAllowlist(TerminalView view)
+    {
+        // Command palette: Ctrl+Shift+P
+        view.AddAllowlistedShortcut(Key.P, ModifierKeys.Control | ModifierKeys.Shift);
+        // Switch editor tabs: Ctrl+Tab / Ctrl+Shift+Tab
+        view.AddAllowlistedShortcut(Key.Tab, ModifierKeys.Control);
+        view.AddAllowlistedShortcut(Key.Tab, ModifierKeys.Control | ModifierKeys.Shift);
+        // Settings: Ctrl+Alt+S (mapped to VoltCommand.Settings)
+        view.AddAllowlistedShortcut(Key.S, ModifierKeys.Control | ModifierKeys.Alt);
+        // Toggle explorer: Ctrl+B
+        view.AddAllowlistedShortcut(Key.B, ModifierKeys.Control);
+        // Toggle terminal panel itself: Ctrl+`
+        view.AddAllowlistedShortcut(Key.OemTilde, ModifierKeys.Control);
     }
 
     private void FocusExplorer()
@@ -594,6 +623,9 @@ public partial class MainWindow
             SaveFolderExpandedPaths(folderPath);
         }
 
+        _settings.Session ??= new SessionSettings();
+        _settings.Session.Terminal = CaptureTerminalPreferences();
+
         CloseAllTabs();
         _explorerPanel.CloseFolder();
         MenuCloseFolder.Visibility = Visibility.Collapsed;
@@ -605,6 +637,7 @@ public partial class MainWindow
         // Create a fresh empty tab
         var tab = CreateTab();
         ActivateTab(tab);
+        ScheduleRestoreTerminalGlobal(_settings.Session.Terminal);
     }
 
     private async void OnExplorerFileOpen(string path)
@@ -645,7 +678,24 @@ public partial class MainWindow
             .ToList();
 
         foreach (var tab in affectedTabs)
-            RemoveTab(tab);
+        {
+            if (tab.Editor.IsDirty)
+            {
+                // Detach from deleted file so unsaved content isn't lost
+                tab.StopWatching();
+                tab.FilePath = null;
+                UpdateTabHeader(tab);
+                if (tab == _activeTab)
+                {
+                    UpdateTitle();
+                    UpdateFileType();
+                }
+            }
+            else
+            {
+                RemoveTab(tab);
+            }
+        }
     }
 
     /// <summary>Checks whether any session data exists that RestoreSession will act on.</summary>
@@ -770,6 +820,8 @@ public partial class MainWindow
 
         var restored = _sessionManager.RestoreSession(_settings.Session);
         RestoreTabsFromSession(restored);
+        var termPrefs = _settings.Session.Terminal;
+        ScheduleRestoreTerminalGlobal(termPrefs);
 
         // Clean up session files after restore
         SessionSettings.ClearSessionDir();
@@ -785,14 +837,86 @@ public partial class MainWindow
         else
         {
             SessionSettings.ClearSessionDir();
-            _settings.Session = _sessionManager.SaveSession(_tabs, _activeTab);
+            var session = _sessionManager.SaveSession(_tabs, _activeTab);
+            session.Terminal = CaptureTerminalPreferences();
+            _settings.Session = session;
         }
     }
 
     private void SaveFolderSession(string folderPath)
     {
         SessionSettings.ClearFolderSessionDir(folderPath);
-        _settings.FolderSessions[folderPath] = _sessionManager.SaveSession(_tabs, _activeTab, folderPath);
+        var session = _sessionManager.SaveSession(_tabs, _activeTab, folderPath);
+        session.Terminal = CaptureTerminalPreferences();
+        _settings.FolderSessions[folderPath] = session;
+    }
+
+    private TerminalPreferences CaptureTerminalPreferences()
+    {
+        return new TerminalPreferences
+        {
+            ShellPath = _settings.Editor.TerminalShellPath,
+            ShellArgs = _settings.Editor.TerminalShellArgs,
+            ScrollbackLines = _settings.Editor.TerminalScrollbackLines,
+            OpenSessionCount = _terminalPanel.SessionCount,
+            InitialWorkingDirectories = _terminalPanel.GetPersistedStartingDirectoriesPerSession()
+        };
+    }
+
+    private void ApplyTerminalPreferences(TerminalPreferences? p)
+    {
+        if (p == null) return;
+        _settings.Editor.TerminalShellPath = p.ShellPath;
+        _settings.Editor.TerminalShellArgs = p.ShellArgs;
+        if (p.ScrollbackLines > 0)
+            _settings.Editor.TerminalScrollbackLines = p.ScrollbackLines;
+    }
+
+    private void ScheduleRestoreTerminalGlobal(TerminalPreferences? specific)
+    {
+        Dispatcher.BeginInvoke(new Action(() => RestoreTerminalForGlobalSession(specific)), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void ScheduleRestoreTerminalFolder(TerminalPreferences? specific)
+    {
+        Dispatcher.BeginInvoke(new Action(() => RestoreTerminalForFolder(specific)), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void ScheduleRestoreTerminalWorkspace(TerminalPreferences? specific)
+    {
+        Dispatcher.BeginInvoke(new Action(() => RestoreTerminalForWorkspace(specific)), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    /// <summary>Restore after global (no folder) editor session — may fall back to <see cref="AppSettings.Session"/> terminal snapshot.</summary>
+    private void RestoreTerminalForGlobalSession(TerminalPreferences? specific)
+    {
+        var eff = specific ?? _settings.Session?.Terminal;
+        ApplyTerminalPreferences(eff);
+        int n = eff != null ? Math.Max(0, eff.OpenSessionCount) : 1;
+        _terminalPanel.ResetToSessionCount(n, eff);
+    }
+
+    /// <summary>Restore when opening a folder. If there is no per-folder terminal block, do not inherit global/workspace instance count.</summary>
+    private void RestoreTerminalForFolder(TerminalPreferences? specific)
+    {
+        if (specific != null)
+        {
+            ApplyTerminalPreferences(specific);
+            _terminalPanel.ResetToSessionCount(Math.Max(0, specific.OpenSessionCount), specific);
+        }
+        else
+        {
+            _terminalPanel.ResetToSessionCount(1, null);
+        }
+    }
+
+    /// <summary>Restore when opening a workspace file — may fall back to global session terminal for older workspace files.</summary>
+    private void RestoreTerminalForWorkspace(TerminalPreferences? specific)
+    {
+        var eff = specific ?? _settings.Session?.Terminal;
+        ApplyTerminalPreferences(eff);
+        int n = eff != null ? Math.Max(0, eff.OpenSessionCount) : 1;
+        _terminalPanel.ResetToSessionCount(n, eff);
     }
 
     private void SaveFolderExpandedPaths(string folderPath)
@@ -816,11 +940,13 @@ public partial class MainWindow
         {
             var tab = CreateTab();
             ActivateTab(tab);
+            ScheduleRestoreTerminalFolder(session?.Terminal);
             return;
         }
 
         var restored = _sessionManager.RestoreSession(session, folderPath);
         RestoreTabsFromSession(restored);
+        ScheduleRestoreTerminalFolder(session.Terminal);
     }
 
     private void RestoreTabsFromSession(RestoredSession restored)
@@ -1545,7 +1671,8 @@ public partial class MainWindow
             _settings.Editor.Find.SeedWithSelection, _settings.Editor.FixedWidthTabs,
             _settings.Editor.WordWrap, _settings.Editor.WordWrapAtWords, _settings.Editor.WordWrapIndent,
             _settings.Editor.IndentGuides, _settings.Application.CommandPalettePosition,
-            _keyBindingManager.GetAllBindings());
+            _keyBindingManager.GetAllBindings(),
+            _settings.Editor.TerminalShellPath, _settings.Editor.TerminalShellArgs, _settings.Editor.TerminalScrollbackLines);
         var dlg = new SettingsWindow(ThemeManager, snapshot) { Owner = this };
         dlg.Applied += (_, _) => ApplySettingsFromDialog(dlg);
         if (dlg.ShowDialog() == true)
@@ -1570,6 +1697,9 @@ public partial class MainWindow
         _settings.Editor.WordWrapAtWords = dlg.WordWrapAtWords;
         _settings.Editor.WordWrapIndent = dlg.WordWrapIndent;
         _settings.Editor.IndentGuides = dlg.IndentGuides;
+        _settings.Editor.TerminalShellPath = dlg.TerminalShellPath;
+        _settings.Editor.TerminalShellArgs = dlg.TerminalShellArgs;
+        _settings.Editor.TerminalScrollbackLines = dlg.TerminalScrollbackLines;
         _keyBindingManager.SetAll(dlg.KeyBindings);
         _settings.KeyBindings = _keyBindingManager.GetSaveState();
         _settings.Save();
@@ -1655,7 +1785,19 @@ public partial class MainWindow
             case VoltCommand.UnfoldBlock: _activeTab?.Editor.UnfoldAtCaret(); break;
             case VoltCommand.GoToLine: OpenGoToLine(); break;
             case VoltCommand.FocusExplorer: FocusExplorer(); break;
+            case VoltCommand.ToggleTerminal: ToggleTerminalPanel(); break;
         }
+    }
+
+    private void ToggleTerminalPanel()
+    {
+        if (!Shell.IsPanelVisible("terminal"))
+            Shell.ShowPanel("terminal");
+        if (_terminalPanel.SessionCount == 0)
+            _terminalPanel.NewSession();
+        else
+            Dispatcher.BeginInvoke(new Action(() => _terminalPanel.TryFocusActiveSession()), System.Windows.Threading.DispatcherPriority.Input);
+        SyncViewMenuChecks();
     }
 
     private void OpenGoToLine()
@@ -1685,7 +1827,15 @@ public partial class MainWindow
             ToggleFixedWidthTabs,
             () => _ = AppUpdateManager.CheckForUpdatesAsync(this, showUpToDate: true),
             OpenRecentInCommandPalette,
-            SetActiveTabLanguage));
+            SetActiveTabLanguage,
+            new TerminalActions(
+                () => ToggleTerminalPanel(),
+                () =>
+                {
+                    Shell.ShowPanel("terminal");
+                    _terminalPanel.NewSession();
+                }),
+            () => _terminalPanel.SyncEditorAppearanceFromSettings()));
         CmdPalette.SetCommands(commands);
     }
 
@@ -1718,6 +1868,7 @@ public partial class MainWindow
             tab.Editor.EditorFontSize = newSize;
         _settings.Editor.Font.Size = newSize;
         _settings.Save();
+        _terminalPanel.SyncEditorAppearanceFromSettings();
     }
 
     private void OpenCommandPalette()
@@ -1763,7 +1914,8 @@ public partial class MainWindow
                         ScrollY = t.ScrollVertical,
                     }).ToList(),
                     ActiveTabIndex = session.ActiveTabIndex,
-                    ExpandedPaths = _explorerPanel.GetExpandedPaths()
+                    ExpandedPaths = _explorerPanel.GetExpandedPaths(),
+                    Terminal = session.Terminal
                 };
             }
         }
@@ -1891,6 +2043,8 @@ public partial class MainWindow
         if (_workspaceManager.CurrentWorkspace == null) return;
 
         CaptureWorkspaceSession();
+        _settings.Session ??= new SessionSettings();
+        _settings.Session.Terminal = CaptureTerminalPreferences();
         if (_workspaceManager.CurrentWorkspace.FilePath != null)
             _workspaceManager.SaveWorkspace();
         _workspaceManager.CloseWorkspace();
@@ -1906,6 +2060,7 @@ public partial class MainWindow
         CloseAllTabs();
         CreateTab();
         ActivateTab(_tabs[0]);
+        ScheduleRestoreTerminalGlobal(_settings.Session?.Terminal);
     }
 
     /// <summary>
@@ -2008,7 +2163,8 @@ public partial class MainWindow
         {
             Tabs = sessionTabs,
             ActiveTabIndex = activeIdx,
-            ExpandedPaths = _explorerPanel.GetExpandedPaths()
+            ExpandedPaths = _explorerPanel.GetExpandedPaths(),
+            Terminal = CaptureTerminalPreferences()
         };
     }
 
@@ -2018,6 +2174,7 @@ public partial class MainWindow
         {
             var tab = CreateTab();
             ActivateTab(tab);
+            ScheduleRestoreTerminalWorkspace(workspace.Session.Terminal);
             return;
         }
 
@@ -2057,6 +2214,8 @@ public partial class MainWindow
 
         foreach (var (t, s) in asyncLoads)
             _ = LoadWorkspaceTabAsync(t, s);
+
+        ScheduleRestoreTerminalWorkspace(workspace.Session.Terminal);
     }
 
     private async Task LoadWorkspaceTabAsync(TabInfo tab, WorkspaceSessionTab st)
