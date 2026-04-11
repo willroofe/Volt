@@ -1,4 +1,5 @@
 ﻿using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -61,6 +62,7 @@ public partial class MainWindow
 
     private const int WM_MOUSEHWHEEL = 0x020E;
     private const int WM_NCHITTEST = 0x0084;
+    private const uint MONITOR_DEFAULTTONEAREST = 2;
     private const int HTLEFT = 10;
     private const int HTRIGHT = 11;
     private const int HTTOP = 12;
@@ -477,10 +479,7 @@ public partial class MainWindow
     {
         if (WindowState == WindowState.Maximized)
         {
-            var thickness = SystemParameters.WindowResizeBorderThickness;
-            BorderThickness = new Thickness(
-                thickness.Left + 1, thickness.Top + 1,
-                thickness.Right + 1, thickness.Bottom + 1);
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Render, ApplyMaximizePadding);
         }
         else
         {
@@ -488,6 +487,33 @@ public partial class MainWindow
         }
 
         MaxRestoreButton.Content = WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
+    }
+
+    private void ApplyMaximizePadding()
+    {
+        if (WindowState != WindowState.Maximized) return;
+        if (PresentationSource.FromVisual(this) is not HwndSource source) return;
+
+        var hwnd = source.Handle;
+        if (!GetWindowRect(hwnd, out var wndRect)) return;
+        if (!TryGetMonitorWorkArea(hwnd, out var rcWork, out _)) return;
+
+        int overL = Math.Max(0, rcWork.Left - wndRect.Left);
+        int overT = Math.Max(0, rcWork.Top - wndRect.Top);
+        int overR = Math.Max(0, wndRect.Right - rcWork.Right);
+        int overB = Math.Max(0, wndRect.Bottom - rcWork.Bottom);
+
+        if (overL == 0 && overT == 0 && overR == 0 && overB == 0)
+        {
+            BorderThickness = new Thickness(0);
+            return;
+        }
+
+        var transform = source.CompositionTarget.TransformFromDevice;
+        var tl = transform.Transform(new Point(overL, overT));
+        var br = transform.Transform(new Point(overR, overB));
+
+        BorderThickness = new Thickness(tl.X, tl.Y, br.X, br.Y);
     }
 
     private void ApplySettings()
@@ -2250,4 +2276,72 @@ public partial class MainWindow
             _workspaceManager.SaveWorkspace();
         _explorerPanel.RefreshWorkspaceTree();
     }
+
+    private static bool TryGetMonitorWorkArea(IntPtr hwnd, out RECT rcWork, out RECT rcMonitor)
+    {
+        rcWork = default;
+        rcMonitor = default;
+        // MonitorFromWindow may resolve to the wrong display at mixed DPI.
+        // Center from GetWindowRect stays on the correct display (physical screen coordinates).
+        IntPtr hMonitor;
+        if (GetWindowRect(hwnd, out var wndRect)
+            && wndRect.Right > wndRect.Left
+            && wndRect.Bottom > wndRect.Top)
+        {
+            var cx = (wndRect.Left + wndRect.Right) / 2;
+            var cy = (wndRect.Top + wndRect.Bottom) / 2;
+            hMonitor = MonitorFromPoint(new POINT { X = cx, Y = cy }, MONITOR_DEFAULTTONEAREST);
+        }
+        else
+        {
+            hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        }
+
+        if (hMonitor == IntPtr.Zero) return false;
+
+        var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        if (!GetMonitorInfo(hMonitor, ref mi)) return false;
+
+        rcWork = mi.rcWork;
+        rcMonitor = mi.rcMonitor;
+        return true;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    private struct MONITORINFO
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
+    }
+
 }
