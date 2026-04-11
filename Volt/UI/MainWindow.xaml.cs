@@ -30,7 +30,7 @@ public partial class MainWindow
     internal string? OpenFolderPath => _explorerPanel.OpenFolderPath;
     internal Workspace? ActiveWorkspace => _workspaceManager.CurrentWorkspace;
 
-    private EditorControl? Editor => _activeTab?.Editor;
+    internal EditorControl? Editor => _activeTab?.Editor;
 
     private record FileLoadResult(Encoding Encoding, TextBuffer.PreparedContent Prepared, long FileSize, byte[]? TailBytes);
 
@@ -494,6 +494,7 @@ public partial class MainWindow
     {
         foreach (var tab in _tabs)
             ApplySettingsToEditor(tab.Editor);
+        _terminalPanel.SyncEditorAppearanceFromSettings();
         FindBarControl.SetPosition(_settings.Editor.Find.BarPosition);
         FindBarControl.SeedWithSelection = _settings.Editor.Find.SeedWithSelection;
         CmdPalette.SetPosition(_settings.Application.CommandPalettePosition);
@@ -1833,7 +1834,8 @@ public partial class MainWindow
                 {
                     Shell.ShowPanel("terminal");
                     _terminalPanel.NewSession();
-                })));
+                }),
+            () => _terminalPanel.SyncEditorAppearanceFromSettings()));
         CmdPalette.SetCommands(commands);
     }
 
@@ -1866,6 +1868,7 @@ public partial class MainWindow
             tab.Editor.EditorFontSize = newSize;
         _settings.Editor.Font.Size = newSize;
         _settings.Save();
+        _terminalPanel.SyncEditorAppearanceFromSettings();
     }
 
     private void OpenCommandPalette()

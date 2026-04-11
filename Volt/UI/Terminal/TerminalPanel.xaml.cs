@@ -26,6 +26,13 @@ public partial class TerminalPanel : UserControl, IPanel
         InitializeComponent();
     }
 
+    /// <summary>Re-read editor font and caret settings into every open terminal view.</summary>
+    public void SyncEditorAppearanceFromSettings()
+    {
+        foreach (var s in _sessions)
+            s.View.SyncFromActiveEditor();
+    }
+
     public int SessionCount => _sessions.Count;
 
     /// <summary>Closes all instance tabs and opens <paramref name="count"/> new ones using current shell settings.</summary>
