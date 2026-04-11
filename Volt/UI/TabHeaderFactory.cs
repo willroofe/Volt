@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -146,6 +147,18 @@ internal class TabHeaderFactory
                 TabClosed?.Invoke(tab);
                 e.Handled = true;
             }
+        };
+
+        header.MouseRightButtonUp += (_, e) =>
+        {
+            if (tab.FilePath == null || (!File.Exists(tab.FilePath) && !Directory.Exists(tab.FilePath)))
+                return;
+            var menu = ContextMenuHelper.Create();
+            menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
+                () => FileHelper.RevealInFileExplorer(tab.FilePath!)));
+            header.ContextMenu = menu;
+            menu.IsOpen = true;
+            e.Handled = true;
         };
 
         return header;

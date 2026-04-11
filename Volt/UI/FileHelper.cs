@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 
@@ -186,5 +187,30 @@ internal static class FileHelper
             return new UnicodeEncoding(true, true);
 
         return new UTF8Encoding(false);
+    }
+
+    /// <summary>Opens Windows File Explorer at the folder, or with the file selected.</summary>
+    public static void RevealInFileExplorer(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+        try
+        {
+            // Use /select for both files and folders so Explorer shows the parent with the item highlighted,
+            // instead of navigating inside a folder.
+            if (File.Exists(path) || Directory.Exists(path))
+            {
+                var full = Path.GetFullPath(path);
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = "/select,\"" + full + "\"",
+                    UseShellExecute = true
+                });
+            }
+        }
+        catch
+        {
+            // Ignore launch failures (missing path, policy, etc.)
+        }
     }
 }
