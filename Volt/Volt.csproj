@@ -3,6 +3,8 @@
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
         <TargetFramework>net10.0-windows</TargetFramework>
+        <!-- PerMonitorV2 keeps GetMonitorInfo / WM_GETMINMAXINFO in sync with the window manager at high DPI (e.g. 200%). -->
+        <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <UseWPF>true</UseWPF>
