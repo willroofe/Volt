@@ -49,3 +49,21 @@ Release notes are for **end users**, not developers. Keep language non-technical
 **Regression-only bug fixes:** Do not list a bug fix if the bug was introduced and fixed within the same dev cycle. Users never saw those bugs. Only mention bugs that existed in a **prior published** release. When writing notes, cross-reference fixes against what shipped in the last release; omit fixes for bugs introduced after that release.
 
 Each bullet should read as a user-visible change, not a code change.
+
+### GitHub release body format
+
+Match recent published releases (for example **v1.3.0** and **v1.3.2** on GitHub). The body is Markdown with this shape:
+
+1. A single heading: `## What's new` (do not rely on Velopack’s auto-generated notes).
+2. One bullet per user-facing change, each on its own line, using an em dash after a short bold lead-in:
+   - `- **Short label** — Plain-language sentence about what the user can do or what feels better.`
+3. Optional keyboard shortcuts in **bold** when they are part of the feature (for example **Ctrl+Shift+T**).
+
+Example:
+
+```markdown
+## What's new
+
+- **Feature name** — What the user gains in everyday use.
+- **Another area** — A specific improvement users will notice.
+```
