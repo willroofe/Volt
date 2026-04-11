@@ -356,16 +356,16 @@ public partial class FileExplorerPanel : UserControl, IPanel
             {
                 menu.Items.Add(ContextMenuHelper.Item("New File", () => DoNewFile(targetDir)));
                 menu.Items.Add(ContextMenuHelper.Item("New Folder", () => DoNewFolder(targetDir)));
-                if (ClipboardHasFileDropList())
-                {
-                    menu.Items.Add(ContextMenuHelper.Separator());
-                    menu.Items.Add(ContextMenuHelper.Item("Paste", "\uE77F", () => TryPasteFromClipboard()));
-                }
                 if (Directory.Exists(targetDir))
                 {
                     menu.Items.Add(ContextMenuHelper.Separator());
                     menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
                         () => FileHelper.RevealInFileExplorer(targetDir)));
+                }
+                if (ClipboardHasFileDropList())
+                {
+                    menu.Items.Add(ContextMenuHelper.Separator());
+                    menu.Items.Add(ContextMenuHelper.Item("Paste", "\uE77F", () => TryPasteFromClipboard()));
                 }
             }
             if (_workspaceManager?.CurrentWorkspace != null)
@@ -406,12 +406,12 @@ public partial class FileExplorerPanel : UserControl, IPanel
         else
         {
             // File item
+            menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
+                () => FileHelper.RevealInFileExplorer(item.FullPath)));
+            menu.Items.Add(ContextMenuHelper.Separator());
             menu.Items.Add(ContextMenuHelper.Item("Copy", "\uE8C8", () => CopyPathsToClipboard(item.FullPath)));
             if (ClipboardHasFileDropList())
                 menu.Items.Add(ContextMenuHelper.Item("Paste", "\uE77F", () => TryPasteFromClipboard()));
-            menu.Items.Add(ContextMenuHelper.Separator());
-            menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
-                () => FileHelper.RevealInFileExplorer(item.FullPath)));
             menu.Items.Add(ContextMenuHelper.Separator());
             menu.Items.Add(ContextMenuHelper.Item("Duplicate", () => DoDuplicate(item)));
             menu.Items.Add(ContextMenuHelper.Item("Rename", "\uE70F", () => DoRename(item)));
