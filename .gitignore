@@ -8,3 +8,7 @@ riderModule.iml
 .superpowers/
 BenchmarkDotNet.Artifacts/
 *.DotSettings.user
+
+# Velopack / release build output (Setup.exe, nupkg, portable zip, metadata)
+Releases/
+publish/
