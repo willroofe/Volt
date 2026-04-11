@@ -76,7 +76,9 @@ public sealed partial class TerminalGrid
         int scrollbackIndex = _scrollbackCount + row; // row is negative → positive offset from head
         if (scrollbackIndex < 0 || scrollbackIndex >= _scrollbackCount) return ref _sink;
         int ringIndex = (_scrollbackHead + scrollbackIndex) % _scrollbackLines;
-        return ref _scrollback[ringIndex][col];
+        var line = _scrollback[ringIndex];
+        if (line == null || col >= line.Length) return ref _sink;
+        return ref line[col];
     }
 
     private static Cell _sink = Cell.Blank;
@@ -344,6 +346,7 @@ public sealed partial class TerminalGrid
 
         Rows = rows;
         Cols = cols;
+        ReallocateScrollbackRowsToWidth(cols);
         ScrollTop = 0;
         ScrollBottom = Rows - 1;
         var (cr, cc) = Cursor;
@@ -351,5 +354,40 @@ public sealed partial class TerminalGrid
         _pendingWrap = false;
         _dirty.MarkDirtyRange(0, Rows - 1);
         Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// Clears the main screen to blanks and moves the cursor to the origin. Scrollback is unchanged.
+    /// Called after the host viewport changes cell row/column count so a shell SIGWINCH redraw does not
+    /// leave stale text plus a large blank middle (new rows) plus duplicate banner/prompt at the bottom.
+    /// </summary>
+    public void ClearMainScreenHome()
+    {
+        if (UsingAltBuffer) return;
+        for (int r = 0; r < Rows; r++)
+            for (int c = 0; c < Cols; c++)
+                _main[r, c] = Cell.Blank;
+        SetCursor(0, 0);
+        Pen = new Cell { FgIndex = -1, BgIndex = -1, Attr = CellAttr.None, Glyph = ' ' };
+        _dirty.MarkDirtyRange(0, Rows - 1);
+        Changed?.Invoke();
+    }
+
+    /// <summary>Scrollback lines are stored as <see cref="Cell"/>[] per row — width must stay in sync with <see cref="Cols"/> after resize.</summary>
+    private void ReallocateScrollbackRowsToWidth(int newCols)
+    {
+        if (_scrollback.Length == 0) return;
+        for (int i = 0; i < _scrollback.Length; i++)
+        {
+            var row = _scrollback[i];
+            if (row == null || row.Length == newCols) continue;
+            var newRow = new Cell[newCols];
+            int copy = Math.Min(row.Length, newCols);
+            for (int c = 0; c < copy; c++)
+                newRow[c] = row[c];
+            for (int c = copy; c < newCols; c++)
+                newRow[c] = Cell.Blank;
+            _scrollback[i] = newRow;
+        }
     }
 }

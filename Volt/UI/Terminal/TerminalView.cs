@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace Volt;
 
@@ -18,6 +19,30 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     /// <summary>When true, new output keeps the viewport pinned to the bottom (live view).</summary>
     private bool _stickToBottom = true;
     private Size _viewport;
+    private bool _blockCaret;
+    private int _caretBlinkMs = 500;
+    private bool _caretVisible = true;
+    private readonly DispatcherTimer _blinkTimer;
+    private static readonly FontWeightConverter _fontWeightConverter = new();
+    private const double BarCaretWidth = 1;
+
+    /// <summary>Last font/caret inputs applied to <see cref="_font"/> — avoids redundant Apply + PTY resize when settings are saved but editor appearance did not change.</summary>
+    private bool _fontCaretSnapshotValid;
+    private string _snapFontFamily = "";
+    private double _snapFontSize;
+    private FontWeight _snapFontWeight;
+    private double _snapLineHeightMul;
+    private bool _snapBlockCaret;
+    private int _snapBlinkMs;
+    private double _snapDpi;
+    /// <summary>
+    /// <see cref="FontManager"/> raises <see cref="FontManager.FontChanged"/> from both <c>Apply</c> and
+    /// <c>LineHeightMultiplier</c> in one <see cref="ApplyFontAndCaret"/> call. Deferring
+    /// <see cref="TryResizeGridToViewport"/> until both finish avoids two grid/PTY resizes (duplicate prompts).
+    /// </summary>
+    private bool _batchFontCaretApply;
+    /// <summary>Coalesces <see cref="ArrangeOverride"/>, font metrics, and DPI into one grid/PTY resize so layout flutter does not fire multiple SIGWINCH redraws (duplicate screen content).</summary>
+    private DispatcherTimer? _viewportResizeTimer;
 
     protected override int VisualChildrenCount => 2;
     protected override Visual GetVisualChild(int index) => index == 0 ? _textVisual : _cursorVisual;
@@ -31,11 +56,175 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         FocusVisualStyle = null;
         CanVerticallyScroll = true;
 
-        // Subscribe to theme changes so rendering updates colors
-        if (Application.Current is App app)
+        _blinkTimer = new DispatcherTimer();
+        _blinkTimer.Tick += (_, _) =>
         {
+            _caretVisible = !_caretVisible;
+            InvalidateVisual();
+        };
+
+        _font.FontChanged += OnFontMetricsChanged;
+
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+
+        if (Application.Current is App app)
             app.ThemeManager.ThemeChanged += OnThemeChanged;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e) => SyncFromActiveEditor();
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        _blinkTimer.Stop();
+        _viewportResizeTimer?.Stop();
+        _font.FontChanged -= OnFontMetricsChanged;
+        if (Application.Current is App app)
+            app.ThemeManager.ThemeChanged -= OnThemeChanged;
+    }
+
+    private void OnFontMetricsChanged()
+    {
+        InvalidateVisual();
+        // Line height affects IScrollInfo.ExtentHeight even when row/col count is unchanged — must refresh
+        // ScrollViewer or the scrollbar stays wrong and scrolling breaks after font changes.
+        ScrollOwner?.InvalidateScrollInfo();
+        if (!_batchFontCaretApply)
+            ScheduleTryResizeGridToViewport();
+    }
+
+    /// <summary>Match the active editor (live palette / zoom); fall back to <see cref="AppSettings.Editor"/> if none.</summary>
+    public void SyncFromActiveEditor()
+    {
+        if (Application.Current?.MainWindow is MainWindow mw && mw.Editor is { } ed)
+            SyncFromEditor(ed);
+        else
+            SyncFromAppSettings();
+    }
+
+    /// <summary>Apply font and caret from a specific editor instance (same metrics as that control).</summary>
+    public void SyncFromEditor(EditorControl editor)
+    {
+        ApplyFontAndCaret(
+            editor.FontFamilyName,
+            editor.EditorFontSize,
+            editor.EditorFontWeight,
+            editor.LineHeightMultiplier,
+            editor.BlockCaret,
+            editor.CaretBlinkMs);
+    }
+
+    /// <summary>Apply <see cref="AppSettings.Editor"/> font, line height, and caret style.</summary>
+    public void SyncFromAppSettings()
+    {
+        if (Application.Current is not App app) return;
+        var ed = app.Settings.Editor;
+        string family = ed.Font.Family ?? FontManager.DefaultFontFamily();
+        ApplyFontAndCaret(family, ed.Font.Size, ed.Font.Weight, ed.Font.LineHeight, ed.Caret.BlockCaret, ed.Caret.BlinkMs);
+    }
+
+    private void ApplyFontAndCaret(string fontFamily, double fontSize, string fontWeight, double lineHeight, bool blockCaret, int blinkMs)
+    {
+        FontWeight fw = FontWeights.Normal;
+        try
+        {
+            fw = (FontWeight)_fontWeightConverter.ConvertFromString(fontWeight)!;
         }
+        catch
+        {
+            fw = FontWeights.Normal;
+        }
+
+        double dpi = VisualTreeHelper.GetDpi(new DrawingVisual()).PixelsPerDip;
+        try
+        {
+            dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        }
+        catch
+        {
+            // keep DrawingVisual fallback
+        }
+
+        if (_fontCaretSnapshotValid
+            && string.Equals(_snapFontFamily, fontFamily, StringComparison.Ordinal)
+            && Math.Abs(_snapFontSize - fontSize) < 0.001
+            && _snapFontWeight == fw
+            && Math.Abs(_snapLineHeightMul - lineHeight) < 0.001
+            && _snapBlockCaret == blockCaret
+            && _snapBlinkMs == blinkMs
+            && Math.Abs(_snapDpi - dpi) < 0.0001)
+        {
+            return;
+        }
+
+        _batchFontCaretApply = true;
+        try
+        {
+            _font.Apply(fontFamily, fontSize, fw, dpi);
+            _font.LineHeightMultiplier = lineHeight;
+            _blockCaret = blockCaret;
+            ApplyCaretBlinkInterval(blinkMs);
+            InvalidateVisual();
+            ScrollOwner?.InvalidateScrollInfo();
+
+            _fontCaretSnapshotValid = true;
+            _snapFontFamily = fontFamily;
+            _snapFontSize = fontSize;
+            _snapFontWeight = fw;
+            _snapLineHeightMul = lineHeight;
+            _snapBlockCaret = blockCaret;
+            _snapBlinkMs = blinkMs;
+            _snapDpi = dpi;
+        }
+        finally
+        {
+            _batchFontCaretApply = false;
+            ScheduleTryResizeGridToViewport();
+        }
+    }
+
+    private void ApplyCaretBlinkInterval(int ms)
+    {
+        _caretBlinkMs = ms;
+        _blinkTimer.Stop();
+        if (ms > 0)
+        {
+            _blinkTimer.Interval = TimeSpan.FromMilliseconds(ms);
+            if (IsKeyboardFocused)
+                _blinkTimer.Start();
+        }
+        else
+        {
+            _caretVisible = true;
+            InvalidateVisual();
+        }
+    }
+
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    {
+        base.OnDpiChanged(oldDpi, newDpi);
+        _font.Dpi = newDpi.PixelsPerDip;
+        _fontCaretSnapshotValid = false;
+        InvalidateVisual();
+        ScrollOwner?.InvalidateScrollInfo();
+        ScheduleTryResizeGridToViewport();
+    }
+
+    protected override void OnGotKeyboardFocus(KeyboardFocusChangedEventArgs e)
+    {
+        base.OnGotKeyboardFocus(e);
+        _caretVisible = true;
+        if (_caretBlinkMs > 0)
+            _blinkTimer.Start();
+        InvalidateVisual();
+    }
+
+    protected override void OnLostKeyboardFocus(KeyboardFocusChangedEventArgs e)
+    {
+        base.OnLostKeyboardFocus(e);
+        _blinkTimer.Stop();
+        _caretVisible = false;
+        InvalidateVisual();
     }
 
     public TerminalGrid? Grid
@@ -62,21 +251,25 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
 
     private void OnThemeChanged(object? sender, EventArgs e) => InvalidateVisual();
 
-    protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+    private void ScheduleTryResizeGridToViewport()
     {
-        base.OnRenderSizeChanged(sizeInfo);
-        _resizeDebounce ??= new System.Windows.Threading.DispatcherTimer(
-            TimeSpan.FromMilliseconds(50),
-            System.Windows.Threading.DispatcherPriority.Background,
-            OnResizeTick,
+        _viewportResizeTimer ??= new DispatcherTimer(
+            TimeSpan.FromMilliseconds(25),
+            DispatcherPriority.Normal,
+            OnViewportResizeTick,
             Dispatcher);
-        _resizeDebounce.Stop();
-        _resizeDebounce.Start();
+        _viewportResizeTimer.Stop();
+        _viewportResizeTimer.Start();
     }
 
-    private void OnResizeTick(object? sender, EventArgs e)
+    private void OnViewportResizeTick(object? sender, EventArgs e)
     {
-        _resizeDebounce?.Stop();
+        _viewportResizeTimer?.Stop();
+        TryResizeGridToViewport();
+    }
+
+    private void TryResizeGridToViewport()
+    {
         if (_grid == null) return;
         double cellWidth = _font.CharWidth;
         double cellHeight = _font.LineHeight;
@@ -89,8 +282,16 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         if (cols != _grid.Cols || rows != _grid.Rows)
         {
             _grid.Resize(rows, cols);
+            // Font or viewport resize changes row/col count; keeping the copied screen would leave many
+            // blank rows below old content while the shell redraws after SIGWINCH (duplicate banner/prompt).
+            _grid.ClearMainScreenHome();
             SizeRequested?.Invoke(rows, cols);
         }
+
+        // Always notify ScrollViewer: ExtentHeight uses LineHeight × line count; font/viewport updates
+        // often leave row/col count the same but still change extent (or scroll data was never refreshed).
+        ScrollOwner?.InvalidateScrollInfo();
+        InvalidateVisual();
     }
 
     protected override void OnRender(DrawingContext dc)
@@ -215,25 +416,37 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     private void DrawCursor(DrawingContext dc, double cellWidth, double cellHeight)
     {
         if (_grid == null || !_grid.CursorVisible) return;
+        if (!IsKeyboardFocused) return;
+        if (_caretBlinkMs > 0 && !_caretVisible) return;
+
         var (r, c) = _grid.Cursor;
         if (r < 0 || r >= _grid.Rows || c < 0 || c >= _grid.Cols) return;
         int cursorLogicalLine = _grid.ScrollbackCount + r;
         double cursorY = cursorLogicalLine * cellHeight - _verticalOffset;
         if (cursorY + cellHeight < 0 || cursorY > ViewportHeightPx) return;
-        var rect = new Rect(c * cellWidth, cursorY, cellWidth, cellHeight);
-        // Bake the alpha into the color so the brush can be frozen
-        var fg = AnsiPalette.DefaultFg();
-        var cursorColor = Color.FromArgb(0x80, fg.R, fg.G, fg.B);
-        var br = new SolidColorBrush(cursorColor);
-        br.Freeze();
-        dc.DrawRectangle(br, null, rect);
+
+        double caretX = c * cellWidth;
+        var theme = (Application.Current as App)?.ThemeManager;
+        Brush caretBrush = theme?.CaretBrush ?? new SolidColorBrush(AnsiPalette.DefaultFg());
+
+        if (_blockCaret)
+        {
+            dc.DrawRectangle(caretBrush, null, new Rect(caretX, cursorY, cellWidth, cellHeight));
+            char g = _grid.CellAt(r, c).Glyph;
+            char ch = g == '\0' ? ' ' : g;
+            Brush hole = theme?.EditorBg ?? new SolidColorBrush(AnsiPalette.DefaultBg());
+            _font.DrawGlyphRun(dc, new string(ch, 1), 0, 1, caretX, cursorY, hole);
+        }
+        else
+        {
+            dc.DrawRectangle(caretBrush, null, new Rect(caretX, cursorY, BarCaretWidth, cellHeight));
+        }
     }
 
     public event Action<byte[]>? InputBytes; // raised when bytes should go to pty
     public event Action<int, int>? SizeRequested; // (rows, cols) fired after grid.Resize
 
     private readonly HashSet<(Key key, ModifierKeys mods)> _allowlist = new();
-    private System.Windows.Threading.DispatcherTimer? _resizeDebounce;
 
     /// <summary>
     /// Register a Volt-global shortcut that should bubble past the terminal
@@ -255,17 +468,29 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
 
     protected override Size MeasureOverride(Size availableSize)
     {
+        // Only treat finite constraints as the viewport — infinity is common before the
+        // parent has a size; do not use a fake height here or TryResizeGridToViewport could
+        // briefly match the wrong row count before Arrange runs.
+        if (!double.IsInfinity(availableSize.Width) && availableSize.Width > 0
+            && !double.IsInfinity(availableSize.Height) && availableSize.Height > 0)
+        {
+            _viewport = new Size(availableSize.Width, availableSize.Height);
+        }
+
+        ScrollOwner?.InvalidateScrollInfo();
         double w = double.IsInfinity(availableSize.Width) ? 400 : availableSize.Width;
         double h = double.IsInfinity(availableSize.Height) ? 300 : availableSize.Height;
-        _viewport = new Size(w, h);
-        ScrollOwner?.InvalidateScrollInfo();
-        return _viewport;
+        return new Size(w, h);
     }
 
     protected override Size ArrangeOverride(Size finalSize)
     {
         _viewport = finalSize;
         ScrollOwner?.InvalidateScrollInfo();
+        // Grid + PTY size must follow the arranged viewport (not a debounced RenderSize tick),
+        // otherwise we can resize to a stale height between measure and arrange and confuse
+        // the shell (duplicate reflow / spurious scroll extent).
+        ScheduleTryResizeGridToViewport();
         return finalSize;
     }
 
@@ -328,6 +553,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     {
         base.OnMouseLeftButtonDown(e);
         Focus();
+        Keyboard.Focus(this);
     }
 
     protected override void OnMouseWheel(MouseWheelEventArgs e)

@@ -29,13 +29,13 @@ public class FontManager
     public string FontFamilyName
     {
         get => _monoTypeface.FontFamily.Source;
-        set => Apply(value, _fontSize, _fontWeight);
+        set => Apply(value, _fontSize, _fontWeight, null);
     }
 
     public double EditorFontSize
     {
         get => _fontSize;
-        set => Apply(_monoTypeface.FontFamily.Source, value, _fontWeight);
+        set => Apply(_monoTypeface.FontFamily.Source, value, _fontWeight, null);
     }
 
     public double LineHeightMultiplier
@@ -57,11 +57,11 @@ public class FontManager
             try
             {
                 var fw = (FontWeight)_fontWeightConverter.ConvertFromString(value)!;
-                Apply(_monoTypeface.FontFamily.Source, _fontSize, fw);
+                Apply(_monoTypeface.FontFamily.Source, _fontSize, fw, null);
             }
             catch (Exception)
             {
-                Apply(_monoTypeface.FontFamily.Source, _fontSize, FontWeights.Normal);
+                Apply(_monoTypeface.FontFamily.Source, _fontSize, FontWeights.Normal, null);
             }
         }
     }
@@ -78,18 +78,20 @@ public class FontManager
 
     public FontManager()
     {
-        Apply(DefaultFontFamily(), DefaultFontSize, FontWeights.Normal);
+        Apply(DefaultFontFamily(), DefaultFontSize, FontWeights.Normal, null);
     }
 
-    public void Apply(string familyName, double size, FontWeight weight)
+    /// <param name="dpiOverride">When set, used for metric layout instead of querying a <see cref="DrawingVisual"/>.</param>
+    public void Apply(string familyName, double size, FontWeight weight, double? dpiOverride = null)
     {
         if (_monoTypeface != null! && familyName == _monoTypeface.FontFamily.Source
-            && Math.Abs(size - _fontSize) < 0.001 && weight == _fontWeight) return;
+            && Math.Abs(size - _fontSize) < 0.001 && weight == _fontWeight
+            && (dpiOverride == null || Math.Abs(Dpi - dpiOverride.Value) < 0.0001)) return;
         BeforeFontChanged?.Invoke();
         _fontWeight = weight;
         _monoTypeface = new Typeface(new FontFamily(familyName), FontStyles.Normal, weight, FontStretches.Normal);
         _fontSize = size;
-        Dpi = VisualTreeHelper.GetDpi(new DrawingVisual()).PixelsPerDip;
+        Dpi = dpiOverride ?? VisualTreeHelper.GetDpi(new DrawingVisual()).PixelsPerDip;
 
         GlyphTypeface? gt = null;
         if (!_monoTypeface.TryGetGlyphTypeface(out gt))

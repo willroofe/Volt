@@ -32,6 +32,8 @@ public sealed class TerminalSession : IDisposable
     private readonly string _shellExe;
     private readonly string? _args;
     private readonly string _cwd;
+    private short _ptyRows;
+    private short _ptyCols;
 
     /// <summary>Process working directory passed to the pseudoconsole.</summary>
     public string WorkingDirectory => _cwd;
@@ -64,15 +66,19 @@ public sealed class TerminalSession : IDisposable
 
     private void OnViewSizeRequested(int rows, int cols)
     {
+        short r = (short)rows, c = (short)cols;
         if (Pty == null)
         {
             // First layout — spawn the pty with the actual view size
-            StartPty((short)rows, (short)cols);
+            StartPty(r, c);
         }
         else
         {
-            // Subsequent resize — forward to the running pty
-            Pty.Resize((short)rows, (short)cols);
+            // Skip identical dimensions — ResizePseudoConsole still nudges PSReadLine to redraw.
+            if (r == _ptyRows && c == _ptyCols) return;
+            _ptyRows = r;
+            _ptyCols = c;
+            Pty.Resize(r, c);
         }
     }
 
@@ -83,6 +89,8 @@ public sealed class TerminalSession : IDisposable
         pty.Exited += code => Exited?.Invoke(code);
         Dispatcher.ResponseRequested += resp => pty.Write(resp);
         Pty = pty;
+        _ptyRows = rows;
+        _ptyCols = cols;
     }
 
     public void Dispose()

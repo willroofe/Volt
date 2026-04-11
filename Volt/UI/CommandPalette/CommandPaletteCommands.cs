@@ -38,7 +38,8 @@ internal record CommandPaletteContext(
     Action CheckForUpdates,
     Action OpenRecent,
     Action<string?> SetLanguage,
-    TerminalActions Terminal);
+    TerminalActions Terminal,
+    Action SyncTerminalFromActiveEditor);
 
 /// <summary>
 /// Builds the command list for the command palette, keeping the 90 lines of
@@ -59,6 +60,7 @@ internal static class CommandPaletteCommands
         var explorer = ctx.Explorer;
         var workspace = ctx.Workspace;
         var toggleWordWrap = ctx.ToggleWordWrap;
+        void syncTerm() => ctx.SyncTerminalFromActiveEditor();
         return
         [
             new("Change Theme", CurrentValue: () => settings.Application.ColorTheme, GetOptions: () =>
@@ -77,9 +79,17 @@ internal static class CommandPaletteCommands
                 var original = activeEditor.EditorFontSize;
                 return AppSettings.FontSizeOptions.Select(size => new PaletteOption(
                     size.ToString(),
-                    ApplyPreview: () => { foreach (var t in tabs) t.Editor.EditorFontSize = size; },
-                    Commit: () => { settings.Editor.Font.Size = size; saveSettings(); },
-                    Revert: () => { foreach (var t in tabs) t.Editor.EditorFontSize = original; }
+                    ApplyPreview: () =>
+                    {
+                        foreach (var t in tabs) t.Editor.EditorFontSize = size;
+                        syncTerm();
+                    },
+                    Commit: () => { settings.Editor.Font.Size = size; saveSettings(); syncTerm(); },
+                    Revert: () =>
+                    {
+                        foreach (var t in tabs) t.Editor.EditorFontSize = original;
+                        syncTerm();
+                    }
                 )).ToList();
             }),
 
@@ -88,9 +98,17 @@ internal static class CommandPaletteCommands
                 var original = activeEditor.FontFamilyName;
                 return FontManager.GetMonospaceFonts().Select(name => new PaletteOption(
                     name,
-                    ApplyPreview: () => { foreach (var t in tabs) t.Editor.FontFamilyName = name; },
-                    Commit: () => { settings.Editor.Font.Family = name; saveSettings(); },
-                    Revert: () => { foreach (var t in tabs) t.Editor.FontFamilyName = original; }
+                    ApplyPreview: () =>
+                    {
+                        foreach (var t in tabs) t.Editor.FontFamilyName = name;
+                        syncTerm();
+                    },
+                    Commit: () => { settings.Editor.Font.Family = name; saveSettings(); syncTerm(); },
+                    Revert: () =>
+                    {
+                        foreach (var t in tabs) t.Editor.FontFamilyName = original;
+                        syncTerm();
+                    }
                 )).ToList();
             }),
 
@@ -99,9 +117,17 @@ internal static class CommandPaletteCommands
                 var original = activeEditor.EditorFontWeight;
                 return AppSettings.FontWeightOptions.Select(w => new PaletteOption(
                     w,
-                    ApplyPreview: () => { foreach (var t in tabs) t.Editor.EditorFontWeight = w; },
-                    Commit: () => { settings.Editor.Font.Weight = w; saveSettings(); },
-                    Revert: () => { foreach (var t in tabs) t.Editor.EditorFontWeight = original; }
+                    ApplyPreview: () =>
+                    {
+                        foreach (var t in tabs) t.Editor.EditorFontWeight = w;
+                        syncTerm();
+                    },
+                    Commit: () => { settings.Editor.Font.Weight = w; saveSettings(); syncTerm(); },
+                    Revert: () =>
+                    {
+                        foreach (var t in tabs) t.Editor.EditorFontWeight = original;
+                        syncTerm();
+                    }
                 )).ToList();
             }),
 
@@ -110,9 +136,17 @@ internal static class CommandPaletteCommands
                 var original = activeEditor.LineHeightMultiplier;
                 return AppSettings.LineHeightOptions.Select(lh => new PaletteOption(
                     lh.ToString("0.0") + "x",
-                    ApplyPreview: () => { foreach (var t in tabs) t.Editor.LineHeightMultiplier = lh; },
-                    Commit: () => { settings.Editor.Font.LineHeight = lh; saveSettings(); },
-                    Revert: () => { foreach (var t in tabs) t.Editor.LineHeightMultiplier = original; }
+                    ApplyPreview: () =>
+                    {
+                        foreach (var t in tabs) t.Editor.LineHeightMultiplier = lh;
+                        syncTerm();
+                    },
+                    Commit: () => { settings.Editor.Font.LineHeight = lh; saveSettings(); syncTerm(); },
+                    Revert: () =>
+                    {
+                        foreach (var t in tabs) t.Editor.LineHeightMultiplier = original;
+                        syncTerm();
+                    }
                 )).ToList();
             }),
 
@@ -136,6 +170,7 @@ internal static class CommandPaletteCommands
                     t.Editor.InvalidateVisual();
                 }
                 saveSettings();
+                syncTerm();
             }),
 
             new("Toggle Word Wrap", Action: toggleWordWrap),
