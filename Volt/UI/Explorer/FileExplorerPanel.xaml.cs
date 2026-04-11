@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using DataFormats = System.Windows.DataFormats;
 using System.Windows.Threading;
 using Microsoft.VisualBasic.FileIO;
 
@@ -88,6 +89,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
         ExplorerTree.DeleteRequested += OnDeleteRequested;
         ExplorerTree.UndoRequested += Undo;
         ExplorerTree.RedoRequested += Redo;
+        ExplorerTree.PasteRequested += TryPasteFromClipboard;
         ExplorerTree.NavigateAboveFirst += () => FocusSearch();
         PreviewKeyDown += OnPanelPreviewKeyDown;
         CleanOrphanedStagingDir();
@@ -354,12 +356,22 @@ public partial class FileExplorerPanel : UserControl, IPanel
             {
                 menu.Items.Add(ContextMenuHelper.Item("New File", () => DoNewFile(targetDir)));
                 menu.Items.Add(ContextMenuHelper.Item("New Folder", () => DoNewFolder(targetDir)));
+                if (ClipboardHasFileDropList())
+                {
+                    menu.Items.Add(ContextMenuHelper.Separator());
+                    menu.Items.Add(ContextMenuHelper.Item("Paste", "\uE77F", () => TryPasteFromClipboard()));
+                }
+                if (Directory.Exists(targetDir))
+                {
+                    menu.Items.Add(ContextMenuHelper.Separator());
+                    menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
+                        () => FileHelper.RevealInFileExplorer(targetDir)));
+                }
             }
             if (_workspaceManager?.CurrentWorkspace != null)
             {
                 if (menu.Items.Count > 0) menu.Items.Add(ContextMenuHelper.Separator());
                 menu.Items.Add(ContextMenuHelper.Item("Add Folder to Workspace", "\uE710", () => AddFolderRequested?.Invoke()));
-                menu.Items.Add(ContextMenuHelper.Separator());
                 menu.Items.Add(ContextMenuHelper.Item("Close Workspace", "\uE711", () => CloseWorkspaceRequested?.Invoke()));
             }
             else if (_openFolderPath != null)
@@ -367,21 +379,18 @@ public partial class FileExplorerPanel : UserControl, IPanel
                 if (menu.Items.Count > 0) menu.Items.Add(ContextMenuHelper.Separator());
                 menu.Items.Add(ContextMenuHelper.Item("Close Folder", "\uE711", () => CloseFolderRequested?.Invoke()));
             }
-
-            if (targetDir != null && Directory.Exists(targetDir))
-            {
-                if (menu.Items.Count > 0) menu.Items.Add(ContextMenuHelper.Separator());
-                menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
-                    () => FileHelper.RevealInFileExplorer(targetDir)));
-            }
         }
         else if (item.IsDirectory)
         {
+            menu.Items.Add(ContextMenuHelper.Item("New File", () => DoNewFile(item.FullPath)));
+            menu.Items.Add(ContextMenuHelper.Item("New Folder", () => DoNewFolder(item.FullPath)));
+            menu.Items.Add(ContextMenuHelper.Separator());
             menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
                 () => FileHelper.RevealInFileExplorer(item.FullPath)));
             menu.Items.Add(ContextMenuHelper.Separator());
-            menu.Items.Add(ContextMenuHelper.Item("New File", () => DoNewFile(item.FullPath)));
-            menu.Items.Add(ContextMenuHelper.Item("New Folder", () => DoNewFolder(item.FullPath)));
+            menu.Items.Add(ContextMenuHelper.Item("Copy", "\uE8C8", () => CopyPathsToClipboard(item.FullPath)));
+            if (ClipboardHasFileDropList())
+                menu.Items.Add(ContextMenuHelper.Item("Paste", "\uE77F", () => TryPasteFromClipboard()));
             if (!IsRootFolder(item))
             {
                 menu.Items.Add(ContextMenuHelper.Separator());
@@ -397,6 +406,10 @@ public partial class FileExplorerPanel : UserControl, IPanel
         else
         {
             // File item
+            menu.Items.Add(ContextMenuHelper.Item("Copy", "\uE8C8", () => CopyPathsToClipboard(item.FullPath)));
+            if (ClipboardHasFileDropList())
+                menu.Items.Add(ContextMenuHelper.Item("Paste", "\uE77F", () => TryPasteFromClipboard()));
+            menu.Items.Add(ContextMenuHelper.Separator());
             menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
                 () => FileHelper.RevealInFileExplorer(item.FullPath)));
             menu.Items.Add(ContextMenuHelper.Separator());
@@ -422,6 +435,150 @@ public partial class FileExplorerPanel : UserControl, IPanel
         if (_workspaceManager?.CurrentWorkspace?.Folders is { Count: > 0 } folders)
             return folders[0];
         return null;
+    }
+
+    private string? GetPasteTargetDirectory()
+    {
+        var sel = ExplorerTree.SelectedItem;
+        if (sel == null || string.IsNullOrEmpty(sel.FullPath)) return GetRootDirectory();
+        if (sel.IsDirectory) return sel.FullPath;
+        return Path.GetDirectoryName(sel.FullPath);
+    }
+
+    private static bool ClipboardHasFileDropList()
+    {
+        try
+        {
+            return Clipboard.GetDataObject()?.GetDataPresent(DataFormats.FileDrop) == true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void CopyPathsToClipboard(string fullPath)
+    {
+        try
+        {
+            Clipboard.SetDataObject(new DataObject(DataFormats.FileDrop, new[] { fullPath }), copy: true);
+        }
+        catch { /* clipboard busy */ }
+    }
+
+    private void TryPasteFromClipboard()
+    {
+        string[]? paths;
+        try
+        {
+            var data = Clipboard.GetDataObject();
+            if (data?.GetDataPresent(DataFormats.FileDrop) != true) return;
+            paths = data.GetData(DataFormats.FileDrop) as string[];
+        }
+        catch
+        {
+            return;
+        }
+        if (paths is not { Length: > 0 }) return;
+
+        var targetDir = GetPasteTargetDirectory();
+        if (string.IsNullOrEmpty(targetDir) || !Directory.Exists(targetDir)) return;
+
+        var targetNorm = Path.TrimEndingDirectorySeparator(Path.GetFullPath(targetDir));
+        var owner = Window.GetWindow(this);
+
+        foreach (var src in paths)
+        {
+            if (string.IsNullOrWhiteSpace(src)) continue;
+            string fullSrc;
+            try { fullSrc = Path.GetFullPath(src); }
+            catch { continue; }
+
+            if (!File.Exists(fullSrc) && !Directory.Exists(fullSrc)) continue;
+
+            if (Directory.Exists(fullSrc))
+            {
+                var srcNorm = Path.TrimEndingDirectorySeparator(fullSrc);
+                if (string.Equals(targetNorm, srcNorm, StringComparison.OrdinalIgnoreCase)) continue;
+                if (targetNorm.StartsWith(srcNorm + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) continue;
+            }
+
+            try
+            {
+                if (File.Exists(fullSrc))
+                    PasteFileIntoDirectory(fullSrc, targetNorm);
+                else
+                    PasteDirectoryIntoDirectory(fullSrc, targetNorm);
+            }
+            catch (Exception ex)
+            {
+                if (owner != null)
+                    ThemedMessageBox.Show(owner, ex.Message, "Paste Failed");
+                break;
+            }
+        }
+    }
+
+    private void PasteFileIntoDirectory(string sourceFile, string targetDir)
+    {
+        var dest = GetNonCollidingFilePathInDirectory(targetDir, sourceFile);
+        File.Copy(sourceFile, dest, overwrite: false);
+        PushUndo(new FileOperation(FileOperationKind.CreateFile, dest, null));
+    }
+
+    private void PasteDirectoryIntoDirectory(string sourceDir, string targetDir)
+    {
+        var destRoot = GetNonCollidingDirectoryPathInDirectory(targetDir, sourceDir);
+        CopyDirectoryRecursive(sourceDir, destRoot);
+        PushUndo(new FileOperation(FileOperationKind.CreateFolder, destRoot, null));
+    }
+
+    private static void CopyDirectoryRecursive(string sourceDir, string destDir)
+    {
+        Directory.CreateDirectory(destDir);
+        foreach (var file in Directory.GetFiles(sourceDir))
+        {
+            var name = Path.GetFileName(file);
+            File.Copy(file, Path.Combine(destDir, name), overwrite: false);
+        }
+        foreach (var sub in Directory.GetDirectories(sourceDir))
+        {
+            var name = Path.GetFileName(sub);
+            CopyDirectoryRecursive(sub, Path.Combine(destDir, name));
+        }
+    }
+
+    /// <summary>Resolves a destination file path under <paramref name="targetDir"/> that does not exist yet.</summary>
+    private static string GetNonCollidingFilePathInDirectory(string targetDir, string sourceFilePath)
+    {
+        var leaf = Path.GetFileName(sourceFilePath);
+        if (string.IsNullOrEmpty(leaf)) leaf = "file";
+        var candidate = Path.Combine(targetDir, leaf);
+        if (!File.Exists(candidate) && !Directory.Exists(candidate)) return candidate;
+        var baseName = Path.GetFileNameWithoutExtension(leaf);
+        var ext = Path.GetExtension(leaf);
+        candidate = Path.Combine(targetDir, $"{baseName} - Copy{ext}");
+        if (!File.Exists(candidate) && !Directory.Exists(candidate)) return candidate;
+        for (var i = 2; ; i++)
+        {
+            candidate = Path.Combine(targetDir, $"{baseName} - Copy ({i}){ext}");
+            if (!File.Exists(candidate) && !Directory.Exists(candidate)) return candidate;
+        }
+    }
+
+    private static string GetNonCollidingDirectoryPathInDirectory(string targetDir, string sourceDirPath)
+    {
+        var leaf = Path.GetFileName(Path.TrimEndingDirectorySeparator(sourceDirPath));
+        if (string.IsNullOrEmpty(leaf)) leaf = "Folder";
+        var candidate = Path.Combine(targetDir, leaf);
+        if (!Directory.Exists(candidate) && !File.Exists(candidate)) return candidate;
+        candidate = Path.Combine(targetDir, $"{leaf} - Copy");
+        if (!Directory.Exists(candidate) && !File.Exists(candidate)) return candidate;
+        for (var i = 2; ; i++)
+        {
+            candidate = Path.Combine(targetDir, $"{leaf} - Copy ({i})");
+            if (!Directory.Exists(candidate) && !File.Exists(candidate)) return candidate;
+        }
     }
 
     private void DoNewFile(string parentDir) => CreateFileSystemItem(parentDir, isDirectory: false);
