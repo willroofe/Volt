@@ -38,6 +38,8 @@ dotnet run --project Volt/Volt.csproj
 
 Download the latest installer from [GitHub Releases](https://github.com/willroofe/Volt/releases). The app auto-updates when new versions are published.
 
+Maintainers: see [docs/RELEASE.md](docs/RELEASE.md) for the Velopack build and publish workflow.
+
 ## License
 
 [MIT](LICENSE)

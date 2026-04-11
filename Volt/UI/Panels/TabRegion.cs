@@ -209,16 +209,15 @@ public partial class TabRegion : UserControl
 
         MouseButtonEventHandler onMouseLeftButtonUp = (sender, _) => CancelDragTracking(sender);
 
-        // Context menu created lazily on first right-click, then reused
         MouseButtonEventHandler onMouseRightButtonUp = (_, e) =>
         {
-            if (header.ContextMenu == null)
-            {
-                var menu = ContextMenuHelper.Create();
-                menu.Items.Add(ContextMenuHelper.Item("Close", () => PanelClosed?.Invoke(container.PanelId)));
-                header.ContextMenu = menu;
-            }
-            header.ContextMenu.IsOpen = true;
+            var menu = ContextMenuHelper.Create();
+            container.Panel.AppendTabContextMenuItems(menu);
+            if (menu.Items.Count > 0)
+                menu.Items.Add(ContextMenuHelper.Separator());
+            menu.Items.Add(ContextMenuHelper.Item("Close", () => PanelClosed?.Invoke(container.PanelId)));
+            header.ContextMenu = menu;
+            menu.IsOpen = true;
             e.Handled = true;
         };
 

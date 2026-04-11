@@ -42,6 +42,32 @@ public partial class FileExplorerPanel : UserControl, IPanel
     public new UIElement Content => this;
     public event Action? TitleChanged;
 
+    public void AppendTabContextMenuItems(ContextMenu menu)
+    {
+        var path = ExplorerTree.SelectedItem?.FullPath;
+        if (string.IsNullOrEmpty(path))
+        {
+            path = _openFolderPath;
+            if (string.IsNullOrEmpty(path) && _workspaceManager?.CurrentWorkspace?.Folders is { Count: > 0 } folders)
+            {
+                foreach (var f in folders)
+                {
+                    if (Directory.Exists(f))
+                    {
+                        path = f;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (string.IsNullOrEmpty(path) || (!File.Exists(path) && !Directory.Exists(path)))
+            return;
+
+        menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
+            () => FileHelper.RevealInFileExplorer(path)));
+    }
+
     private string _title = "Explorer";
 
     private void SetTitle(string title)
@@ -341,9 +367,19 @@ public partial class FileExplorerPanel : UserControl, IPanel
                 if (menu.Items.Count > 0) menu.Items.Add(ContextMenuHelper.Separator());
                 menu.Items.Add(ContextMenuHelper.Item("Close Folder", "\uE711", () => CloseFolderRequested?.Invoke()));
             }
+
+            if (targetDir != null && Directory.Exists(targetDir))
+            {
+                if (menu.Items.Count > 0) menu.Items.Add(ContextMenuHelper.Separator());
+                menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
+                    () => FileHelper.RevealInFileExplorer(targetDir)));
+            }
         }
         else if (item.IsDirectory)
         {
+            menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
+                () => FileHelper.RevealInFileExplorer(item.FullPath)));
+            menu.Items.Add(ContextMenuHelper.Separator());
             menu.Items.Add(ContextMenuHelper.Item("New File", () => DoNewFile(item.FullPath)));
             menu.Items.Add(ContextMenuHelper.Item("New Folder", () => DoNewFolder(item.FullPath)));
             if (!IsRootFolder(item))
@@ -361,6 +397,9 @@ public partial class FileExplorerPanel : UserControl, IPanel
         else
         {
             // File item
+            menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
+                () => FileHelper.RevealInFileExplorer(item.FullPath)));
+            menu.Items.Add(ContextMenuHelper.Separator());
             menu.Items.Add(ContextMenuHelper.Item("Rename", "\uE70F", () => DoRename(item)));
             menu.Items.Add(ContextMenuHelper.Item("Delete", "\uE74D", () => DoDelete(item)));
         }

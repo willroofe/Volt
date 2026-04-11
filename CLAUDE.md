@@ -31,6 +31,10 @@ dotnet run -c Release --project Volt.Benchmarks -- --filter *Tokenize*   # speci
 dotnet run -c Release --project Volt.Benchmarks -- --list flat            # list available
 ```
 
+## Releases
+
+Packaging, GitHub upload, and release-note conventions live in **`docs/RELEASE.md`**. Use `@docs/RELEASE.md` when preparing a Velopack/GitHub release.
+
 ## Architecture
 
 **Three-project solution** — one WPF application (`Volt/`), one xUnit test project (`Volt.Tests/`), one benchmark project (`Volt.Benchmarks/`). The main project is organized into subdirectories:
