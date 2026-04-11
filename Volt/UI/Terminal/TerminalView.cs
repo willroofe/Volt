@@ -25,6 +25,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     private readonly DispatcherTimer _blinkTimer;
     private static readonly FontWeightConverter _fontWeightConverter = new();
     private const double BarCaretWidth = 1;
+    private const double OutputPaddingLeft = 6; // gap from left edge to first glyph column
 
     /// <summary>Last font/caret inputs applied to <see cref="_font"/> — avoids redundant Apply + PTY resize when settings are saved but editor appearance did not change.</summary>
     private bool _fontCaretSnapshotValid;
@@ -277,7 +278,8 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         double vw = ViewportWidthPx;
         double vh = ViewportHeightPx;
         if (vw <= 0 || vh <= 0) return;
-        int cols = Math.Max(1, (int)(vw / cellWidth));
+        double drawableW = Math.Max(cellWidth, vw - OutputPaddingLeft);
+        int cols = Math.Max(1, (int)(drawableW / cellWidth));
         int rows = Math.Max(1, (int)(vh / cellHeight));
         if (cols != _grid.Cols || rows != _grid.Rows)
         {
@@ -383,7 +385,8 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
                 var bgColor = bg < -1 ? AnsiPalette.ResolveTrueColor(_grid.GetTrueColor(bg)) : AnsiPalette.ResolveDefault(bg);
                 var bgBrush = new SolidColorBrush(bgColor);
                 bgBrush.Freeze();
-                dc.DrawRectangle(bgBrush, null, new Rect(runStart * cellWidth, y, runLen * cellWidth, cellHeight));
+                dc.DrawRectangle(bgBrush, null,
+                    new Rect(OutputPaddingLeft + runStart * cellWidth, y, runLen * cellWidth, cellHeight));
             }
 
             // Resolve foreground brush
@@ -409,7 +412,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
             }
             var str = new string(chars);
 
-            _font.DrawGlyphRun(dc, str, 0, runLen, runStart * cellWidth, y, fgBrush);
+            _font.DrawGlyphRun(dc, str, 0, runLen, OutputPaddingLeft + runStart * cellWidth, y, fgBrush);
         }
     }
 
@@ -425,7 +428,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         double cursorY = cursorLogicalLine * cellHeight - _verticalOffset;
         if (cursorY + cellHeight < 0 || cursorY > ViewportHeightPx) return;
 
-        double caretX = c * cellWidth;
+        double caretX = OutputPaddingLeft + c * cellWidth;
         var theme = (Application.Current as App)?.ThemeManager;
         Brush caretBrush = theme?.CaretBrush ?? new SolidColorBrush(AnsiPalette.DefaultFg());
 
