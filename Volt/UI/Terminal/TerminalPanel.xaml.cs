@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 
@@ -56,7 +57,9 @@ public partial class TerminalPanel : UserControl, IPanel
         }).ToList();
     }
 
-    public void NewSession(string? cwd = null)
+    /// <param name="cwd">Starting directory; null uses workspace/file rules.</param>
+    /// <param name="shellPreference">When set, starts that shell for this tab only (does not change settings).</param>
+    internal void NewSession(string? cwd = null, TerminalShellPreference? shellPreference = null)
     {
         // DIAGNOSTIC: write a VT trace to %TEMP%/volt-terminal-trace.log for this session
         var tracePath = Path.Combine(Path.GetTempPath(), "volt-terminal-trace.log");
@@ -66,18 +69,29 @@ public partial class TerminalPanel : UserControl, IPanel
         var app = Application.Current as App;
         var editor = app?.Settings.Editor;
 
-        var shell = editor?.TerminalShellPath;
-        if (string.IsNullOrEmpty(shell))
+        string shell;
+        string? args;
+        if (shellPreference is { } pick)
         {
-            shell = ResolveDefaultShell();
-            if (editor != null)
-            {
-                editor.TerminalShellPath = shell;
-                app!.Settings.Save();
-            }
+            shell = ResolveShellPath(pick);
+            var configuredKind = ClassifyShellPath(editor?.TerminalShellPath);
+            args = configuredKind == pick ? editor?.TerminalShellArgs : null;
         }
+        else
+        {
+            shell = editor?.TerminalShellPath ?? "";
+            if (string.IsNullOrEmpty(shell))
+            {
+                shell = ResolveDefaultShell();
+                if (editor != null)
+                {
+                    editor.TerminalShellPath = shell;
+                    app!.Settings.Save();
+                }
+            }
 
-        var args = editor?.TerminalShellArgs;
+            args = editor?.TerminalShellArgs;
+        }
         int scrollback = editor?.TerminalScrollbackLines ?? 10_000;
         var startDir = cwd ?? ResolveStartingDirectory();
 
@@ -221,6 +235,18 @@ public partial class TerminalPanel : UserControl, IPanel
     }
 
     private void OnAddClicked(object sender, RoutedEventArgs e) => NewSession();
+
+    private void OnShellPickerClicked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn) return;
+        var menu = ContextMenuHelper.Create();
+        menu.Placement = PlacementMode.Bottom;
+        menu.PlacementTarget = btn;
+        menu.PlacementRectangle = new Rect(0, btn.ActualHeight, btn.ActualWidth, 0);
+        menu.Items.Add(ContextMenuHelper.Item("PowerShell", "\uE756", () => NewSession(shellPreference: TerminalShellPreference.PowerShell)));
+        menu.Items.Add(ContextMenuHelper.Item("Command Prompt", "\uE756", () => NewSession(shellPreference: TerminalShellPreference.CommandPrompt)));
+        menu.IsOpen = true;
+    }
 
     private static string ResolveDefaultShell()
     {
