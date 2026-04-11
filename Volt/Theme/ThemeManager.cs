@@ -30,6 +30,7 @@ public class ThemeManager
     public Brush FindMatchCurrentBrush { get; private set; } = Brushes.Orange;
     public Pen IndentGuidePen { get; private set; } = new Pen(Brushes.Gray, 1);
     public Brush FoldHoverBrush { get; private set; } = Brushes.DarkGray;
+    public TerminalColors TerminalColors => _colorTheme.Terminal;
 
     private bool _initialized;
 

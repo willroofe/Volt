@@ -11,7 +11,8 @@ public record SyntaxToken(int Start, int Length, string Scope);
 /// <param name="BlockCommentIndex">Index into grammar's BlockComments list, or -1 if not in a block comment.</param>
 public record LineState(char? OpenQuote, int BlockCommentIndex = -1,
     string? HeredocDelimiter = null, bool HeredocInterpolate = true,
-    char? OpenRegexDelimiter = null, int RegexClosesNeeded = 0);
+    char? OpenRegexDelimiter = null, int RegexClosesNeeded = 0,
+    bool HeredocIndented = false);
 
 public class SyntaxManager
 {
@@ -60,11 +61,8 @@ public class SyntaxManager
         outState = DefaultState;
         if (grammar == null) return [];
 
-        // Handle full-line continuation states (block comment, heredoc, regex)
-        var result = TryTokenizeBlockComment(line, grammar, inState, ref outState);
-        if (result != null) return result;
-
-        result = TryTokenizeHeredocContinuation(line, grammar, inState, ref outState);
+        // Handle full-line continuation states (heredoc)
+        var result = TryTokenizeHeredocContinuation(line, grammar, inState, ref outState);
         if (result != null) return result;
 
         _claimedBuf ??= new bool[Math.Max(line.Length, 256)];
@@ -76,8 +74,13 @@ public class SyntaxManager
         var tokens = new List<SyntaxToken>(8);
         int ruleStart = 0;
 
+        // Handle block comment continuation (may end mid-line, leaving rest for normal tokenization)
+        ruleStart = ContinueBlockComment(line, grammar, inState, tokens, claimed, ref outState);
+        if (ruleStart < 0) return tokens; // entire line is inside a block comment
+
         // Handle partial-line continuations (regex close, string close)
-        ruleStart = ContinueOpenRegex(line, inState, tokens, claimed, ref outState);
+        int regexEnd = ContinueOpenRegex(line, inState, tokens, claimed, ref outState);
+        if (regexEnd > ruleStart) ruleStart = regexEnd;
         ruleStart = ContinueOpenString(line, inState, tokens, claimed, ruleStart, ref outState);
         if (outState.OpenQuote != null && ruleStart == 0)
         {
@@ -86,6 +89,10 @@ public class SyntaxManager
                 tokens = ExpandInterpolation(tokens, line, grammar.Interpolation);
             return tokens;
         }
+
+        // Check if this line starts a block comment
+        if (DetectBlockCommentStart(line, grammar, tokens, claimed, ref outState))
+            return tokens;
 
         // Apply grammar rules and claim tokens
         ApplyGrammarRules(line, grammar, ruleStart, tokens, claimed);
@@ -101,40 +108,81 @@ public class SyntaxManager
         return tokens;
     }
 
-    private List<SyntaxToken>? TryTokenizeBlockComment(string line, SyntaxDefinition grammar, LineState inState, ref LineState outState)
+    /// <summary>
+    /// Handles block comment continuation. Returns the position where normal tokenization
+    /// should start, or -1 if the entire line is inside a block comment.
+    /// </summary>
+    private int ContinueBlockComment(string line, SyntaxDefinition grammar, LineState inState,
+        List<SyntaxToken> tokens, bool[] claimed, ref LineState outState)
     {
         var bcs = grammar.BlockComments;
+        if (inState.BlockCommentIndex < 0 || bcs == null || inState.BlockCommentIndex >= bcs.Count)
+            return 0;
 
-        // Continue existing block comment
-        if (inState.BlockCommentIndex >= 0 && bcs != null && inState.BlockCommentIndex < bcs.Count)
+        var bc = bcs[inState.BlockCommentIndex];
+        if (bc.EndRegex != null)
         {
-            var bc = bcs[inState.BlockCommentIndex];
-            bool endsBlock = bc.EndRegex != null && bc.EndRegex.IsMatch(line);
-            outState = endsBlock ? DefaultState : inState;
-            return line.Length > 0 ? [new SyntaxToken(0, line.Length, bc.Scope)] : [];
-        }
-
-        // Check if this line starts a block comment
-        if (bcs != null)
-        {
-            for (int i = 0; i < bcs.Count; i++)
+            var endMatch = bc.EndRegex.Match(line);
+            if (endMatch.Success)
             {
-                if (bcs[i].StartRegex is { } startRx && startRx.IsMatch(line))
+                outState = DefaultState;
+                int end = endMatch.Index + endMatch.Length;
+                if (end > 0)
                 {
-                    outState = new LineState(null, i);
-                    return line.Length > 0 ? [new SyntaxToken(0, line.Length, bcs[i].Scope)] : [];
+                    tokens.Add(new SyntaxToken(0, end, bc.Scope));
+                    for (int i = 0; i < end && i < line.Length; i++) claimed[i] = true;
                 }
+                return end; // rest of line gets normal tokenization
             }
         }
 
-        return null;
+        // No end found — entire line is still in block comment
+        outState = inState;
+        if (line.Length > 0)
+            tokens.Add(new SyntaxToken(0, line.Length, bc.Scope));
+        return -1;
+    }
+
+    /// <summary>
+    /// Checks if this line starts a new block comment. If so, marks the rest of the line
+    /// as comment and sets the block comment state. Returns true if the line was consumed.
+    /// </summary>
+    private static bool DetectBlockCommentStart(string line, SyntaxDefinition grammar,
+        List<SyntaxToken> tokens, bool[] claimed, ref LineState outState)
+    {
+        var bcs = grammar.BlockComments;
+        if (bcs == null) return false;
+
+        for (int i = 0; i < bcs.Count; i++)
+        {
+            if (bcs[i].StartRegex is not { } startRx) continue;
+            var startMatch = startRx.Match(line);
+            if (!startMatch.Success) continue;
+
+            // Skip if the match overlaps already-claimed characters (e.g. =cut ending a POD block)
+            bool overlap = false;
+            for (int j = startMatch.Index; j < startMatch.Index + startMatch.Length; j++)
+                if (claimed[j]) { overlap = true; break; }
+            if (overlap) continue;
+
+            outState = new LineState(null, i);
+            if (line.Length > 0)
+            {
+                tokens.Add(new SyntaxToken(0, line.Length, bcs[i].Scope));
+                for (int j = 0; j < line.Length; j++) claimed[j] = true;
+            }
+            return true;
+        }
+        return false;
     }
 
     private List<SyntaxToken>? TryTokenizeHeredocContinuation(string line, SyntaxDefinition grammar, LineState inState, ref LineState outState)
     {
         if (inState.HeredocDelimiter == null) return null;
 
-        bool isEnd = line.TrimStart() == inState.HeredocDelimiter;
+        bool isEnd = inState.HeredocIndented
+            ? line.TrimStart() == inState.HeredocDelimiter
+            : line == inState.HeredocDelimiter;
         outState = isEnd ? DefaultState : inState;
         if (line.Length > 0)
         {
@@ -268,7 +316,10 @@ public class SyntaxManager
             }
         }
         if (!string.IsNullOrEmpty(delimiter))
-            outState = new LineState(null, -1, delimiter, interpolate);
+        {
+            bool indented = hMatch.Value.Contains('~');
+            outState = new LineState(null, -1, delimiter, interpolate, HeredocIndented: indented);
+        }
     }
 
     private void DetectRegexPatterns(string line,

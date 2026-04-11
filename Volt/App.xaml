@@ -379,6 +379,7 @@
 
         <!-- Rounded text box (replace input in FindBar) -->
         <Style x:Key="RoundedTextBox" TargetType="TextBox">
+            <Setter Property="CaretBrush" Value="{DynamicResource ThemeTextFg}"/>
             <Setter Property="SelectionBrush" Value="{DynamicResource ThemeInputSelection}"/>
             <Setter Property="Template">
                 <Setter.Value>

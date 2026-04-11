@@ -87,10 +87,8 @@ public partial class PanelShell : UserControl
         var region = _regions[reg.Placement];
         region.RemovePanel(panelId);
 
-        // Auto-collapse the region if no visible panels remain
-        bool anyVisible = _panels.Values.Any(r => r.Placement == reg.Placement && r.IsVisible);
-        if (!anyVisible)
-            CollapseRegion(reg.Placement);
+        // Keep the dock region open (tab strip + "+") so closing the last tab does not minimise it.
+        // Use the region header close control to collapse the whole side when desired.
 
         PanelLayoutChanged?.Invoke(panelId, reg.Placement, GetRegionSize(reg.Placement));
     }

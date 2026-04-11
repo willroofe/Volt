@@ -54,6 +54,19 @@ public class ChromeColors
     [JsonPropertyName("inputSelection")] public string InputSelection { get; set; } = "#80339900";
 }
 
+public class TerminalColors
+{
+    [JsonPropertyName("background")] public string Background { get; set; } = "#1e1e1e";
+    [JsonPropertyName("foreground")] public string Foreground { get; set; } = "#d4d4d4";
+    [JsonPropertyName("ansi")] public string[] Ansi { get; set; } = new[]
+    {
+        "#000000", "#cd0000", "#00cd00", "#cdcd00",
+        "#0000ee", "#cd00cd", "#00cdcd", "#e5e5e5",
+        "#7f7f7f", "#ff0000", "#00ff00", "#ffff00",
+        "#5c5cff", "#ff00ff", "#00ffff", "#ffffff"
+    };
+}
+
 public class ColorTheme
 {
     [JsonPropertyName("name")]
@@ -67,6 +80,9 @@ public class ColorTheme
 
     [JsonPropertyName("chrome")]
     public ChromeColors Chrome { get; set; } = new();
+
+    [JsonPropertyName("terminal")]
+    public TerminalColors Terminal { get; set; } = new();
 
     [JsonIgnore]
     private readonly Dictionary<string, SolidColorBrush> _brushCache = new();

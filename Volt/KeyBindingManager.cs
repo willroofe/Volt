@@ -28,6 +28,7 @@ public enum VoltCommand
     UnfoldBlock,
     GoToLine,
     FocusExplorer,
+    ToggleTerminal,
 }
 
 [JsonConverter(typeof(KeyComboJsonConverter))]
@@ -188,6 +189,7 @@ public class KeyBindingManager
         [VoltCommand.UnfoldBlock] = new(Key.OemCloseBrackets, ModifierKeys.Control | ModifierKeys.Shift),
         [VoltCommand.GoToLine] = new(Key.G, ModifierKeys.Control),
         [VoltCommand.FocusExplorer] = new(Key.E, ModifierKeys.Control),
+        [VoltCommand.ToggleTerminal] = new(Key.OemTilde, ModifierKeys.Control),
     };
 
     private readonly Dictionary<VoltCommand, KeyCombo> _bindings = new();
@@ -302,6 +304,7 @@ public class KeyBindingManager
         VoltCommand.FoldBlock => "Fold Block",
         VoltCommand.UnfoldBlock => "Unfold Block",
         VoltCommand.FocusExplorer => "Focus Explorer",
+        VoltCommand.ToggleTerminal => "Toggle Terminal",
         _ => command.ToString(),
     };
 }
