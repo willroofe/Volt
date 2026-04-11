@@ -333,12 +333,18 @@ public sealed partial class TerminalGrid
         cols = Math.Max(1, cols);
         if (rows == Rows && cols == Cols) return;
 
+        int oldRows = Rows;
+        int oldCols = Cols;
+        var (oldCr, oldCc) = Cursor;
+
         var newMain = AllocBlank(rows, cols);
-        int copyRows = Math.Min(Rows, rows);
-        int copyCols = Math.Min(Cols, cols);
+        int copyRows = Math.Min(oldRows, rows);
+        int copyCols = Math.Min(oldCols, cols);
+        // Shorter grid: keep bottom rows (prompt); taller: keep top.
+        int srcRow0 = rows < oldRows ? oldRows - copyRows : 0;
         for (int r = 0; r < copyRows; r++)
             for (int c = 0; c < copyCols; c++)
-                newMain[r, c] = _main[r, c];
+                newMain[r, c] = _main[srcRow0 + r, c];
         _main = newMain;
 
         if (_alt != null)
@@ -349,8 +355,9 @@ public sealed partial class TerminalGrid
         ReallocateScrollbackRowsToWidth(cols);
         ScrollTop = 0;
         ScrollBottom = Rows - 1;
-        var (cr, cc) = Cursor;
-        Cursor = (Math.Clamp(cr, 0, Rows - 1), Math.Clamp(cc, 0, Cols - 1));
+
+        int newCr = rows < oldRows ? oldCr - srcRow0 : oldCr;
+        SetCursor(newCr, oldCc);
         _pendingWrap = false;
         _dirty.MarkDirtyRange(0, Rows - 1);
         Changed?.Invoke();

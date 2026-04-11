@@ -595,6 +595,8 @@ public partial class MainWindow
         _settings.Editor.OpenRegions = Shell.GetOpenRegions();
         _settings.ScheduleSave();
         SyncViewMenuChecks();
+        if (panelId.Equals("terminal", StringComparison.OrdinalIgnoreCase))
+            _terminalPanel.NudgeAfterLayoutChange();
     }
 
     private void OpenFolderInExplorer()

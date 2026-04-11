@@ -44,6 +44,9 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     private bool _batchFontCaretApply;
     /// <summary>Coalesces <see cref="ArrangeOverride"/>, font metrics, and DPI into one grid/PTY resize so layout flutter does not fire multiple SIGWINCH redraws (duplicate screen content).</summary>
     private DispatcherTimer? _viewportResizeTimer;
+    private double _lastCommittedCellWidth;
+    private double _lastCommittedCellHeight;
+    private bool _haveCommittedCellSize;
 
     protected override int VisualChildrenCount => 2;
     protected override Visual GetVisualChild(int index) => index == 0 ? _textVisual : _cursorVisual;
@@ -228,6 +231,16 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         InvalidateVisual();
     }
 
+    // Re-apply caret blink state when Keyboard.Focus landed but GotKeyboardFocus did not run as expected.
+    internal void ResyncCaretAfterFocusAttempt()
+    {
+        if (!IsKeyboardFocused) return;
+        _caretVisible = true;
+        if (_caretBlinkMs > 0)
+            _blinkTimer.Start();
+        InvalidateVisual();
+    }
+
     public TerminalGrid? Grid
     {
         get => _grid;
@@ -236,6 +249,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
             if (_grid != null) _grid.Changed -= OnGridChanged;
             _grid = value;
             if (_grid != null) _grid.Changed += OnGridChanged;
+            _haveCommittedCellSize = false;
             InvalidateVisual();
         }
     }
@@ -281,14 +295,20 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         double drawableW = Math.Max(cellWidth, vw - OutputPaddingLeft);
         int cols = Math.Max(1, (int)(drawableW / cellWidth));
         int rows = Math.Max(1, (int)(vh / cellHeight));
+        bool cellMetricsChanged = _haveCommittedCellSize
+            && (Math.Abs(cellWidth - _lastCommittedCellWidth) > 0.001
+                || Math.Abs(cellHeight - _lastCommittedCellHeight) > 0.001);
         if (cols != _grid.Cols || rows != _grid.Rows)
         {
             _grid.Resize(rows, cols);
-            // Font or viewport resize changes row/col count; keeping the copied screen would leave many
-            // blank rows below old content while the shell redraws after SIGWINCH (duplicate banner/prompt).
-            _grid.ClearMainScreenHome();
+            if (cellMetricsChanged)
+                _grid.ClearMainScreenHome();
             SizeRequested?.Invoke(rows, cols);
         }
+
+        _lastCommittedCellWidth = cellWidth;
+        _lastCommittedCellHeight = cellHeight;
+        _haveCommittedCellSize = true;
 
         // Always notify ScrollViewer: ExtentHeight uses LineHeight × line count; font/viewport updates
         // often leave row/col count the same but still change extent (or scroll data was never refreshed).
@@ -466,8 +486,9 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         InvalidateVisual();
     }
 
-    private double ViewportWidthPx => _viewport.Width > 0 ? _viewport.Width : ActualWidth;
-    private double ViewportHeightPx => _viewport.Height > 0 ? _viewport.Height : ActualHeight;
+    private double ViewportWidthPx => ActualWidth > 0 ? ActualWidth : (_viewport.Width > 0 ? _viewport.Width : 0);
+
+    private double ViewportHeightPx => ActualHeight > 0 ? ActualHeight : (_viewport.Height > 0 ? _viewport.Height : 0);
 
     protected override Size MeasureOverride(Size availableSize)
     {
