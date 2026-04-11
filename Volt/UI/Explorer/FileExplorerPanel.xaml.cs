@@ -8,7 +8,7 @@ using Microsoft.VisualBasic.FileIO;
 
 namespace Volt;
 
-enum FileOperationKind { CreateFile, CreateFolder, Rename, Move, Delete }
+enum FileOperationKind { CreateFile, CreateFolder, Rename, Move, Delete, Duplicate }
 record FileOperation(FileOperationKind Kind, string Path, string? NewPath);
 
 public partial class FileExplorerPanel : UserControl, IPanel
@@ -400,6 +400,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
             menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
                 () => FileHelper.RevealInFileExplorer(item.FullPath)));
             menu.Items.Add(ContextMenuHelper.Separator());
+            menu.Items.Add(ContextMenuHelper.Item("Duplicate", () => DoDuplicate(item)));
             menu.Items.Add(ContextMenuHelper.Item("Rename", "\uE70F", () => DoRename(item)));
             menu.Items.Add(ContextMenuHelper.Item("Delete", "\uE74D", () => DoDelete(item)));
         }
@@ -459,6 +460,37 @@ public partial class FileExplorerPanel : UserControl, IPanel
             }
         }
         catch (Exception ex) { ThemedMessageBox.Show(owner, ex.Message, "Error"); }
+    }
+
+    private void DoDuplicate(FileTreeItem item)
+    {
+        if (item.IsDirectory) return;
+        var owner = Window.GetWindow(this);
+        if (owner == null) return;
+        if (!File.Exists(item.FullPath)) return;
+        var destPath = GetDuplicateDestinationPath(item.FullPath);
+        try
+        {
+            File.Copy(item.FullPath, destPath, overwrite: false);
+            PushUndo(new FileOperation(FileOperationKind.Duplicate, item.FullPath, destPath));
+            FileOpenRequested?.Invoke(destPath);
+        }
+        catch (Exception ex) { ThemedMessageBox.Show(owner, ex.Message, "Duplicate Failed"); }
+    }
+
+    /// <summary>Builds a non-colliding path in the same directory: <c>name - Copy.ext</c>, then <c>name - Copy (2).ext</c>, etc.</summary>
+    private static string GetDuplicateDestinationPath(string sourcePath)
+    {
+        var dir = Path.GetDirectoryName(sourcePath)!;
+        var baseName = Path.GetFileNameWithoutExtension(sourcePath);
+        var ext = Path.GetExtension(sourcePath);
+        var candidate = Path.Combine(dir, $"{baseName} - Copy{ext}");
+        if (!File.Exists(candidate) && !Directory.Exists(candidate)) return candidate;
+        for (var i = 2; ; i++)
+        {
+            candidate = Path.Combine(dir, $"{baseName} - Copy ({i}){ext}");
+            if (!File.Exists(candidate) && !Directory.Exists(candidate)) return candidate;
+        }
     }
 
     private void DoRename(FileTreeItem item)
@@ -567,6 +599,13 @@ public partial class FileExplorerPanel : UserControl, IPanel
                         FileDeleted?.Invoke(op.Path);
                     }
                     break;
+                case FileOperationKind.Duplicate:
+                    if (op.NewPath != null && File.Exists(op.NewPath))
+                    {
+                        FileSystem.DeleteFile(op.NewPath, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+                        FileDeleted?.Invoke(op.NewPath);
+                    }
+                    break;
                 case FileOperationKind.Rename:
                 case FileOperationKind.Move:
                     MoveFileOrDirectory(op.NewPath!, op.Path);
@@ -599,6 +638,10 @@ public partial class FileExplorerPanel : UserControl, IPanel
                     break;
                 case FileOperationKind.CreateFolder:
                     Directory.CreateDirectory(op.Path);
+                    break;
+                case FileOperationKind.Duplicate:
+                    if (File.Exists(op.Path) && op.NewPath != null)
+                        File.Copy(op.Path, op.NewPath, overwrite: true);
                     break;
                 case FileOperationKind.Rename:
                 case FileOperationKind.Move:
