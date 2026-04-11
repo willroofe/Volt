@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace Volt;
 
@@ -119,15 +120,36 @@ public partial class TerminalPanel : UserControl, IPanel
         if (Application.Current.MainWindow is MainWindow mw)
             mw.RegisterTerminalAllowlist(s.View);
         RebuildTabs();
-        Dispatcher.BeginInvoke(new Action(TryFocusActiveSession), System.Windows.Threading.DispatcherPriority.Input);
     }
 
     /// <summary>Moves keyboard focus to the active terminal view for typing.</summary>
     public void TryFocusActiveSession()
     {
         if (_active?.View is not { } v) return;
+        Application.Current.MainWindow?.Activate();
         v.Focus();
         Keyboard.Focus(v);
+        v.ResyncCaretAfterFocusAttempt();
+    }
+
+    /// <summary>Workaround after reparenting: nudge scroll + restore focus/caret once layout has settled.</summary>
+    public void NudgeAfterLayoutChange()
+    {
+        if (_sessions.Count == 0) return;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            foreach (var s in _sessions)
+            {
+                var view = s.View;
+                double y = view.VerticalOffset;
+                view.LineUp();
+                view.SetVerticalOffset(y);
+                view.ScrollOwner?.InvalidateScrollInfo();
+                view.InvalidateVisual();
+            }
+            if (Keyboard.FocusedElement is not EditorControl)
+                Dispatcher.BeginInvoke(new Action(TryFocusActiveSession), DispatcherPriority.ApplicationIdle);
+        }), DispatcherPriority.Loaded);
     }
 
     public void CloseActiveSession()
@@ -148,12 +170,10 @@ public partial class TerminalPanel : UserControl, IPanel
     {
         _active = s;
         ActiveContent.Content = s?.ScrollHost;
-        if (s != null)
-        {
-            s.View.Focus();
-            Keyboard.Focus(s.View);
-        }
         ApplyActiveTabStyle();
+        // Focus after layout: switching ContentPresenter content synchronously often drops Keyboard.Focus.
+        if (s != null)
+            Dispatcher.BeginInvoke(new Action(TryFocusActiveSession), System.Windows.Threading.DispatcherPriority.Input);
     }
 
     private void RebuildTabs()

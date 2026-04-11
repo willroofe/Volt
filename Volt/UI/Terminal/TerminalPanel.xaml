@@ -61,7 +61,8 @@
                 </Button>
                 <ScrollViewer HorizontalScrollBarVisibility="Hidden"
                               VerticalScrollBarVisibility="Disabled"
-                              CanContentScroll="False">
+                              CanContentScroll="False"
+                              Focusable="False">
                     <StackPanel x:Name="TabStrip" Orientation="Horizontal"/>
                 </ScrollViewer>
             </DockPanel>

@@ -14,6 +14,8 @@ namespace Volt;
 public partial class MainWindow
 {
     private readonly List<TabInfo> _tabs = [];
+    /// <summary>Most recently closed file paths (LIFO). Cleared when opening a different folder or workspace.</summary>
+    private readonly List<string> _closedTabPaths = [];
     private TabInfo? _activeTab;
     private readonly AppSettings _settings;
     private readonly WorkspaceManager _workspaceManager = new();
@@ -271,8 +273,13 @@ public partial class MainWindow
         RemoveTab(tab);
     }
 
-    private void RemoveTab(TabInfo tab)
+    private void ClearClosedTabHistory() => _closedTabPaths.Clear();
+
+    private void RemoveTab(TabInfo tab, bool recordClosedTabHistory = true)
     {
+        if (recordClosedTabHistory && tab.FilePath is { } closedPath && File.Exists(closedPath))
+            _closedTabPaths.Add(Path.GetFullPath(closedPath));
+
         int idx = _tabs.IndexOf(tab);
         _tabs.Remove(tab);
         TabStrip.Children.Remove(tab.HeaderElement);
@@ -562,6 +569,7 @@ public partial class MainWindow
         // Switch editor tabs: Ctrl+Tab / Ctrl+Shift+Tab
         view.AddAllowlistedShortcut(Key.Tab, ModifierKeys.Control);
         view.AddAllowlistedShortcut(Key.Tab, ModifierKeys.Control | ModifierKeys.Shift);
+        view.AddAllowlistedShortcut(Key.T, ModifierKeys.Control | ModifierKeys.Shift);
         // Settings: Ctrl+Alt+S (mapped to VoltCommand.Settings)
         view.AddAllowlistedShortcut(Key.S, ModifierKeys.Control | ModifierKeys.Alt);
         // Toggle explorer: Ctrl+B
@@ -595,6 +603,8 @@ public partial class MainWindow
         _settings.Editor.OpenRegions = Shell.GetOpenRegions();
         _settings.ScheduleSave();
         SyncViewMenuChecks();
+        if (panelId.Equals("terminal", StringComparison.OrdinalIgnoreCase))
+            _terminalPanel.NudgeAfterLayoutChange();
     }
 
     private void OpenFolderInExplorer()
@@ -626,6 +636,7 @@ public partial class MainWindow
             SaveFolderExpandedPaths(currentFolder);
         }
 
+        ClearClosedTabHistory();
         CloseAllTabs();
 
         _explorerPanel.OpenFolder(newFolderPath);
@@ -719,10 +730,31 @@ public partial class MainWindow
             }
             else
             {
-                RemoveTab(tab);
+                RemoveTab(tab, recordClosedTabHistory: false);
             }
         }
     }
+
+    private async Task RestoreClosedTabAsync()
+    {
+        while (_closedTabPaths.Count > 0)
+        {
+            var path = _closedTabPaths[^1];
+            _closedTabPaths.RemoveAt(_closedTabPaths.Count - 1);
+            if (!File.Exists(path))
+                continue;
+            if (!CheckFileSize(path))
+                continue;
+            var tab = await OpenFileInTabAsync(path, reuseUntitled: true, activate: true);
+            if (tab != null)
+            {
+                FindBarControl.RefreshSearch();
+                return;
+            }
+        }
+    }
+
+    private void OnReopenClosedTab(object sender, RoutedEventArgs e) => _ = RestoreClosedTabAsync();
 
     /// <summary>Checks whether any session data exists that RestoreSession will act on.</summary>
     private bool HasSessionToRestore()
@@ -1794,6 +1826,7 @@ public partial class MainWindow
             case VoltCommand.Save: OnSave(this, new RoutedEventArgs()); break;
             case VoltCommand.SaveAs: OnSaveAs(this, new RoutedEventArgs()); break;
             case VoltCommand.CloseTab: if (_activeTab != null) CloseTab(_activeTab); break;
+            case VoltCommand.ReopenClosedTab: _ = RestoreClosedTabAsync(); break;
             case VoltCommand.OpenFind: FindBarControl.Open(); break;
             case VoltCommand.ToggleReplace: FindBarControl.ToggleReplace(); break;
             case VoltCommand.CommandPalette: OpenCommandPalette(); break;
@@ -1872,6 +1905,7 @@ public partial class MainWindow
         MenuSaveAs.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.SaveAs);
         MenuOpenFile.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.OpenFile);
         MenuOpenFolder.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.OpenFolder);
+        MenuReopenClosedTab.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ReopenClosedTab);
         MenuViewLeft.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleLeftPanel);
         MenuViewRight.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleRightPanel);
         MenuViewTop.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleTopPanel);
@@ -2047,6 +2081,7 @@ public partial class MainWindow
             CloseFolderInExplorer();
 
         if (!PromptSaveDirtyTabs()) return;
+        ClearClosedTabHistory();
         CloseAllTabs();
 
         var workspace = _workspaceManager.OpenWorkspace(workspacePath);
@@ -2083,6 +2118,7 @@ public partial class MainWindow
         _settings.UnsavedWorkspaceSession = null;
         _settings.Save();
 
+        ClearClosedTabHistory();
         CloseAllTabs();
         CreateTab();
         ActivateTab(_tabs[0]);

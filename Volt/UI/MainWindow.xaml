@@ -280,6 +280,7 @@
                               SubmenuOpened="OnOpenRecentSubmenuOpened">
                         <MenuItem Header="(empty)" IsEnabled="False"/>
                     </MenuItem>
+                    <MenuItem x:Name="MenuReopenClosedTab" Header="Re_open Closed Tab" Click="OnReopenClosedTab"/>
                     <Separator/>
                     <MenuItem x:Name="MenuAddFolderToWorkspace" Header="Add Folder to _Workspace" Click="OnAddFolderToWorkspace">
                         <MenuItem.Icon>
