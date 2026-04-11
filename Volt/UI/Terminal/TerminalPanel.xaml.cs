@@ -119,7 +119,6 @@ public partial class TerminalPanel : UserControl, IPanel
         if (Application.Current.MainWindow is MainWindow mw)
             mw.RegisterTerminalAllowlist(s.View);
         RebuildTabs();
-        Dispatcher.BeginInvoke(new Action(TryFocusActiveSession), System.Windows.Threading.DispatcherPriority.Input);
     }
 
     /// <summary>Moves keyboard focus to the active terminal view for typing.</summary>
@@ -148,12 +147,10 @@ public partial class TerminalPanel : UserControl, IPanel
     {
         _active = s;
         ActiveContent.Content = s?.ScrollHost;
-        if (s != null)
-        {
-            s.View.Focus();
-            Keyboard.Focus(s.View);
-        }
         ApplyActiveTabStyle();
+        // Focus after layout: switching ContentPresenter content synchronously often drops Keyboard.Focus.
+        if (s != null)
+            Dispatcher.BeginInvoke(new Action(TryFocusActiveSession), System.Windows.Threading.DispatcherPriority.Input);
     }
 
     private void RebuildTabs()
