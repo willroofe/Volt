@@ -67,6 +67,8 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
     public event Action? UndoRequested;
     public event Action? RedoRequested;
     public event Action? NavigateAboveFirst;
+    /// <summary>Fired for Ctrl+V when the tree is focused; host resolves target directory and performs paste.</summary>
+    public event Action? PasteRequested;
 
     public FileTreeItem? SelectedItem =>
         _selectedRowIndex >= 0 && _selectedRowIndex < _flatRows.Count
@@ -647,6 +649,31 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         if (ctrl && e.Key == Key.Y)
         {
             RedoRequested?.Invoke();
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && e.Key == Key.C)
+        {
+            if (_selectedRowIndex >= 0 && _selectedRowIndex < _flatRows.Count)
+            {
+                var path = _flatRows[_selectedRowIndex].Item.FullPath;
+                if (!string.IsNullOrEmpty(path))
+                {
+                    try
+                    {
+                        Clipboard.SetDataObject(new DataObject(DataFormats.FileDrop, new[] { path }), copy: true);
+                    }
+                    catch { /* clipboard busy */ }
+                }
+            }
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && e.Key == Key.V)
+        {
+            PasteRequested?.Invoke();
             e.Handled = true;
             return;
         }
