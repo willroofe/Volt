@@ -131,6 +131,7 @@ public class ThemeManager
             (ThemeResourceKeys.ScrollThumbHover, c.ScrollThumbHover),
             (ThemeResourceKeys.TabBarBg, c.TabBarBackground),
             (ThemeResourceKeys.TabActive, c.TabActive),
+            (ThemeResourceKeys.TabActiveSecondary, string.IsNullOrEmpty(c.TabActiveSecondary) ? c.TabInactive : c.TabActiveSecondary),
             (ThemeResourceKeys.TabInactive, c.TabInactive),
             (ThemeResourceKeys.TabHover, c.TabHover),
             (ThemeResourceKeys.TabBorder, c.TabBorder),

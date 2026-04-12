@@ -20,6 +20,14 @@ internal record TerminalActions(
     Action Toggle,
     Action NewSession);
 
+/// <summary>Editor split / join actions for the command palette.</summary>
+internal record EditorSplitActions(
+    Action ToggleSplit,
+    Action JoinWithSibling,
+    Action JoinAll,
+    Action SwitchOrientation,
+    Action FocusNextLeaf);
+
 /// <summary>Groups the dependencies needed to build the command palette list.</summary>
 internal record CommandPaletteContext(
     List<TabInfo> Tabs,
@@ -39,7 +47,8 @@ internal record CommandPaletteContext(
     Action OpenRecent,
     Action<string?> SetLanguage,
     TerminalActions Terminal,
-    Action SyncTerminalFromActiveEditor);
+    Action SyncTerminalFromActiveEditor,
+    EditorSplitActions EditorSplit);
 
 /// <summary>
 /// Builds the command list for the command palette, keeping the 90 lines of
@@ -220,6 +229,16 @@ internal static class CommandPaletteCommands
             new("Terminal: Toggle", Action: ctx.Terminal.Toggle),
 
             new("Terminal: New Session", Action: ctx.Terminal.NewSession),
+
+            new("Editor: Split Group", Action: ctx.EditorSplit.ToggleSplit),
+
+            new("Editor: Join with Sibling", Action: ctx.EditorSplit.JoinWithSibling),
+
+            new("Editor: Join All Groups", Action: ctx.EditorSplit.JoinAll),
+
+            new("Editor: Switch Split Orientation", Action: ctx.EditorSplit.SwitchOrientation),
+
+            new("Editor: Focus Next Group", Action: ctx.EditorSplit.FocusNextLeaf),
 
             new("Check for Updates", Action: ctx.CheckForUpdates),
 

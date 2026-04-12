@@ -34,6 +34,7 @@
     "scrollThumbHover": "#283650",
     "tabBarBackground": "#040810",
     "tabActive": "#000000",
+    "tabActiveSecondary": "#0E1520",
     "tabInactive": "#060A10",
     "tabHover": "#121828",
     "tabBorder": "#1A2436",

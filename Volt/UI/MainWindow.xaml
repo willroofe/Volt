@@ -59,6 +59,32 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="EditorHorizSplitterStyle" TargetType="GridSplitter">
+            <Setter Property="Panel.ZIndex" Value="1"/>
+            <Setter Property="Background" Value="{DynamicResource ThemeBorderBrush}"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="UseLayoutRounding" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GridSplitter">
+                        <Border Background="{TemplateBinding Background}"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="EditorVertSplitterStyle" TargetType="GridSplitter">
+            <Setter Property="Panel.ZIndex" Value="1"/>
+            <Setter Property="Background" Value="{DynamicResource ThemeBorderBrush}"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="UseLayoutRounding" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GridSplitter">
+                        <Border Background="{TemplateBinding Background}"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="MenuItemBaseStyle" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
             <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="FontSize" Value="12"/>
@@ -311,6 +337,12 @@
                     <MenuItem x:Name="MenuViewRight" Header="_Right Panel" IsCheckable="True" Click="OnToggleRightPanel"/>
                     <MenuItem x:Name="MenuViewTop" Header="_Top Panel" IsCheckable="True" Click="OnToggleTopPanel"/>
                     <MenuItem x:Name="MenuViewBottom" Header="_Bottom Panel" IsCheckable="True" Click="OnToggleBottomPanel"/>
+                    <Separator/>
+                    <MenuItem x:Name="MenuSplitEditor" Header="_Split Editor" Click="OnSplitEditor"/>
+                    <MenuItem x:Name="MenuJoinEditor" Header="_Join with Sibling" Click="OnJoinEditor" IsEnabled="False"/>
+                    <MenuItem x:Name="MenuJoinEditorAll" Header="Join _All Editor Groups" Click="OnJoinEditorAll" IsEnabled="False"/>
+                    <MenuItem x:Name="MenuSplitOrientation" Header="Split _Orientation"
+                              Click="OnToggleSplitOrientation" IsEnabled="False"/>
                 </MenuItem>
             </Menu>
 
@@ -362,70 +394,7 @@
 
     <!-- Editor center content (assigned to Shell.CenterContent in code-behind) -->
     <Grid x:Name="EditorColumnGrid" Visibility="Collapsed">
-        <DockPanel x:Name="EditorArea">
-            <!-- Tab bar -->
-            <Border DockPanel.Dock="Top" Background="{DynamicResource ThemeTabBarBg}"
-                    BorderBrush="{DynamicResource ThemeTabBorder}" BorderThickness="0,0,0,1">
-                <!-- Keep in sync with UIConstants.TabBarHeight -->
-                <DockPanel Height="33">
-                    <Button x:Name="NewTabButton" DockPanel.Dock="Right"
-                            Width="28" Height="28" Margin="4,0"
-                            Content="&#xE710;"
-                            FontFamily="Segoe MDL2 Assets" FontSize="10"
-                            Foreground="{DynamicResource ThemeButtonFg}"
-                            Background="Transparent" BorderThickness="0"
-                            Focusable="False" Cursor="Hand"
-                            Click="OnNewTab"
-                            ToolTip="New Tab">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border x:Name="Bd" Background="Transparent" CornerRadius="3">
-                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Bd" Property="Background"
-                                                Value="{DynamicResource ThemeButtonHover}"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
-                    </Button>
-                    <Grid>
-                        <ScrollViewer x:Name="TabScrollViewer"
-                                      HorizontalScrollBarVisibility="Hidden"
-                                      VerticalScrollBarVisibility="Disabled"
-                                      CanContentScroll="False"
-                                      PreviewMouseWheel="OnTabScrollViewerMouseWheel">
-                            <Grid>
-                                <StackPanel x:Name="TabStrip" Orientation="Horizontal"/>
-                                <Border x:Name="TabDropIndicator" Width="2"
-                                        HorizontalAlignment="Left" VerticalAlignment="Stretch"
-                                        Background="{DynamicResource ThemeTextFg}"
-                                        Visibility="Collapsed" IsHitTestVisible="False"/>
-                            </Grid>
-                        </ScrollViewer>
-                        <Border x:Name="TabOverflowLeft" Width="32"
-                                HorizontalAlignment="Left" VerticalAlignment="Stretch"
-                                IsHitTestVisible="False" Visibility="Collapsed">
-                            <TextBlock Text="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="12"
-                                       Foreground="{DynamicResource ThemeTextFg}"
-                                       HorizontalAlignment="Left" VerticalAlignment="Center"
-                                       Margin="6,0,0,0"/>
-                        </Border>
-                        <Border x:Name="TabOverflowRight" Width="32"
-                                HorizontalAlignment="Right" VerticalAlignment="Stretch"
-                                IsHitTestVisible="False" Visibility="Collapsed">
-                            <TextBlock Text="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="12"
-                                       Foreground="{DynamicResource ThemeTextFg}"
-                                       HorizontalAlignment="Right" VerticalAlignment="Center"
-                                       Margin="0,0,6,0"/>
-                        </Border>
-                    </Grid>
-                </DockPanel>
-            </Border>
-            <Border x:Name="EditorHost"/>
-        </DockPanel>
+        <Grid x:Name="EditorLayoutHost" ClipToBounds="True"/>
         <local:FindBar x:Name="FindBarControl" />
     </Grid>
 

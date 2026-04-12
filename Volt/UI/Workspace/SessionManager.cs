@@ -4,7 +4,7 @@ internal record RestoredTab(
     string? FilePath, bool IsDirty, string? SavedContent,
     int CaretLine, int CaretCol, double ScrollVertical, double ScrollHorizontal);
 
-internal record RestoredSession(List<RestoredTab> Tabs, int ActiveTabIndex);
+internal record RestoredSession(List<RestoredTab> Tabs, int ActiveTabIndex, EditorLayoutSnapshot? EditorLayout = null);
 
 internal class SessionManager
 {
@@ -13,9 +13,10 @@ internal class SessionManager
     /// Saves dirty/untitled tab content to the session directory.
     /// The caller is responsible for calling SessionSettings.ClearSessionDir() before this method.
     /// </summary>
-    public SessionSettings SaveSession(IReadOnlyList<TabInfo> tabs, TabInfo? activeTab, string? folderPath = null)
+    public SessionSettings SaveSession(IReadOnlyList<TabInfo> tabs, TabInfo? activeTab, string? folderPath = null,
+        EditorLayoutSnapshot? editorLayout = null)
     {
-        var result = new SessionSettings();
+        var result = new SessionSettings { EditorLayout = editorLayout };
         int activeIdx = 0;
 
         foreach (var t in tabs)
@@ -121,6 +122,6 @@ internal class SessionManager
             tabIndex++;
         }
 
-        return new RestoredSession(restoredTabs, activeTabIndex);
+        return new RestoredSession(restoredTabs, activeTabIndex, session.EditorLayout);
     }
 }
