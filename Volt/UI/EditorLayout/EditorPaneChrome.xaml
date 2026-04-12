@@ -61,6 +61,9 @@
                 </Grid>
             </DockPanel>
         </Border>
-        <Border x:Name="EditorHost"/>
+        <Grid x:Name="EditorHostPanel">
+            <Border x:Name="EditorHost"/>
+            <Border x:Name="EditorSplitDropHighlight" Visibility="Collapsed" IsHitTestVisible="False"/>
+        </Grid>
     </DockPanel>
 </UserControl>

@@ -106,7 +106,34 @@ public partial class MainWindow
         _tabHeaderFactory.TabClosed += tab => CloseTab(tab);
         _tabHeaderFactory.TabReordered += CommitTabReorder;
         _tabHeaderFactory.TabMovedToOtherLeaf += CommitTabMoveToLeaf;
+        _tabHeaderFactory.TabEditorSplitDrop += CommitTabEditorSplitDrop;
+        _tabHeaderFactory.CanTabEditorSplitOnLeaf = CanTabEditorSplitOnLeaf;
         _tabHeaderFactory.ResolveEditorTabStrip = ResolveEditorTabStripForTab;
+
+        _tabHeaderFactory.TabContextCanSplitGroup = _ => true;
+        _tabHeaderFactory.TabContextCanJoinSibling = TabContextCanJoinSiblingFromMenu;
+        _tabHeaderFactory.TabContextCanJoinAll = TabContextCanJoinAllFromMenu;
+        _tabHeaderFactory.TabContextCanToggleOrientation = TabContextCanToggleOrientationFromMenu;
+        _tabHeaderFactory.TabContextSplitGroup += tab =>
+        {
+            ActivateTab(tab);
+            EnterEditorSplit();
+        };
+        _tabHeaderFactory.TabContextJoinSibling += tab =>
+        {
+            ActivateTab(tab);
+            JoinEditorWithSibling();
+        };
+        _tabHeaderFactory.TabContextJoinAll += tab =>
+        {
+            ActivateTab(tab);
+            JoinEditorFlattenAll();
+        };
+        _tabHeaderFactory.TabContextToggleOrientation += tab =>
+        {
+            ActivateTab(tab);
+            ToggleParentSplitOrientation();
+        };
 
         // Create a placeholder tab only if there's no session to restore.
         // Full session restore is deferred to ContentRendered.

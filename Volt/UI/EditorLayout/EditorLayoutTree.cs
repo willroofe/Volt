@@ -107,6 +107,37 @@ public static class EditorLayoutTree
         return path[^1].Item1;
     }
 
+    /// <summary>
+    /// True when a cross-leaf editor-half drop would end up as the same outer split: sole tab of the first child
+    /// moved to the second sibling (horizontal parent, top-half of bottom), or sole tab of the second child moved to
+    /// the first sibling (vertical parent, right-half of left) — same orientation as the parent split.
+    /// </summary>
+    public static bool WouldEditorSplitDropRecreateSiblingLayout(EditorLayoutNode root, TabInfo tab, string targetLeafId,
+        EditorSplitOrientation dropOrientation, bool activeInSecondPane)
+    {
+        var src = FindLeafForTab(root, tab);
+        var dst = FindLeafById(root, targetLeafId);
+        if (src == null || dst == null || ReferenceEquals(src, dst)) return false;
+
+        var parent = FindParentSplitOfLeaf(root, src.Id);
+        if (parent == null || parent.Orientation != dropOrientation) return false;
+        if (!ReferenceEquals(FindParentSplitOfLeaf(root, dst.Id), parent)) return false;
+
+        if (src.Tabs.Count != 1 || !src.Tabs.Contains(tab)) return false;
+
+        var srcIsFirst = ReferenceEquals(parent.First, src);
+        var dstIsFirst = ReferenceEquals(parent.First, dst);
+
+        return dropOrientation switch
+        {
+            EditorSplitOrientation.Horizontal =>
+                srcIsFirst && !dstIsFirst && !activeInSecondPane,
+            EditorSplitOrientation.Vertical =>
+                !srcIsFirst && dstIsFirst && activeInSecondPane,
+            _ => false
+        };
+    }
+
     public static void DedupeTabsPreserveOrder(List<TabInfo> tabs)
     {
         var seen = new HashSet<TabInfo>(EqualityComparer<TabInfo>.Default);
@@ -235,11 +266,15 @@ public static class EditorLayoutTree
         return leaf;
     }
 
-    /// <summary>Replace <paramref name="leaf"/> in the tree with a vertical or horizontal split: first child holds all tabs except <paramref name="activeToMove"/>; second holds only that tab.</summary>
+    /// <summary>
+    /// Replace <paramref name="leaf"/> with a split. The leaf that ends up containing <paramref name="activeToMove"/> alone (or as that pane's active tab) is returned as <paramref name="activePaneLeaf"/>.
+    /// When <paramref name="activeInSecondPane"/> is true (default): first pane = all other tabs, second = <paramref name="activeToMove"/> only (right/bottom for vertical/horizontal).
+    /// When false: first pane = <paramref name="activeToMove"/> only, second = all other tabs (left/top).
+    /// </summary>
     public static bool TrySplitLeaf(ref EditorLayoutNode root, EditorLeafNode leaf, TabInfo activeToMove,
-        EditorSplitOrientation orientation, out EditorLeafNode secondLeaf)
+        EditorSplitOrientation orientation, out EditorLeafNode activePaneLeaf, bool activeInSecondPane = true)
     {
-        secondLeaf = null!;
+        activePaneLeaf = null!;
         if (!leaf.Tabs.Contains(activeToMove) || leaf.Tabs.Count < 2)
             return false;
 
@@ -250,34 +285,57 @@ public static class EditorLayoutTree
                 remaining.Add(t);
         }
 
-        leaf.Tabs.Clear();
-        foreach (var t in remaining)
-            leaf.Tabs.Add(t);
-        leaf.ActiveTab = leaf.Tabs.FirstOrDefault();
-
-        var newSecond = new EditorLeafNode();
-        newSecond.Tabs.Add(activeToMove);
-        newSecond.ActiveTab = activeToMove;
-
-        var split = new EditorSplitNode
+        EditorSplitNode split;
+        if (activeInSecondPane)
         {
-            Orientation = orientation,
-            First = leaf,
-            Second = newSecond,
-            FirstPaneStarRatio = 1.0
-        };
+            leaf.Tabs.Clear();
+            foreach (var t in remaining)
+                leaf.Tabs.Add(t);
+            leaf.ActiveTab = leaf.Tabs.FirstOrDefault();
+
+            var newSecond = new EditorLeafNode();
+            newSecond.Tabs.Add(activeToMove);
+            newSecond.ActiveTab = activeToMove;
+
+            split = new EditorSplitNode
+            {
+                Orientation = orientation,
+                First = leaf,
+                Second = newSecond,
+                FirstPaneStarRatio = 1.0
+            };
+            activePaneLeaf = newSecond;
+        }
+        else
+        {
+            leaf.Tabs.Clear();
+            leaf.Tabs.Add(activeToMove);
+            leaf.ActiveTab = activeToMove;
+
+            var otherLeaf = new EditorLeafNode();
+            foreach (var t in remaining)
+                otherLeaf.Tabs.Add(t);
+            otherLeaf.ActiveTab = remaining.FirstOrDefault();
+
+            split = new EditorSplitNode
+            {
+                Orientation = orientation,
+                First = leaf,
+                Second = otherLeaf,
+                FirstPaneStarRatio = 1.0
+            };
+            activePaneLeaf = leaf;
+        }
 
         if (ReferenceEquals(root, leaf))
         {
             root = split;
-            secondLeaf = newSecond;
             return true;
         }
 
         if (!TryReplaceLeafReference(root, leaf, split))
             return false;
 
-        secondLeaf = newSecond;
         return true;
     }
 
