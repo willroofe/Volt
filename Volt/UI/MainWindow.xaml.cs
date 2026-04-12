@@ -1,4 +1,5 @@
 ﻿using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
@@ -13,7 +14,17 @@ namespace Volt;
 
 public partial class MainWindow
 {
-    private readonly List<TabInfo> _tabs = [];
+    private EditorLayoutNode _editorLayoutRoot = null!;
+    private string _focusedLeafId = "";
+    private EditorLayoutBuildResult? _layoutBuild;
+    private readonly StackPanel _headerScratchStrip = new()
+    {
+        IsHitTestVisible = false,
+        Width = 0,
+        Height = 0,
+        Visibility = Visibility.Collapsed
+    };
+    private readonly Border _headerScratchDrop = new() { Width = 2, Visibility = Visibility.Collapsed };
     /// <summary>Most recently closed file paths (LIFO). Cleared when opening a different folder or workspace.</summary>
     private readonly List<string> _closedTabPaths = [];
     private TabInfo? _activeTab;
@@ -84,12 +95,18 @@ public partial class MainWindow
         EditorColumnGrid.Visibility = Visibility.Visible;
         Shell.CenterContent = EditorColumnGrid;
 
+        _editorLayoutRoot = new EditorLeafNode();
+        _focusedLeafId = ((EditorLeafNode)_editorLayoutRoot).Id;
+        RebuildEditorLayoutUi();
+
         _settings = App.Current.Settings;
         _tabHeaderFactory.FixedWidth = _settings.Editor.FixedWidthTabs;
 
         _tabHeaderFactory.TabActivated += tab => ActivateTab(tab);
         _tabHeaderFactory.TabClosed += tab => CloseTab(tab);
         _tabHeaderFactory.TabReordered += CommitTabReorder;
+        _tabHeaderFactory.TabMovedToOtherLeaf += CommitTabMoveToLeaf;
+        _tabHeaderFactory.ResolveEditorTabStrip = ResolveEditorTabStripForTab;
 
         // Create a placeholder tab only if there's no session to restore.
         // Full session restore is deferred to ContentRendered.
@@ -102,6 +119,7 @@ public partial class MainWindow
         _keyBindingManager.Load(_settings.KeyBindings);
         ApplySettings();
         UpdateMenuGestureText();
+        UpdateEditorSplitMenuState();
         UpdateTabOverflowBrushes();
         RestoreWindowPosition();
 
@@ -122,11 +140,15 @@ public partial class MainWindow
 
         CmdPalette.Closed += (_, _) => { if (Editor is { } ed) Keyboard.Focus(ed); };
         FindBarControl.Closed += (_, _) => { if (Editor is { } ed) Keyboard.Focus(ed); };
-        TabScrollViewer.ScrollChanged += (_, _) => UpdateTabOverflowIndicators();
         StateChanged += OnStateChanged;
         Closing += OnWindowClosing;
         Activated += (_, _) => CheckAllTabsForExternalChanges();
-        ThemeManager.ThemeChanged += (_, _) => { ApplyDwmTheme(); UpdateTabOverflowBrushes(); };
+        ThemeManager.ThemeChanged += (_, _) =>
+        {
+            ApplyDwmTheme();
+            UpdateTabOverflowBrushes();
+            UpdateAllTabHeaders();
+        };
         _explorerPanel.FileOpenRequested += OnExplorerFileOpen;
         _explorerPanel.SetWorkspaceManager(_workspaceManager);
         _explorerPanel.AddFolderRequested += OnWorkspaceAddFolder;
@@ -180,23 +202,33 @@ public partial class MainWindow
         Focus();
     }
 
-    private TabInfo CreateTab(string? filePath = null)
+    private static void SyncStripChildrenToTabList(Panel? strip, List<TabInfo> tabs)
     {
-        var tab = new TabInfo(ThemeManager, SyntaxManager) { FilePath = filePath };
-        _tabs.Add(tab);
-
-        // Wire up per-tab dirty handler (for tab header updates — lives for the tab's lifetime)
-        tab.Editor.DirtyChanged += (_, _) => UpdateTabHeader(tab);
-        tab.FileChangedExternally += OnFileChangedExternally;
-
-        tab.HeaderElement = CreateTabHeader(tab);
-        TabStrip.Children.Add(tab.HeaderElement);
-        return tab;
+        if (strip == null) return;
+        strip.Children.Clear();
+        foreach (var t in tabs)
+        {
+            var header = t.HeaderElement;
+            if (header == null) continue;
+            if (header.Parent is Panel oldStrip && !ReferenceEquals(oldStrip, strip))
+                oldStrip.Children.Remove(header);
+            strip.Children.Add(header);
+        }
     }
 
-    private void ActivateTab(TabInfo tab)
+    private static bool TryHorizontalScrollTabStrip(ScrollViewer sv, int delta)
     {
-        // Unhook events from previous active tab
+        if (sv.Visibility != Visibility.Visible || !sv.IsVisible || sv.ActualWidth <= 0 || sv.ActualHeight <= 0)
+            return false;
+        var pos = Mouse.GetPosition(sv);
+        if (pos.Y < 0 || pos.Y > sv.ActualHeight || pos.X < 0 || pos.X > sv.ActualWidth)
+            return false;
+        sv.ScrollToHorizontalOffset(sv.HorizontalOffset + delta);
+        return true;
+    }
+
+    private void UpdateActiveTabHooks(TabInfo tab)
+    {
         if (_activeTab != null)
         {
             _activeTab.Editor.DirtyChanged -= OnActiveDirtyChanged;
@@ -205,66 +237,17 @@ public partial class MainWindow
 
         _activeTab = tab;
 
-        // Swap the editor into the host
-        EditorHost.Child = tab.ScrollHost;
-
-        // Hook events for the new active tab
         tab.Editor.DirtyChanged += OnActiveDirtyChanged;
         tab.Editor.CaretMoved += OnActiveCaretMoved;
 
-        // Update FindBar to target the new editor
         FindBarControl.SetEditor(tab.Editor);
         FindBarControl.RefreshSearch();
 
-        // Apply current settings to the editor
         ApplySettingsToEditor(tab.Editor);
 
-        // Update UI
         UpdateTitle();
         UpdateFileType();
         UpdateCaretPos();
-        UpdateAllTabHeaders();
-        tab.HeaderElement.BringIntoView();
-        _explorerPanel.SelectFile(tab.FilePath);
-
-        Keyboard.Focus(tab.Editor);
-    }
-
-    private void OnTabScrollViewerMouseWheel(object sender, MouseWheelEventArgs e)
-    {
-        TabScrollViewer.ScrollToHorizontalOffset(
-            TabScrollViewer.HorizontalOffset - e.Delta);
-        e.Handled = true;
-    }
-
-    private void UpdateTabOverflowIndicators()
-    {
-        double offset = TabScrollViewer.HorizontalOffset;
-        double scrollable = TabScrollViewer.ScrollableWidth;
-        TabOverflowLeft.Visibility = offset > 1 ? Visibility.Visible : Visibility.Collapsed;
-        TabOverflowRight.Visibility = offset < scrollable - 1 ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private void UpdateTabOverflowBrushes()
-    {
-        var color = (Application.Current.Resources[ThemeResourceKeys.TabBarBg] as SolidColorBrush)?.Color ?? Colors.Black;
-        var transparent = Color.FromArgb(0, color.R, color.G, color.B);
-
-        var leftBrush = new LinearGradientBrush();
-        leftBrush.StartPoint = new Point(0, 0);
-        leftBrush.EndPoint = new Point(1, 0);
-        leftBrush.GradientStops.Add(new GradientStop(color, 0.0));
-        leftBrush.GradientStops.Add(new GradientStop(color, 0.6));
-        leftBrush.GradientStops.Add(new GradientStop(transparent, 1.0));
-        TabOverflowLeft.Background = leftBrush;
-
-        var rightBrush = new LinearGradientBrush();
-        rightBrush.StartPoint = new Point(0, 0);
-        rightBrush.EndPoint = new Point(1, 0);
-        rightBrush.GradientStops.Add(new GradientStop(transparent, 0.0));
-        rightBrush.GradientStops.Add(new GradientStop(color, 0.4));
-        rightBrush.GradientStops.Add(new GradientStop(color, 1.0));
-        TabOverflowRight.Background = rightBrush;
     }
 
     private void CloseTab(TabInfo tab)
@@ -275,58 +258,13 @@ public partial class MainWindow
 
     private void ClearClosedTabHistory() => _closedTabPaths.Clear();
 
-    private void RemoveTab(TabInfo tab, bool recordClosedTabHistory = true)
+    private static TabInfo? PickReplacementWhenRemovingTab(List<TabInfo> paneTabs, TabInfo removed)
     {
-        if (recordClosedTabHistory && tab.FilePath is { } closedPath && File.Exists(closedPath))
-            _closedTabPaths.Add(Path.GetFullPath(closedPath));
-
-        int idx = _tabs.IndexOf(tab);
-        _tabs.Remove(tab);
-        TabStrip.Children.Remove(tab.HeaderElement);
-
-        // Unhook events if this was the active tab
-        if (tab == _activeTab)
-        {
-            tab.Editor.DirtyChanged -= OnActiveDirtyChanged;
-            tab.Editor.CaretMoved -= OnActiveCaretMoved;
-            _activeTab = null;
-        }
-
-        tab.FileChangedExternally -= OnFileChangedExternally;
-        tab.StopWatching();
-
-        // Release undo history and buffer to free memory immediately
-        bool wasLarge = tab.Editor.ReleaseResources();
-
-        if (_tabs.Count == 0)
-        {
-            // Always keep at least one tab
-            var newTab = CreateTab();
-            ActivateTab(newTab);
-        }
-        else if (_activeTab == null)
-        {
-            int nextIdx = Math.Min(idx, _tabs.Count - 1);
-            ActivateTab(_tabs[nextIdx]);
-        }
-
-        if (wasLarge)
-            GC.Collect(2, GCCollectionMode.Optimized, false, false);
-    }
-
-    private Border CreateTabHeader(TabInfo tab) =>
-        _tabHeaderFactory.CreateHeader(tab, TabStrip, TabDropIndicator);
-
-    private void CommitTabReorder(TabInfo tab, int targetIdx)
-    {
-        int currentIdx = _tabs.IndexOf(tab);
-        if (targetIdx == currentIdx) return;
-
-        _tabs.RemoveAt(currentIdx);
-        _tabs.Insert(targetIdx, tab);
-
-        TabStrip.Children.Remove(tab.HeaderElement);
-        TabStrip.Children.Insert(targetIdx, tab.HeaderElement);
+        int i = paneTabs.IndexOf(removed);
+        if (i < 0) return paneTabs.FirstOrDefault();
+        if (paneTabs.Count <= 1) return null;
+        if (i < paneTabs.Count - 1) return paneTabs[i + 1];
+        return paneTabs[i - 1];
     }
 
     private void UpdateTabHeader(TabInfo tab)
@@ -404,27 +342,6 @@ public partial class MainWindow
         }
     }
 
-    private void UpdateAllTabHeaders()
-    {
-        foreach (var tab in _tabs)
-        {
-            var isActive = tab == _activeTab;
-            if (tab.HeaderElement != null)
-            {
-                tab.HeaderElement.SetResourceReference(Border.BackgroundProperty,
-                    isActive ? ThemeResourceKeys.TabActive : ThemeResourceKeys.TabInactive);
-            }
-        }
-    }
-
-    private void SwitchTab(int direction)
-    {
-        if (_tabs.Count <= 1 || _activeTab == null) return;
-        int idx = _tabs.IndexOf(_activeTab);
-        int next = (idx + direction + _tabs.Count) % _tabs.Count;
-        ActivateTab(_tabs[next]);
-    }
-
     private void OnActiveDirtyChanged(object? sender, EventArgs e) => UpdateTitle();
     private void OnActiveCaretMoved(object? sender, EventArgs e) => UpdateCaretPos();
 
@@ -460,17 +377,10 @@ public partial class MainWindow
         if (msg == WM_MOUSEHWHEEL)
         {
             int delta = (short)(wParam.ToInt64() >> 16);
-            var pos = Mouse.GetPosition(TabScrollViewer);
-            bool overTabBar = pos.Y >= 0 && pos.Y <= TabScrollViewer.ActualHeight
-                           && pos.X >= 0 && pos.X <= TabScrollViewer.ActualWidth;
-
-            if (overTabBar)
-            {
-                TabScrollViewer.ScrollToHorizontalOffset(
-                    TabScrollViewer.HorizontalOffset + delta);
+            if (TryHorizontalScrollEditorTabStrips(delta))
                 handled = true;
-            }
-            else if (_activeTab != null)
+
+            if (!handled && _activeTab != null)
             {
                 _activeTab.Editor.SetHorizontalOffset(
                     _activeTab.Editor.HorizontalOffset + delta);
@@ -525,7 +435,7 @@ public partial class MainWindow
 
     private void ApplySettings()
     {
-        foreach (var tab in _tabs)
+        foreach (var tab in AllTabsOrdered())
             ApplySettingsToEditor(tab.Editor);
         _terminalPanel.SyncEditorAppearanceFromSettings();
         FindBarControl.SetPosition(_settings.Editor.Find.BarPosition);
@@ -533,7 +443,7 @@ public partial class MainWindow
         CmdPalette.SetPosition(_settings.Application.CommandPalettePosition);
         MenuWordWrap.IsChecked = _settings.Editor.WordWrap;
         _tabHeaderFactory.FixedWidth = _settings.Editor.FixedWidthTabs;
-        foreach (var tab in _tabs)
+        foreach (var tab in AllTabsOrdered())
             _tabHeaderFactory.ApplyFixedWidth(tab.HeaderElement);
     }
 
@@ -686,7 +596,7 @@ public partial class MainWindow
 
     private void OnExplorerFileRenamed(string oldPath, string newPath)
     {
-        foreach (var tab in _tabs)
+        foreach (var tab in AllTabsOrdered())
         {
             if (tab.FilePath == null) continue;
             if (string.Equals(tab.FilePath, oldPath, StringComparison.OrdinalIgnoreCase))
@@ -708,7 +618,7 @@ public partial class MainWindow
 
     private void OnExplorerFileDeleted(string path)
     {
-        var affectedTabs = _tabs.Where(t =>
+        var affectedTabs = AllTabsOrdered().Where(t =>
             t.FilePath != null &&
             (string.Equals(t.FilePath, path, StringComparison.OrdinalIgnoreCase) ||
              t.FilePath.StartsWith(path + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
@@ -780,7 +690,7 @@ public partial class MainWindow
         var fullPath = Path.GetFullPath(path);
 
         // Switch to existing tab if already open
-        var existing = _tabs.FirstOrDefault(t =>
+        var existing = AllTabsOrdered().FirstOrDefault(t =>
             t.FilePath != null && string.Equals(Path.GetFullPath(t.FilePath), fullPath, StringComparison.OrdinalIgnoreCase));
         if (existing != null)
         {
@@ -812,7 +722,7 @@ public partial class MainWindow
         var result = await LoadFileDataAsync(path, tab.Editor.TabSize);
 
         // Tab may have been closed while we were loading
-        if (!_tabs.Contains(tab)) return null;
+        if (!TabExistsInAnyPane(tab)) return null;
 
         ApplyFileLoadResult(tab, result);
         return tab;
@@ -860,7 +770,7 @@ public partial class MainWindow
                 else
                 {
                     CreateTab();
-                    ActivateTab(_tabs[0]);
+                    ActivateTab(AllTabsOrdered()[0]);
                 }
                 return;
             }
@@ -895,7 +805,8 @@ public partial class MainWindow
         else
         {
             SessionSettings.ClearSessionDir();
-            var session = _sessionManager.SaveSession(_tabs, _activeTab);
+            var session = _sessionManager.SaveSession(AllTabsOrdered(), _activeTab,
+                editorLayout: BuildEditorLayoutSnapshotForSave());
             session.Terminal = CaptureTerminalPreferences();
             _settings.Session = session;
         }
@@ -904,7 +815,8 @@ public partial class MainWindow
     private void SaveFolderSession(string folderPath)
     {
         SessionSettings.ClearFolderSessionDir(folderPath);
-        var session = _sessionManager.SaveSession(_tabs, _activeTab, folderPath);
+        var session = _sessionManager.SaveSession(AllTabsOrdered(), _activeTab, folderPath,
+            BuildEditorLayoutSnapshotForSave());
         session.Terminal = CaptureTerminalPreferences();
         _settings.FolderSessions[folderPath] = session;
     }
@@ -1016,6 +928,8 @@ public partial class MainWindow
             return;
         }
 
+        EnsureSingleLeafLayoutForRestore();
+
         TabInfo? activeTab = null;
         var asyncLoads = new List<(TabInfo tab, RestoredTab rt)>();
 
@@ -1073,14 +987,16 @@ public partial class MainWindow
                 activeTab = tab;
         }
 
-        if (_tabs.Count == 0)
+        ApplyRestoredEditorLayoutIfAny(restored.EditorLayout);
+
+        if (AllTabsOrdered().Count == 0)
         {
             var tab = CreateTab();
             ActivateTab(tab);
         }
         else
         {
-            ActivateTab(activeTab ?? _tabs[0]);
+            ActivateTab(activeTab ?? AllTabsOrdered()[0]);
         }
 
         // Kick off async file loads (window is already visible at this point)
@@ -1091,7 +1007,7 @@ public partial class MainWindow
     private async Task LoadTabContentAsync(TabInfo tab, RestoredTab rt)
     {
         var result = await LoadFileDataAsync(rt.FilePath!, tab.Editor.TabSize);
-        if (!_tabs.Contains(tab)) return;
+        if (!TabExistsInAnyPane(tab)) return;
 
         ApplyFileLoadResult(tab, result);
         if (rt.IsDirty) tab.Editor.MarkDirty();
@@ -1170,7 +1086,7 @@ public partial class MainWindow
 
         if (!sessionSaved)
         {
-            foreach (var tab in _tabs.ToList())
+            foreach (var tab in AllTabsOrdered().ToList())
             {
                 if (tab.Editor.IsDirty)
                 {
@@ -1202,7 +1118,7 @@ public partial class MainWindow
         _settings.Editor.OpenRegions = Shell.GetOpenRegions();
         _settings.Save();
 
-        foreach (var tab in _tabs)
+        foreach (var tab in AllTabsOrdered())
             tab.StopWatching();
 
         _explorerPanel.FlushAllStagedDeletes();
@@ -1398,7 +1314,7 @@ public partial class MainWindow
 
     private void CheckAllTabsForExternalChanges()
     {
-        foreach (var tab in _tabs.ToList())
+        foreach (var tab in AllTabsOrdered().ToList())
             OnFileChangedExternally(tab);
     }
 
@@ -1651,7 +1567,7 @@ public partial class MainWindow
         if (sender != MenuWordWrap)
             MenuWordWrap.IsChecked = !MenuWordWrap.IsChecked;
         _settings.Editor.WordWrap = MenuWordWrap.IsChecked;
-        foreach (var tab in _tabs)
+        foreach (var tab in AllTabsOrdered())
             tab.Editor.WordWrap = _settings.Editor.WordWrap;
         _settings.Save();
     }
@@ -1660,7 +1576,7 @@ public partial class MainWindow
     {
         _settings.Editor.FixedWidthTabs = !_settings.Editor.FixedWidthTabs;
         _tabHeaderFactory.FixedWidth = _settings.Editor.FixedWidthTabs;
-        foreach (var tab in _tabs)
+        foreach (var tab in AllTabsOrdered())
             _tabHeaderFactory.ApplyFixedWidth(tab.HeaderElement);
         _settings.Save();
     }
@@ -1668,7 +1584,7 @@ public partial class MainWindow
     private void ToggleWordWrapAtWords()
     {
         _settings.Editor.WordWrapAtWords = !_settings.Editor.WordWrapAtWords;
-        foreach (var tab in _tabs)
+        foreach (var tab in AllTabsOrdered())
             tab.Editor.WordWrapAtWords = _settings.Editor.WordWrapAtWords;
         _settings.Save();
     }
@@ -1676,7 +1592,7 @@ public partial class MainWindow
     private void ToggleWordWrapIndent()
     {
         _settings.Editor.WordWrapIndent = !_settings.Editor.WordWrapIndent;
-        foreach (var tab in _tabs)
+        foreach (var tab in AllTabsOrdered())
             tab.Editor.WordWrapIndent = _settings.Editor.WordWrapIndent;
         _settings.Save();
     }
@@ -1845,6 +1761,11 @@ public partial class MainWindow
             case VoltCommand.GoToLine: OpenGoToLine(); break;
             case VoltCommand.FocusExplorer: FocusExplorer(); break;
             case VoltCommand.ToggleTerminal: ToggleTerminalPanel(); break;
+            case VoltCommand.ToggleEditorSplit: ToggleEditorSplitFromCommand(); break;
+            case VoltCommand.JoinEditorSplit: JoinEditorWithSibling(); break;
+            case VoltCommand.JoinEditorFlattenAll: JoinEditorFlattenAll(); break;
+            case VoltCommand.SwitchEditorSplitOrientation: ToggleParentSplitOrientation(); break;
+            case VoltCommand.FocusOtherEditorPane: FocusNextEditorLeafFromCommand(); break;
         }
     }
 
@@ -1873,7 +1794,7 @@ public partial class MainWindow
     {
         if (Editor is not { } editor) return;
         var commands = CommandPaletteCommands.Build(new CommandPaletteContext(
-            _tabs, _settings, ThemeManager, editor, FindBarControl, CmdPalette, () => _settings.Save(),
+            AllTabsOrdered(), _settings, ThemeManager, editor, FindBarControl, CmdPalette, () => _settings.Save(),
             new ExplorerActions(ToggleExplorer, OpenFolderInExplorer, CloseFolderInExplorer),
             new WorkspaceActions(
                 () => OnOpenWorkspace(this, new RoutedEventArgs()),
@@ -1894,7 +1815,13 @@ public partial class MainWindow
                     Shell.ShowPanel("terminal");
                     _terminalPanel.NewSession();
                 }),
-            () => _terminalPanel.SyncEditorAppearanceFromSettings()));
+            () => _terminalPanel.SyncEditorAppearanceFromSettings(),
+            new EditorSplitActions(
+                ToggleEditorSplitFromCommand,
+                JoinEditorWithSibling,
+                JoinEditorFlattenAll,
+                ToggleParentSplitOrientation,
+                () => FocusNextEditorLeafFromCommand())));
         CmdPalette.SetCommands(commands);
     }
 
@@ -1910,9 +1837,10 @@ public partial class MainWindow
         MenuViewRight.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleRightPanel);
         MenuViewTop.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleTopPanel);
         MenuViewBottom.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleBottomPanel);
-
-        var newTabGesture = _keyBindingManager.GetGestureText(VoltCommand.NewTab);
-        NewTabButton.ToolTip = string.IsNullOrEmpty(newTabGesture) ? "New Tab" : $"New Tab ({newTabGesture})";
+        MenuSplitEditor.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleEditorSplit);
+        MenuJoinEditor.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.JoinEditorSplit);
+        MenuJoinEditorAll.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.JoinEditorFlattenAll);
+        MenuSplitOrientation.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.SwitchEditorSplitOrientation);
     }
 
     private void StepFontSize(int direction)
@@ -1924,7 +1852,7 @@ public partial class MainWindow
         int next = idx + direction;
         if (next < 0 || next >= sizes.Length) return;
         var newSize = sizes[next];
-        foreach (var tab in _tabs)
+        foreach (var tab in AllTabsOrdered())
             tab.Editor.EditorFontSize = newSize;
         _settings.Editor.Font.Size = newSize;
         _settings.Save();
@@ -2059,10 +1987,10 @@ public partial class MainWindow
         UpdateWorkspaceMenuState(true);
         _settings.Save();
 
-        if (_tabs.Count == 0)
+        if (AllTabsOrdered().Count == 0)
         {
             CreateTab();
-            ActivateTab(_tabs[0]);
+            ActivateTab(AllTabsOrdered()[0]);
         }
     }
 
@@ -2121,7 +2049,7 @@ public partial class MainWindow
         ClearClosedTabHistory();
         CloseAllTabs();
         CreateTab();
-        ActivateTab(_tabs[0]);
+        ActivateTab(AllTabsOrdered()[0]);
         ScheduleRestoreTerminalGlobal(_settings.Session?.Terminal);
     }
 
@@ -2171,21 +2099,11 @@ public partial class MainWindow
         MenuSaveWorkspaceAs.IsEnabled = _workspaceManager.CurrentWorkspace != null || _explorerPanel.OpenFolderPath != null;
     }
 
-    private void CloseAllTabs()
-    {
-        foreach (var tab in _tabs.ToList())
-        {
-            tab.StopWatching();
-            tab.Editor.ReleaseResources();
-        }
-        _tabs.Clear();
-        TabStrip.Children.Clear();
-        _activeTab = null;
-    }
+    private void CloseAllTabs() => CloseAllTabsCore();
 
     private bool PromptSaveDirtyTabs()
     {
-        foreach (var tab in _tabs.ToList())
+        foreach (var tab in AllTabsOrdered().ToList())
         {
             if (tab.Editor.IsDirty)
             {
@@ -2205,7 +2123,7 @@ public partial class MainWindow
         var sessionTabs = new List<WorkspaceSessionTab>();
         int activeIdx = 0;
 
-        foreach (var t in _tabs)
+        foreach (var t in AllTabsOrdered())
         {
             if (t == _activeTab)
                 activeIdx = sessionTabs.Count;
@@ -2226,7 +2144,8 @@ public partial class MainWindow
             Tabs = sessionTabs,
             ActiveTabIndex = activeIdx,
             ExpandedPaths = _explorerPanel.GetExpandedPaths(),
-            Terminal = CaptureTerminalPreferences()
+            Terminal = CaptureTerminalPreferences(),
+            EditorLayout = BuildEditorLayoutSnapshotForSave()
         };
     }
 
@@ -2239,6 +2158,8 @@ public partial class MainWindow
             ScheduleRestoreTerminalWorkspace(workspace.Session.Terminal);
             return;
         }
+
+        EnsureSingleLeafLayoutForRestore();
 
         TabInfo? activeTab = null;
         var asyncLoads = new List<(TabInfo tab, WorkspaceSessionTab st)>();
@@ -2265,14 +2186,16 @@ public partial class MainWindow
             UpdateTabHeader(tab);
         }
 
-        if (_tabs.Count == 0)
+        ApplyRestoredEditorLayoutIfAny(workspace.Session.EditorLayout);
+
+        if (AllTabsOrdered().Count == 0)
         {
             var tab = CreateTab();
             ActivateTab(tab);
             return;
         }
 
-        ActivateTab(activeTab ?? _tabs[0]);
+        ActivateTab(activeTab ?? AllTabsOrdered()[0]);
 
         foreach (var (t, s) in asyncLoads)
             _ = LoadWorkspaceTabAsync(t, s);
@@ -2283,7 +2206,7 @@ public partial class MainWindow
     private async Task LoadWorkspaceTabAsync(TabInfo tab, WorkspaceSessionTab st)
     {
         var result = await LoadFileDataAsync(st.FilePath!, tab.Editor.TabSize);
-        if (!_tabs.Contains(tab)) return;
+        if (!TabExistsInAnyPane(tab)) return;
 
         ApplyFileLoadResult(tab, result);
 

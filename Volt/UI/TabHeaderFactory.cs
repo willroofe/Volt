@@ -7,6 +7,16 @@ using System.Windows.Media;
 
 namespace Volt;
 
+/// <summary>Per-leaf hit targets for cross-leaf tab drag (tab-bar highlight matches panel dock drop styling).</summary>
+internal sealed record EditorSplitLeafDragRow(
+    string LeafId,
+    Border TabBarBorder,
+    StackPanel Strip,
+    Border DropIndicator);
+
+/// <summary>Hit targets and visuals for dragging editor tabs between N split leaves.</summary>
+internal sealed record EditorSplitTabDragHost(Grid SplitRoot, IReadOnlyList<EditorSplitLeafDragRow> Leaves);
+
 /// <summary>
 /// Creates tab header UI elements and manages tab drag-to-reorder.
 /// Extracted from MainWindow to reduce its size and isolate tab header concerns.
@@ -14,17 +24,33 @@ namespace Volt;
 internal class TabHeaderFactory
 {
     private TabInfo? _dragTab;
+    private Panel? _dragSourceStrip;
+    private FrameworkElement? _dragSourceDropIndicator;
+    private Window? _splitDragPreviewWindow;
     private Point _dragStartPos;
+    private Point _dragStartWindow;
     private bool _isTabDragging;
     private int _dragTargetIndex = -1;
+    private bool _dragIsCrossLeaf;
+    private string? _dragCrossTargetLeafId;
     private Popup? _dragGhost;
 
     public bool FixedWidth { get; set; }
     private const double FixedTabWidth = 160;
 
+    /// <summary>When set, tab drags can move headers between primary/secondary strips with dock-style tab bar highlighting.</summary>
+    public EditorSplitTabDragHost? SplitDragHost { get; set; }
+
+    /// <summary>
+    /// Returns the strip and drop indicator for <paramref name="tab"/> based on which pane owns it today.
+    /// Required after split/join: headers keep delegate closures from creation, but <see cref="TabInfo.HeaderElement"/> is reparented.
+    /// </summary>
+    public Func<TabInfo, (Panel strip, FrameworkElement drop)>? ResolveEditorTabStrip { get; set; }
+
     public event Action<TabInfo>? TabActivated;
     public event Action<TabInfo>? TabClosed;
     public event Action<TabInfo, int>? TabReordered;
+    public event Action<TabInfo, string, int>? TabMovedToOtherLeaf;
 
     public void ApplyFixedWidth(Border header)
     {
@@ -42,6 +68,8 @@ internal class TabHeaderFactory
 
     public Border CreateHeader(TabInfo tab, Panel tabStrip, FrameworkElement dropIndicator)
     {
+        (Panel strip, FrameworkElement drop) Cur() => ResolveEditorTabStrip?.Invoke(tab) ?? (tabStrip, dropIndicator);
+
         var textBlock = new TextBlock
         {
             Text = tab.DisplayName,
@@ -79,11 +107,19 @@ internal class TabHeaderFactory
 
         header.MouseLeftButtonDown += (_, e) =>
         {
+            UnhookSplitDragWindowPreview();
             TabActivated?.Invoke(tab);
             _dragTab = tab;
-            _dragStartPos = e.GetPosition(tabStrip);
+            var (curStrip, curDrop) = Cur();
+            _dragSourceStrip = curStrip;
+            _dragSourceDropIndicator = curDrop;
+            _dragStartPos = e.GetPosition(curStrip);
+            var win = Window.GetWindow(header);
+            if (win != null)
+                _dragStartWindow = e.GetPosition(win);
             _isTabDragging = false;
             _dragTargetIndex = -1;
+            _dragIsCrossLeaf = false;
             header.CaptureMouse();
             e.Handled = true;
         };
@@ -91,39 +127,69 @@ internal class TabHeaderFactory
         header.MouseMove += (_, e) =>
         {
             if (_dragTab != tab || e.LeftButton != MouseButtonState.Pressed) return;
-            var pos = e.GetPosition(tabStrip);
+            var win = Window.GetWindow(header);
+            if (win == null) return;
+
             if (!_isTabDragging)
             {
-                if (Math.Abs(pos.X - _dragStartPos.X) < SystemParameters.MinimumHorizontalDragDistance)
-                    return;
+                var curWin = e.GetPosition(win);
+                double dx = Math.Abs(curWin.X - _dragStartWindow.X);
+                double dy = Math.Abs(curWin.Y - _dragStartWindow.Y);
+                bool past = SplitDragHost != null
+                    ? dx >= SystemParameters.MinimumHorizontalDragDistance ||
+                      dy >= SystemParameters.MinimumVerticalDragDistance
+                    : dx >= SystemParameters.MinimumHorizontalDragDistance;
+                if (!past) return;
                 _isTabDragging = true;
                 ShowDragGhost(tab, header);
                 header.Opacity = 0.4;
+                HookSplitDragWindowPreview(header);
             }
+
             UpdateDragGhost(e, header);
-            UpdateDropIndicator(pos.X, tabStrip, dropIndicator, tab);
+
+            var (curStrip, curDrop) = Cur();
+            if (SplitDragHost != null)
+                UpdateDropIndicatorSplit(curStrip, curDrop, tab);
+            else
+            {
+                var pos = e.GetPosition(curStrip);
+                UpdateDropIndicator(pos.X, curStrip, curDrop, tab, headerInStrip: true);
+            }
         };
 
-        header.MouseLeftButtonUp += (_, e) =>
+        header.MouseLeftButtonUp += (_, _) =>
         {
             if (_dragTab == tab)
             {
-                // Capture state before ReleaseMouseCapture, which fires
-                // LostMouseCapture synchronously and clears drag state.
                 bool wasDragging = _isTabDragging;
+                // Do not re-run hit-testing here: on release the cursor is often slightly off the tab
+                // strip (ghost/editor), which cleared _dragTargetIndex and dropped the move.
                 int targetIndex = _dragTargetIndex;
+                bool cross = _dragIsCrossLeaf;
+                var crossLeaf = _dragCrossTargetLeafId;
+                UnhookSplitDragWindowPreview();
                 header.ReleaseMouseCapture();
                 if (wasDragging)
                 {
                     header.Opacity = 1.0;
                     HideDragGhost();
-                    dropIndicator.Visibility = Visibility.Collapsed;
+                    ClearSplitDragUi(Cur().drop);
                     if (targetIndex >= 0)
-                        TabReordered?.Invoke(tab, targetIndex);
+                    {
+                        if (cross && crossLeaf != null)
+                            TabMovedToOtherLeaf?.Invoke(tab, crossLeaf, targetIndex);
+                        else
+                            TabReordered?.Invoke(tab, targetIndex);
+                    }
                 }
+
                 _dragTab = null;
+                _dragSourceStrip = null;
+                _dragSourceDropIndicator = null;
                 _isTabDragging = false;
                 _dragTargetIndex = -1;
+                _dragIsCrossLeaf = false;
             }
         };
 
@@ -133,10 +199,14 @@ internal class TabHeaderFactory
             {
                 header.Opacity = 1.0;
                 HideDragGhost();
-                dropIndicator.Visibility = Visibility.Collapsed;
+                ClearSplitDragUi(Cur().drop);
+                UnhookSplitDragWindowPreview();
                 _dragTab = null;
+                _dragSourceStrip = null;
+                _dragSourceDropIndicator = null;
                 _isTabDragging = false;
                 _dragTargetIndex = -1;
+                _dragIsCrossLeaf = false;
             }
         };
 
@@ -162,6 +232,151 @@ internal class TabHeaderFactory
         };
 
         return header;
+    }
+
+    private void HookSplitDragWindowPreview(UIElement relativeFrom)
+    {
+        if (SplitDragHost == null) return;
+        var win = Window.GetWindow(relativeFrom);
+        if (win == null || ReferenceEquals(_splitDragPreviewWindow, win)) return;
+        UnhookSplitDragWindowPreview();
+        _splitDragPreviewWindow = win;
+        win.PreviewMouseMove += OnWindowPreviewMouseMoveDuringTabDrag;
+    }
+
+    private void UnhookSplitDragWindowPreview()
+    {
+        if (_splitDragPreviewWindow != null)
+        {
+            _splitDragPreviewWindow.PreviewMouseMove -= OnWindowPreviewMouseMoveDuringTabDrag;
+            _splitDragPreviewWindow = null;
+        }
+    }
+
+    private void OnWindowPreviewMouseMoveDuringTabDrag(object sender, MouseEventArgs e)
+    {
+        if (!_isTabDragging || _dragTab == null || SplitDragHost == null ||
+            _dragSourceStrip == null || _dragSourceDropIndicator == null)
+            return;
+        UpdateDropIndicatorSplit(_dragSourceStrip, _dragSourceDropIndicator, _dragTab);
+    }
+
+    private void ClearSplitDragUi(FrameworkElement localDropIndicator)
+    {
+        localDropIndicator.Visibility = Visibility.Collapsed;
+        if (SplitDragHost == null) return;
+        foreach (var r in SplitDragHost.Leaves)
+            r.DropIndicator.Visibility = Visibility.Collapsed;
+        SetTabBarDropHighlight(null);
+    }
+
+    private void UpdateDropIndicatorSplit(Panel sourceStrip, FrameworkElement sourceDropIndicator, TabInfo dragTab)
+    {
+        var host = SplitDragHost!;
+        string? sourceLeafId = null;
+        foreach (var r in host.Leaves)
+        {
+            if (ReferenceEquals(r.Strip, sourceStrip))
+            {
+                sourceLeafId = r.LeafId;
+                break;
+            }
+        }
+
+        if (sourceLeafId == null) return;
+
+        string? over = HitLeafUnderCursor(host, sourceLeafId);
+
+        if (over == null)
+        {
+            sourceDropIndicator.Visibility = Visibility.Collapsed;
+            foreach (var r in host.Leaves)
+                r.DropIndicator.Visibility = Visibility.Collapsed;
+            SetTabBarDropHighlight(null);
+            _dragTargetIndex = -1;
+            _dragIsCrossLeaf = false;
+            return;
+        }
+
+        var overRow = host.Leaves.First(r => r.LeafId == over);
+
+        foreach (var r in host.Leaves)
+        {
+            if (!ReferenceEquals(r, overRow))
+                r.DropIndicator.Visibility = Visibility.Collapsed;
+        }
+
+        if (over == sourceLeafId)
+        {
+            SetTabBarDropHighlight(null);
+            UpdateDropIndicator(Mouse.GetPosition(overRow.Strip).X, overRow.Strip, overRow.DropIndicator, dragTab,
+                headerInStrip: true);
+            _dragIsCrossLeaf = false;
+        }
+        else
+        {
+            SetTabBarDropHighlight(over);
+            sourceDropIndicator.Visibility = Visibility.Collapsed;
+            UpdateDropIndicator(Mouse.GetPosition(overRow.Strip).X, overRow.Strip, overRow.DropIndicator, dragTab,
+                headerInStrip: false);
+            _dragIsCrossLeaf = true;
+            _dragCrossTargetLeafId = over;
+        }
+    }
+
+    private static string? HitLeafUnderCursor(EditorSplitTabDragHost host, string sourceLeafId)
+    {
+        if (!host.SplitRoot.IsVisible) return null;
+
+        double band = UIConstants.TabBarHeight + 16;
+        string? other = null;
+        foreach (var row in host.Leaves)
+        {
+            if (row.LeafId == sourceLeafId) continue;
+            var p = Mouse.GetPosition(row.TabBarBorder);
+            bool inBar = row.TabBarBorder.ActualWidth > 0 &&
+                         p.X >= 0 && p.X <= row.TabBarBorder.ActualWidth &&
+                         p.Y >= 0 && p.Y <= band;
+            if (inBar)
+                other = row.LeafId;
+        }
+
+        if (other != null)
+            return other;
+
+        foreach (var row in host.Leaves)
+        {
+            if (row.LeafId != sourceLeafId) continue;
+            var p = Mouse.GetPosition(row.TabBarBorder);
+            bool inBar = row.TabBarBorder.ActualWidth > 0 &&
+                         p.X >= 0 && p.X <= row.TabBarBorder.ActualWidth &&
+                         p.Y >= 0 && p.Y <= band;
+            if (inBar)
+                return row.LeafId;
+        }
+
+        return null;
+    }
+
+    private void SetTabBarDropHighlight(string? leafId)
+    {
+        if (SplitDragHost == null) return;
+        foreach (var r in SplitDragHost.Leaves)
+            ApplyTabBarHighlight(r.TabBarBorder, leafId != null && r.LeafId == leafId);
+    }
+
+    private static void ApplyTabBarHighlight(Border bar, bool highlight)
+    {
+        if (highlight)
+        {
+            var fg = (Brush)Application.Current.Resources[ThemeResourceKeys.TextFg];
+            var brush = fg.Clone();
+            brush.Opacity = 0.32;
+            brush.Freeze();
+            bar.Background = brush;
+        }
+        else
+            bar.SetResourceReference(Border.BackgroundProperty, ThemeResourceKeys.TabBarBg);
     }
 
     private void ShowDragGhost(TabInfo tab, Visual relativeTo)
@@ -219,7 +434,7 @@ internal class TabHeaderFactory
         }
     }
 
-    private void UpdateDropIndicator(double mouseX, Panel tabStrip, FrameworkElement indicator, TabInfo dragTab)
+    private void UpdateDropIndicator(double mouseX, Panel tabStrip, FrameworkElement indicator, TabInfo dragTab, bool headerInStrip)
     {
         double offset = 0;
         int insertIdx = -1;
@@ -248,14 +463,20 @@ internal class TabHeaderFactory
             indicatorX = offset;
         }
 
-        if (insertIdx == dragSourceIdx || insertIdx == dragSourceIdx + 1)
+        if (headerInStrip && dragSourceIdx >= 0 && (insertIdx == dragSourceIdx || insertIdx == dragSourceIdx + 1))
         {
             indicator.Visibility = Visibility.Collapsed;
             _dragTargetIndex = -1;
             return;
         }
 
-        _dragTargetIndex = insertIdx > dragSourceIdx ? insertIdx - 1 : insertIdx;
+        // Header not in this strip (e.g. wrong headerInStrip) must use raw insertIdx — otherwise
+        // insertIdx > -1 ? insertIdx - 1 yields -1 for insert-at-start and the drop is lost.
+        if (headerInStrip && dragSourceIdx >= 0)
+            _dragTargetIndex = insertIdx > dragSourceIdx ? insertIdx - 1 : insertIdx;
+        else
+            _dragTargetIndex = insertIdx;
+
         indicator.Visibility = Visibility.Visible;
         indicator.Margin = new Thickness(indicatorX - 1, 0, 0, 0);
     }

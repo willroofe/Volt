@@ -25,6 +25,8 @@ internal static class ThemeResourceKeys
     public const string ScrollThumbHover = "ThemeScrollThumbHover";
     public const string TabBarBg = "ThemeTabBarBg";
     public const string TabActive = "ThemeTabActive";
+    /// <summary>Visible in split view but not keyboard-focused.</summary>
+    public const string TabActiveSecondary = "ThemeTabActiveSecondary";
     public const string TabInactive = "ThemeTabInactive";
     public const string TabHover = "ThemeTabHover";
     public const string TabBorder = "ThemeTabBorder";

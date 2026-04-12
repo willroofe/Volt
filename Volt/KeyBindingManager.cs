@@ -30,6 +30,11 @@ public enum VoltCommand
     GoToLine,
     FocusExplorer,
     ToggleTerminal,
+    ToggleEditorSplit,
+    JoinEditorSplit,
+    JoinEditorFlattenAll,
+    SwitchEditorSplitOrientation,
+    FocusOtherEditorPane,
 }
 
 [JsonConverter(typeof(KeyComboJsonConverter))]
@@ -192,6 +197,11 @@ public class KeyBindingManager
         [VoltCommand.GoToLine] = new(Key.G, ModifierKeys.Control),
         [VoltCommand.FocusExplorer] = new(Key.E, ModifierKeys.Control),
         [VoltCommand.ToggleTerminal] = new(Key.OemTilde, ModifierKeys.Control),
+        [VoltCommand.ToggleEditorSplit] = new(Key.Oem5, ModifierKeys.Control),
+        [VoltCommand.JoinEditorSplit] = KeyCombo.None,
+        [VoltCommand.JoinEditorFlattenAll] = KeyCombo.None,
+        [VoltCommand.SwitchEditorSplitOrientation] = new(Key.Oem5, ModifierKeys.Control | ModifierKeys.Shift),
+        [VoltCommand.FocusOtherEditorPane] = new(Key.F6, ModifierKeys.None),
     };
 
     private readonly Dictionary<VoltCommand, KeyCombo> _bindings = new();
@@ -308,6 +318,11 @@ public class KeyBindingManager
         VoltCommand.UnfoldBlock => "Unfold Block",
         VoltCommand.FocusExplorer => "Focus Explorer",
         VoltCommand.ToggleTerminal => "Toggle Terminal",
+        VoltCommand.ToggleEditorSplit => "Split Editor",
+        VoltCommand.JoinEditorSplit => "Join Editor with Sibling",
+        VoltCommand.JoinEditorFlattenAll => "Join All Editor Groups",
+        VoltCommand.SwitchEditorSplitOrientation => "Switch Split Orientation",
+        VoltCommand.FocusOtherEditorPane => "Focus Next Editor Group",
         _ => command.ToString(),
     };
 }

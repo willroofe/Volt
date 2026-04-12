@@ -109,6 +109,9 @@ public class SessionSettings
     public int ActiveTabIndex { get; set; }
     public TerminalPreferences? Terminal { get; set; }
 
+    /// <summary>Optional persisted editor split tree (tabs remain a flat list in DFS order).</summary>
+    public EditorLayoutSnapshot? EditorLayout { get; set; }
+
     public static string TabContentPath(int index) => Path.Combine(AppPaths.SessionDir, $"tab-{index}.txt");
 
     public static string FolderSessionDir(string folderPath)

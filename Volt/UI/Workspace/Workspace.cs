@@ -30,6 +30,9 @@ public class WorkspaceSession
 
     [JsonPropertyName("terminal")]
     public TerminalPreferences? Terminal { get; set; }
+
+    [JsonPropertyName("editorLayout")]
+    public EditorLayoutSnapshot? EditorLayout { get; set; }
 }
 
 public class WorkspaceSessionTab
