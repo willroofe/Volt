@@ -137,15 +137,129 @@ public class EditorLayoutTreeTests
         EditorLayoutNode root = leaf;
 
         var splitOk = EditorLayoutTree.TrySplitLeaf(ref root, leaf, b, EditorSplitOrientation.Horizontal,
-            out var second);
+            out var activePane);
         Assert.True(splitOk);
         var split = Assert.IsType<EditorSplitNode>(root);
         Assert.Same(leaf, split.First);
-        Assert.Same(second, split.Second);
-        Assert.Single(second.Tabs);
-        Assert.Same(b, second.ActiveTab);
+        var secondLeaf = Assert.IsType<EditorLeafNode>(split.Second);
+        Assert.Same(activePane, secondLeaf);
+        Assert.Single(secondLeaf.Tabs);
+        Assert.Same(b, secondLeaf.ActiveTab);
         Assert.Single(leaf.Tabs);
         Assert.Same(a, leaf.ActiveTab);
+    }
+
+    [StaFact]
+    public void TrySplitLeaf_ActiveInFirstPane_PlacesMovedTabInFirstChild()
+    {
+        EnsureWpfResourcesForTabInfo();
+        var tm = new ThemeManager();
+        var sm = new SyntaxManager();
+        var a = NewTab(tm, sm);
+        var b = NewTab(tm, sm);
+        var leaf = new EditorLeafNode("solo");
+        leaf.Tabs.Add(a);
+        leaf.Tabs.Add(b);
+        leaf.ActiveTab = b;
+        EditorLayoutNode root = leaf;
+
+        var splitOk = EditorLayoutTree.TrySplitLeaf(ref root, leaf, b, EditorSplitOrientation.Vertical,
+            out var activePane, activeInSecondPane: false);
+        Assert.True(splitOk);
+        var split = Assert.IsType<EditorSplitNode>(root);
+        Assert.Same(leaf, split.First);
+        Assert.Same(activePane, leaf);
+        Assert.Single(leaf.Tabs);
+        Assert.Same(b, leaf.ActiveTab);
+        var other = Assert.IsType<EditorLeafNode>(split.Second);
+        Assert.Single(other.Tabs);
+        Assert.Same(a, other.ActiveTab);
+    }
+
+    [StaFact]
+    public void WouldEditorSplitDropRecreateSiblingLayout_TrueWhenSoleTopTabToBottomTopHalf()
+    {
+        EnsureWpfResourcesForTabInfo();
+        var tm = new ThemeManager();
+        var sm = new SyntaxManager();
+        var topTab = NewTab(tm, sm);
+        var bottomTab = NewTab(tm, sm);
+        var topLeaf = new EditorLeafNode("top");
+        topLeaf.Tabs.Add(topTab);
+        topLeaf.ActiveTab = topTab;
+        var bottomLeaf = new EditorLeafNode("bottom");
+        bottomLeaf.Tabs.Add(bottomTab);
+        bottomLeaf.ActiveTab = bottomTab;
+        EditorLayoutNode root = new EditorSplitNode
+        {
+            Orientation = EditorSplitOrientation.Horizontal,
+            First = topLeaf,
+            Second = bottomLeaf,
+            FirstPaneStarRatio = 1.0
+        };
+
+        Assert.True(EditorLayoutTree.WouldEditorSplitDropRecreateSiblingLayout(
+            root, topTab, bottomLeaf.Id, EditorSplitOrientation.Horizontal, activeInSecondPane: false));
+        Assert.False(EditorLayoutTree.WouldEditorSplitDropRecreateSiblingLayout(
+            root, topTab, bottomLeaf.Id, EditorSplitOrientation.Horizontal, activeInSecondPane: true));
+        Assert.False(EditorLayoutTree.WouldEditorSplitDropRecreateSiblingLayout(
+            root, topTab, bottomLeaf.Id, EditorSplitOrientation.Vertical, activeInSecondPane: false));
+    }
+
+    [StaFact]
+    public void WouldEditorSplitDropRecreateSiblingLayout_FalseWhenTopLeafHasTwoTabs()
+    {
+        EnsureWpfResourcesForTabInfo();
+        var tm = new ThemeManager();
+        var sm = new SyntaxManager();
+        var t1 = NewTab(tm, sm);
+        var t2 = NewTab(tm, sm);
+        var bottomTab = NewTab(tm, sm);
+        var topLeaf = new EditorLeafNode("top");
+        topLeaf.Tabs.Add(t1);
+        topLeaf.Tabs.Add(t2);
+        var bottomLeaf = new EditorLeafNode("bottom");
+        bottomLeaf.Tabs.Add(bottomTab);
+        EditorLayoutNode root = new EditorSplitNode
+        {
+            Orientation = EditorSplitOrientation.Horizontal,
+            First = topLeaf,
+            Second = bottomLeaf,
+            FirstPaneStarRatio = 1.0
+        };
+
+        Assert.False(EditorLayoutTree.WouldEditorSplitDropRecreateSiblingLayout(
+            root, t1, bottomLeaf.Id, EditorSplitOrientation.Horizontal, activeInSecondPane: false));
+    }
+
+    [StaFact]
+    public void WouldEditorSplitDropRecreateSiblingLayout_TrueWhenSoleRightTabToLeftRightHalf()
+    {
+        EnsureWpfResourcesForTabInfo();
+        var tm = new ThemeManager();
+        var sm = new SyntaxManager();
+        var leftTab = NewTab(tm, sm);
+        var rightTab = NewTab(tm, sm);
+        var leftLeaf = new EditorLeafNode("left");
+        leftLeaf.Tabs.Add(leftTab);
+        leftLeaf.ActiveTab = leftTab;
+        var rightLeaf = new EditorLeafNode("right");
+        rightLeaf.Tabs.Add(rightTab);
+        rightLeaf.ActiveTab = rightTab;
+        EditorLayoutNode root = new EditorSplitNode
+        {
+            Orientation = EditorSplitOrientation.Vertical,
+            First = leftLeaf,
+            Second = rightLeaf,
+            FirstPaneStarRatio = 1.0
+        };
+
+        Assert.True(EditorLayoutTree.WouldEditorSplitDropRecreateSiblingLayout(
+            root, rightTab, leftLeaf.Id, EditorSplitOrientation.Vertical, activeInSecondPane: true));
+        Assert.False(EditorLayoutTree.WouldEditorSplitDropRecreateSiblingLayout(
+            root, rightTab, leftLeaf.Id, EditorSplitOrientation.Vertical, activeInSecondPane: false));
+        Assert.False(EditorLayoutTree.WouldEditorSplitDropRecreateSiblingLayout(
+            root, rightTab, leftLeaf.Id, EditorSplitOrientation.Horizontal, activeInSecondPane: true));
     }
 
     [StaFact]

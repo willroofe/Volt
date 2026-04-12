@@ -12,7 +12,9 @@ internal sealed record EditorSplitLeafDragRow(
     string LeafId,
     Border TabBarBorder,
     StackPanel Strip,
-    Border DropIndicator);
+    Border DropIndicator,
+    Border EditorHost,
+    EditorPaneChrome Chrome);
 
 /// <summary>Hit targets and visuals for dragging editor tabs between N split leaves.</summary>
 internal sealed record EditorSplitTabDragHost(Grid SplitRoot, IReadOnlyList<EditorSplitLeafDragRow> Leaves);
@@ -34,6 +36,10 @@ internal class TabHeaderFactory
     private bool _dragIsCrossLeaf;
     private string? _dragCrossTargetLeafId;
     private Popup? _dragGhost;
+    private bool _hasPendingEditorSplit;
+    private string _pendingEditorSplitLeafId = "";
+    private EditorSplitOrientation _pendingEditorSplitOrientation;
+    private bool _pendingEditorSplitActiveInSecondPane;
 
     public bool FixedWidth { get; set; }
     private const double FixedTabWidth = 160;
@@ -51,6 +57,24 @@ internal class TabHeaderFactory
     public event Action<TabInfo>? TabClosed;
     public event Action<TabInfo, int>? TabReordered;
     public event Action<TabInfo, string, int>? TabMovedToOtherLeaf;
+
+    /// <summary>Drop on an editor half to split that leaf; <paramref name="activeInSecondPane"/> matches <see cref="EditorLayoutTree.TrySplitLeaf"/>.</summary>
+    public event Action<TabInfo, string, EditorSplitOrientation, bool>? TabEditorSplitDrop;
+
+    /// <summary>When null or returns false, editor-half drop is treated as a miss (no highlight / no split on release).</summary>
+    public Func<TabInfo, string, EditorSplitOrientation, bool, bool>? CanTabEditorSplitOnLeaf { get; set; }
+
+    /// <summary>Right-click tab menu: split / join / orientation (handlers activate the tab first).</summary>
+    public event Action<TabInfo>? TabContextSplitGroup;
+    public event Action<TabInfo>? TabContextJoinSibling;
+    public event Action<TabInfo>? TabContextJoinAll;
+    public event Action<TabInfo>? TabContextToggleOrientation;
+
+    /// <summary>Optional per-tab enablement for tab context split commands (defaults true when unset).</summary>
+    public Func<TabInfo, bool>? TabContextCanSplitGroup { get; set; }
+    public Func<TabInfo, bool>? TabContextCanJoinSibling { get; set; }
+    public Func<TabInfo, bool>? TabContextCanJoinAll { get; set; }
+    public Func<TabInfo, bool>? TabContextCanToggleOrientation { get; set; }
 
     public void ApplyFixedWidth(Border header)
     {
@@ -120,6 +144,7 @@ internal class TabHeaderFactory
             _isTabDragging = false;
             _dragTargetIndex = -1;
             _dragIsCrossLeaf = false;
+            _hasPendingEditorSplit = false;
             header.CaptureMouse();
             e.Handled = true;
         };
@@ -163,11 +188,13 @@ internal class TabHeaderFactory
             if (_dragTab == tab)
             {
                 bool wasDragging = _isTabDragging;
-                // Do not re-run hit-testing here: on release the cursor is often slightly off the tab
-                // strip (ghost/editor), which cleared _dragTargetIndex and dropped the move.
                 int targetIndex = _dragTargetIndex;
                 bool cross = _dragIsCrossLeaf;
                 var crossLeaf = _dragCrossTargetLeafId;
+                bool editorSplit = _hasPendingEditorSplit;
+                var editorLeaf = _pendingEditorSplitLeafId;
+                var editorOrient = _pendingEditorSplitOrientation;
+                bool editorSecond = _pendingEditorSplitActiveInSecondPane;
                 UnhookSplitDragWindowPreview();
                 header.ReleaseMouseCapture();
                 if (wasDragging)
@@ -175,7 +202,9 @@ internal class TabHeaderFactory
                     header.Opacity = 1.0;
                     HideDragGhost();
                     ClearSplitDragUi(Cur().drop);
-                    if (targetIndex >= 0)
+                    if (editorSplit)
+                        TabEditorSplitDrop?.Invoke(tab, editorLeaf, editorOrient, editorSecond);
+                    else if (targetIndex >= 0)
                     {
                         if (cross && crossLeaf != null)
                             TabMovedToOtherLeaf?.Invoke(tab, crossLeaf, targetIndex);
@@ -190,6 +219,7 @@ internal class TabHeaderFactory
                 _isTabDragging = false;
                 _dragTargetIndex = -1;
                 _dragIsCrossLeaf = false;
+                _hasPendingEditorSplit = false;
             }
         };
 
@@ -207,6 +237,7 @@ internal class TabHeaderFactory
                 _isTabDragging = false;
                 _dragTargetIndex = -1;
                 _dragIsCrossLeaf = false;
+                _hasPendingEditorSplit = false;
             }
         };
 
@@ -221,11 +252,45 @@ internal class TabHeaderFactory
 
         header.MouseRightButtonUp += (_, e) =>
         {
-            if (tab.FilePath == null || (!File.Exists(tab.FilePath) && !Directory.Exists(tab.FilePath)))
-                return;
             var menu = ContextMenuHelper.Create();
-            menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
-                () => FileHelper.RevealInFileExplorer(tab.FilePath!)));
+            bool anyEditorCommand = false;
+
+            if (TabContextCanSplitGroup?.Invoke(tab) ?? true)
+            {
+                menu.Items.Add(ContextMenuHelper.Item("Split this group", () => TabContextSplitGroup?.Invoke(tab)));
+                anyEditorCommand = true;
+            }
+
+            if (TabContextCanJoinSibling?.Invoke(tab) ?? false)
+            {
+                menu.Items.Add(ContextMenuHelper.Item("Join with sibling group",
+                    () => TabContextJoinSibling?.Invoke(tab)));
+                anyEditorCommand = true;
+            }
+
+            if (TabContextCanJoinAll?.Invoke(tab) ?? false)
+            {
+                menu.Items.Add(ContextMenuHelper.Item("Join all editor groups", () => TabContextJoinAll?.Invoke(tab)));
+                anyEditorCommand = true;
+            }
+
+            if (TabContextCanToggleOrientation?.Invoke(tab) ?? false)
+            {
+                menu.Items.Add(ContextMenuHelper.Item("Toggle split orientation",
+                    () => TabContextToggleOrientation?.Invoke(tab)));
+                anyEditorCommand = true;
+            }
+
+            var canReveal = tab.FilePath != null && (File.Exists(tab.FilePath) || Directory.Exists(tab.FilePath));
+            if (canReveal && anyEditorCommand)
+                menu.Items.Add(ContextMenuHelper.Separator());
+            if (canReveal)
+                menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer",
+                    () => FileHelper.RevealInFileExplorer(tab.FilePath!)));
+
+            if (menu.Items.Count == 0)
+                return;
+
             header.ContextMenu = menu;
             menu.IsOpen = true;
             e.Handled = true;
@@ -264,10 +329,19 @@ internal class TabHeaderFactory
     private void ClearSplitDragUi(FrameworkElement localDropIndicator)
     {
         localDropIndicator.Visibility = Visibility.Collapsed;
+        _hasPendingEditorSplit = false;
+        ClearEditorDropHighlights();
         if (SplitDragHost == null) return;
         foreach (var r in SplitDragHost.Leaves)
             r.DropIndicator.Visibility = Visibility.Collapsed;
         SetTabBarDropHighlight(null);
+    }
+
+    private void ClearEditorDropHighlights()
+    {
+        if (SplitDragHost == null) return;
+        foreach (var r in SplitDragHost.Leaves)
+            r.Chrome.SetEditorSplitDropHighlight(false, EditorSplitOrientation.Horizontal, false);
     }
 
     private void UpdateDropIndicatorSplit(Panel sourceStrip, FrameworkElement sourceDropIndicator, TabInfo dragTab)
@@ -285,9 +359,41 @@ internal class TabHeaderFactory
 
         if (sourceLeafId == null) return;
 
-        string? over = HitLeafUnderCursor(host, sourceLeafId);
+        ClearEditorDropHighlights();
 
-        if (over == null)
+        var stripLeaf = HitLeafStripUnderCursor(host, sourceLeafId);
+        if (stripLeaf != null)
+        {
+            _hasPendingEditorSplit = false;
+            var overRow = host.Leaves.First(r => r.LeafId == stripLeaf);
+            foreach (var r in host.Leaves)
+            {
+                if (!ReferenceEquals(r, overRow))
+                    r.DropIndicator.Visibility = Visibility.Collapsed;
+            }
+
+            if (stripLeaf == sourceLeafId)
+            {
+                SetTabBarDropHighlight(null);
+                UpdateDropIndicator(Mouse.GetPosition(overRow.Strip).X, overRow.Strip, overRow.DropIndicator, dragTab,
+                    headerInStrip: true);
+                _dragIsCrossLeaf = false;
+            }
+            else
+            {
+                SetTabBarDropHighlight(stripLeaf);
+                sourceDropIndicator.Visibility = Visibility.Collapsed;
+                UpdateDropIndicator(Mouse.GetPosition(overRow.Strip).X, overRow.Strip, overRow.DropIndicator, dragTab,
+                    headerInStrip: false);
+                _dragIsCrossLeaf = true;
+                _dragCrossTargetLeafId = stripLeaf;
+            }
+
+            return;
+        }
+
+        if (TryGetEditorSplitDrop(host, out var edLeaf, out var orient, out var activeSecond) &&
+            (CanTabEditorSplitOnLeaf?.Invoke(dragTab, edLeaf, orient, activeSecond) ?? false))
         {
             sourceDropIndicator.Visibility = Visibility.Collapsed;
             foreach (var r in host.Leaves)
@@ -295,36 +401,25 @@ internal class TabHeaderFactory
             SetTabBarDropHighlight(null);
             _dragTargetIndex = -1;
             _dragIsCrossLeaf = false;
+            _hasPendingEditorSplit = true;
+            _pendingEditorSplitLeafId = edLeaf;
+            _pendingEditorSplitOrientation = orient;
+            _pendingEditorSplitActiveInSecondPane = activeSecond;
+            var hitRow = host.Leaves.First(r => r.LeafId == edLeaf);
+            hitRow.Chrome.SetEditorSplitDropHighlight(true, orient, activeSecond);
             return;
         }
 
-        var overRow = host.Leaves.First(r => r.LeafId == over);
-
+        sourceDropIndicator.Visibility = Visibility.Collapsed;
         foreach (var r in host.Leaves)
-        {
-            if (!ReferenceEquals(r, overRow))
-                r.DropIndicator.Visibility = Visibility.Collapsed;
-        }
-
-        if (over == sourceLeafId)
-        {
-            SetTabBarDropHighlight(null);
-            UpdateDropIndicator(Mouse.GetPosition(overRow.Strip).X, overRow.Strip, overRow.DropIndicator, dragTab,
-                headerInStrip: true);
-            _dragIsCrossLeaf = false;
-        }
-        else
-        {
-            SetTabBarDropHighlight(over);
-            sourceDropIndicator.Visibility = Visibility.Collapsed;
-            UpdateDropIndicator(Mouse.GetPosition(overRow.Strip).X, overRow.Strip, overRow.DropIndicator, dragTab,
-                headerInStrip: false);
-            _dragIsCrossLeaf = true;
-            _dragCrossTargetLeafId = over;
-        }
+            r.DropIndicator.Visibility = Visibility.Collapsed;
+        SetTabBarDropHighlight(null);
+        _dragTargetIndex = -1;
+        _dragIsCrossLeaf = false;
+        _hasPendingEditorSplit = false;
     }
 
-    private static string? HitLeafUnderCursor(EditorSplitTabDragHost host, string sourceLeafId)
+    private static string? HitLeafStripUnderCursor(EditorSplitTabDragHost host, string sourceLeafId)
     {
         if (!host.SplitRoot.IsVisible) return null;
 
@@ -356,6 +451,45 @@ internal class TabHeaderFactory
         }
 
         return null;
+    }
+
+    private static bool TryGetEditorSplitDrop(EditorSplitTabDragHost host, out string targetLeafId,
+        out EditorSplitOrientation orientation, out bool activeInSecondPane)
+    {
+        targetLeafId = "";
+        orientation = EditorSplitOrientation.Horizontal;
+        activeInSecondPane = true;
+        if (!host.SplitRoot.IsVisible) return false;
+
+        foreach (var row in host.Leaves)
+        {
+            var ed = row.EditorHost;
+            if (ed.ActualWidth <= 0 || ed.ActualHeight <= 0)
+                continue;
+            var p = Mouse.GetPosition(ed);
+            if (p.X < 0 || p.X > ed.ActualWidth || p.Y < 0 || p.Y > ed.ActualHeight)
+                continue;
+
+            double w = ed.ActualWidth;
+            double h = ed.ActualHeight;
+            double distH = Math.Min(p.X, w - p.X);
+            double distV = Math.Min(p.Y, h - p.Y);
+            targetLeafId = row.LeafId;
+            if (distH <= distV)
+            {
+                orientation = EditorSplitOrientation.Vertical;
+                activeInSecondPane = p.X >= w * 0.5;
+            }
+            else
+            {
+                orientation = EditorSplitOrientation.Horizontal;
+                activeInSecondPane = p.Y >= h * 0.5;
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     private void SetTabBarDropHighlight(string? leafId)

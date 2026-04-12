@@ -111,7 +111,7 @@ public partial class MainWindow
 
     private void RefreshEditorTabSplitDragHost()
     {
-        if (_layoutBuild == null || !EditorLayoutTree.IsSplit(_editorLayoutRoot))
+        if (_layoutBuild == null || _layoutBuild.LeafChrome.Count == 0)
         {
             _tabHeaderFactory.SplitDragHost = null;
             return;
@@ -121,7 +121,8 @@ public partial class MainWindow
         foreach (var leaf in EditorLayoutTree.EnumerateLeaves(_editorLayoutRoot))
         {
             if (!_layoutBuild.LeafChrome.TryGetValue(leaf.Id, out var c)) continue;
-            rows.Add(new EditorSplitLeafDragRow(leaf.Id, c.TabBarBorder, c.TabStrip, c.TabDropIndicator));
+            rows.Add(new EditorSplitLeafDragRow(leaf.Id, c.TabBarBorder, c.TabStrip, c.TabDropIndicator,
+                c.EditorHost, c));
         }
 
         _tabHeaderFactory.SplitDragHost = new EditorSplitTabDragHost(_layoutBuild.RootGrid, rows);
@@ -227,14 +228,14 @@ public partial class MainWindow
         var leaf = GetFocusedLeaf();
         if (leaf.Tabs.Count < 2) return;
         if (!EditorLayoutTree.TrySplitLeaf(ref _editorLayoutRoot, leaf, _activeTab, EditorSplitOrientation.Horizontal,
-                out var secondLeaf))
+                out var activePaneLeaf))
             return;
-        _focusedLeafId = secondLeaf.Id;
+        _focusedLeafId = activePaneLeaf.Id;
         RebuildEditorLayoutUi();
         UpdateActiveTabHooks(_activeTab);
         UpdateAllTabHeaders();
         UpdateEditorSplitMenuState();
-        Keyboard.Focus(secondLeaf.ActiveTab!.Editor);
+        Keyboard.Focus(activePaneLeaf.ActiveTab!.Editor);
     }
 
     private void JoinEditorFlattenAll()
@@ -438,6 +439,70 @@ public partial class MainWindow
         Keyboard.Focus(tab.Editor);
     }
 
+    private bool CanTabEditorSplitOnLeaf(TabInfo tab, string targetLeafId, EditorSplitOrientation dropOrientation,
+        bool activeInSecondPane)
+    {
+        var dstLeaf = EditorLayoutTree.FindLeafById(_editorLayoutRoot, targetLeafId);
+        if (dstLeaf == null) return false;
+        var srcLeaf = EditorLayoutTree.FindLeafForTab(_editorLayoutRoot, tab);
+        if (srcLeaf == null) return false;
+
+        if (EditorLayoutTree.WouldEditorSplitDropRecreateSiblingLayout(_editorLayoutRoot, tab, targetLeafId,
+                dropOrientation, activeInSecondPane))
+            return false;
+
+        if (ReferenceEquals(srcLeaf, dstLeaf))
+            return dstLeaf.Tabs.Count >= 2;
+
+        int afterMove = dstLeaf.Tabs.Count + (dstLeaf.Tabs.Contains(tab) ? 0 : 1);
+        return afterMove >= 2;
+    }
+
+    private void CommitTabEditorSplitDrop(TabInfo tab, string targetLeafId, EditorSplitOrientation orientation,
+        bool activeInSecondPane)
+    {
+        if (EditorLayoutTree.WouldEditorSplitDropRecreateSiblingLayout(_editorLayoutRoot, tab, targetLeafId,
+                orientation, activeInSecondPane))
+            return;
+
+        var dstLeaf = EditorLayoutTree.FindLeafById(_editorLayoutRoot, targetLeafId);
+        if (dstLeaf == null) return;
+
+        var srcLeaf = EditorLayoutTree.FindLeafForTab(_editorLayoutRoot, tab);
+        if (srcLeaf == null) return;
+
+        if (!ReferenceEquals(srcLeaf, dstLeaf))
+        {
+            if (tab == srcLeaf.ActiveTab)
+                srcLeaf.ActiveTab = PickReplacementWhenRemovingTab(srcLeaf.Tabs, tab);
+            srcLeaf.Tabs.Remove(tab);
+            dstLeaf.Tabs.Add(tab);
+            dstLeaf.ActiveTab = tab;
+            _editorLayoutRoot = EditorLayoutTree.SimplifyEmptyLeaves(_editorLayoutRoot);
+        }
+
+        dstLeaf = EditorLayoutTree.FindLeafForTab(_editorLayoutRoot, tab);
+        if (dstLeaf == null || dstLeaf.Tabs.Count < 2)
+            return;
+
+        if (!EditorLayoutTree.TrySplitLeaf(ref _editorLayoutRoot, dstLeaf, tab, orientation, out var activePaneLeaf,
+                activeInSecondPane))
+            return;
+
+        _focusedLeafId = activePaneLeaf.Id;
+        if (EditorLayoutTree.FindLeafById(_editorLayoutRoot, _focusedLeafId) == null)
+        {
+            var fl = EditorLayoutTree.EnumerateLeaves(_editorLayoutRoot).FirstOrDefault();
+            if (fl != null) _focusedLeafId = fl.Id;
+        }
+
+        RebuildEditorLayoutUi();
+        UpdateActiveTabHooks(tab);
+        UpdateAllTabHeaders();
+        UpdateEditorSplitMenuState();
+        Keyboard.Focus(tab.Editor);
+    }
+
     private void CommitTabReorder(TabInfo tab, int targetIdx)
     {
         var leaf = EditorLayoutTree.FindLeafForTab(_editorLayoutRoot, tab);
@@ -508,6 +573,17 @@ public partial class MainWindow
 
     private EditorLayoutSnapshot? BuildEditorLayoutSnapshotForSave() =>
         EditorLayoutSnapshotSerializer.BuildSnapshot(_editorLayoutRoot, _focusedLeafId);
+
+    private bool TabContextCanJoinSiblingFromMenu(TabInfo tab)
+    {
+        if (!EditorLayoutTree.IsSplit(_editorLayoutRoot)) return false;
+        var leaf = EditorLayoutTree.FindLeafForTab(_editorLayoutRoot, tab);
+        return leaf != null && EditorLayoutTree.FindParentSplitOfLeaf(_editorLayoutRoot, leaf.Id) != null;
+    }
+
+    private bool TabContextCanJoinAllFromMenu(TabInfo tab) => EditorLayoutTree.IsSplit(_editorLayoutRoot);
+
+    private bool TabContextCanToggleOrientationFromMenu(TabInfo tab) => TabContextCanJoinSiblingFromMenu(tab);
 
     private void ApplyRestoredEditorLayoutIfAny(EditorLayoutSnapshot? snapshot)
     {
