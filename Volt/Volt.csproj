@@ -35,6 +35,8 @@
 
     <ItemGroup>
         <Resource Include="Resources\Volt.ico" />
+        <Resource Include="Resources\Fonts\codicon.ttf" />
+        <Content Include="Resources\Fonts\Codicons-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
     <ItemGroup>

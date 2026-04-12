@@ -24,7 +24,7 @@
                        Foreground="{DynamicResource ThemeTextFg}"
                        IsHitTestVisible="False"/>
             <Button Grid.Column="1" Style="{StaticResource CloseButton}"
-                    Content="&#xE8BB;" Click="OnClose"/>
+                    Click="OnClose"/>
         </Grid>
 
         <!-- Separator -->

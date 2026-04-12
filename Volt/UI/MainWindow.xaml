@@ -149,8 +149,8 @@
                                                       Margin="6,4,12,4"
                                                       VerticalAlignment="Center"
                                                       RecognizesAccessKey="True"/>
-                                    <TextBlock Grid.Column="2" Text="&#xE76C;"
-                                               FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                    <TextBlock Grid.Column="2" Text="&#xEAB6;"
+                                               FontFamily="{x:Static local:Codicons.Font}" FontSize="10"
                                                Margin="0,0,8,0"
                                                VerticalAlignment="Center"
                                                Foreground="{DynamicResource ThemeTextFg}"/>
@@ -200,8 +200,8 @@
                                                       HorizontalAlignment="Center"
                                                       VerticalAlignment="Center"
                                                       Width="16" Height="16"/>
-                                    <TextBlock x:Name="CheckMark" Text="&#xE73E;"
-                                               FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                    <TextBlock x:Name="CheckMark" Text="&#xEAB2;"
+                                               FontFamily="{x:Static local:Codicons.Font}" FontSize="14"
                                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                                Foreground="{DynamicResource ThemeTextFg}"
                                                Visibility="Collapsed"/>
@@ -274,12 +274,12 @@
                     </MenuItem.Header>
                     <MenuItem x:Name="MenuSettings" Header="S_ettings" Click="OnSettings">
                         <MenuItem.Icon>
-                            <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
+                            <TextBlock Text="&#xEB52;" FontFamily="{x:Static local:Codicons.Font}" FontSize="14" VerticalAlignment="Center"/>
                         </MenuItem.Icon>
                     </MenuItem>
                     <MenuItem Header="_About" Click="OnAbout">
                         <MenuItem.Icon>
-                            <TextBlock Text="&#xE946;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
+                            <TextBlock Text="&#xEA74;" FontFamily="{x:Static local:Codicons.Font}" FontSize="14" VerticalAlignment="Center"/>
                         </MenuItem.Icon>
                     </MenuItem>
                     <Separator/>
@@ -289,7 +289,7 @@
                          ItemContainerStyle="{StaticResource MenuItemDropdownStyle}">
                     <MenuItem x:Name="MenuSave" Header="_Save" Click="OnSave">
                         <MenuItem.Icon>
-                            <TextBlock Text="&#xE74E;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
+                            <TextBlock Text="&#xEB4B;" FontFamily="{x:Static local:Codicons.Font}" FontSize="14" VerticalAlignment="Center"/>
                         </MenuItem.Icon>
                     </MenuItem>
                     <MenuItem x:Name="MenuSaveAs" Header="Save _As..." Click="OnSaveAs"/>
@@ -297,7 +297,7 @@
                     <MenuItem x:Name="MenuOpenFile" Header="_Open File" Click="OnOpen"/>
                     <MenuItem x:Name="MenuOpenFolder" Header="Open _Folder" Click="OnOpenFolder">
                         <MenuItem.Icon>
-                            <TextBlock Text="&#xE838;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
+                            <TextBlock Text="&#xEAF7;" FontFamily="{x:Static local:Codicons.Font}" FontSize="14" VerticalAlignment="Center"/>
                         </MenuItem.Icon>
                     </MenuItem>
                     <MenuItem x:Name="MenuOpenWorkspace" Header="Open _Workspace" Click="OnOpenWorkspace"/>
@@ -310,7 +310,7 @@
                     <Separator/>
                     <MenuItem x:Name="MenuAddFolderToWorkspace" Header="Add Folder to _Workspace" Click="OnAddFolderToWorkspace">
                         <MenuItem.Icon>
-                            <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                            <TextBlock Text="&#xEA60;" FontFamily="{x:Static local:Codicons.Font}" FontSize="12"
                                        Foreground="{DynamicResource ThemeTextFg}"
                                        VerticalAlignment="Center" HorizontalAlignment="Center"/>
                         </MenuItem.Icon>
@@ -318,12 +318,12 @@
                     <MenuItem x:Name="MenuSaveWorkspaceAs" Header="Save Workspace As..." Click="OnSaveWorkspaceAs" IsEnabled="False"/>
                     <MenuItem x:Name="MenuCloseWorkspace" Header="Close Workspace" Click="OnCloseWorkspace" Visibility="Collapsed">
                         <MenuItem.Icon>
-                            <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
+                            <TextBlock Text="&#xEA76;" FontFamily="{x:Static local:Codicons.Font}" FontSize="14" VerticalAlignment="Center"/>
                         </MenuItem.Icon>
                     </MenuItem>
                     <MenuItem x:Name="MenuCloseFolder" Header="Close Folder" Click="OnCloseFolder" Visibility="Collapsed">
                         <MenuItem.Icon>
-                            <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center"/>
+                            <TextBlock Text="&#xEA76;" FontFamily="{x:Static local:Codicons.Font}" FontSize="14" VerticalAlignment="Center"/>
                         </MenuItem.Icon>
                     </MenuItem>
                 </MenuItem>
@@ -344,7 +344,7 @@
             <StackPanel Grid.Column="2" Orientation="Horizontal">
                 <Button Style="{StaticResource TitleBarButton}" Content="&#xE921;" Click="OnMinimize"/>
                 <Button x:Name="MaxRestoreButton" Style="{StaticResource TitleBarButton}" Content="&#xE922;" Click="OnMaximizeRestore"/>
-                <Button Style="{StaticResource CloseButton}" Content="&#xE8BB;" Click="OnClose"/>
+                <Button Style="{StaticResource CloseButton}" Click="OnClose"/>
             </StackPanel>
         </Grid>
 

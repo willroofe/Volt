@@ -39,7 +39,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
 
     public string PanelId => "file-explorer";
     public string Title => _title;
-    public string? IconGlyph => "\uE8B7";
+    public string? IconGlyph => Codicons.FolderOpened;
     public new UIElement Content => this;
     public event Action? TitleChanged;
 
@@ -65,7 +65,7 @@ public partial class FileExplorerPanel : UserControl, IPanel
         if (string.IsNullOrEmpty(path) || (!File.Exists(path) && !Directory.Exists(path)))
             return;
 
-        menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
+        menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", Codicons.FolderOpened,
             () => FileHelper.RevealInFileExplorer(path)));
     }
 
@@ -359,25 +359,25 @@ public partial class FileExplorerPanel : UserControl, IPanel
                 if (Directory.Exists(targetDir))
                 {
                     menu.Items.Add(ContextMenuHelper.Separator());
-                    menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
+                    menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", Codicons.FolderOpened,
                         () => FileHelper.RevealInFileExplorer(targetDir)));
                 }
                 if (ClipboardHasFileDropList())
                 {
                     menu.Items.Add(ContextMenuHelper.Separator());
-                    menu.Items.Add(ContextMenuHelper.Item("Paste", "\uE77F", () => TryPasteFromClipboard()));
+                    menu.Items.Add(ContextMenuHelper.Item("Paste", Codicons.Clippy, () => TryPasteFromClipboard()));
                 }
             }
             if (_workspaceManager?.CurrentWorkspace != null)
             {
                 if (menu.Items.Count > 0) menu.Items.Add(ContextMenuHelper.Separator());
-                menu.Items.Add(ContextMenuHelper.Item("Add Folder to Workspace", "\uE710", () => AddFolderRequested?.Invoke()));
-                menu.Items.Add(ContextMenuHelper.Item("Close Workspace", "\uE711", () => CloseWorkspaceRequested?.Invoke()));
+                menu.Items.Add(ContextMenuHelper.Item("Add Folder to Workspace", Codicons.Add, () => AddFolderRequested?.Invoke()));
+                menu.Items.Add(ContextMenuHelper.Item("Close Workspace", Codicons.Close, () => CloseWorkspaceRequested?.Invoke()));
             }
             else if (_openFolderPath != null)
             {
                 if (menu.Items.Count > 0) menu.Items.Add(ContextMenuHelper.Separator());
-                menu.Items.Add(ContextMenuHelper.Item("Close Folder", "\uE711", () => CloseFolderRequested?.Invoke()));
+                menu.Items.Add(ContextMenuHelper.Item("Close Folder", Codicons.Close, () => CloseFolderRequested?.Invoke()));
             }
         }
         else if (item.IsDirectory)
@@ -385,17 +385,17 @@ public partial class FileExplorerPanel : UserControl, IPanel
             menu.Items.Add(ContextMenuHelper.Item("New File", () => DoNewFile(item.FullPath)));
             menu.Items.Add(ContextMenuHelper.Item("New Folder", () => DoNewFolder(item.FullPath)));
             menu.Items.Add(ContextMenuHelper.Separator());
-            menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
+            menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", Codicons.FolderOpened,
                 () => FileHelper.RevealInFileExplorer(item.FullPath)));
             menu.Items.Add(ContextMenuHelper.Separator());
-            menu.Items.Add(ContextMenuHelper.Item("Copy", "\uE8C8", () => CopyPathsToClipboard(item.FullPath)));
+            menu.Items.Add(ContextMenuHelper.Item("Copy", Codicons.Copy, () => CopyPathsToClipboard(item.FullPath)));
             if (ClipboardHasFileDropList())
-                menu.Items.Add(ContextMenuHelper.Item("Paste", "\uE77F", () => TryPasteFromClipboard()));
+                menu.Items.Add(ContextMenuHelper.Item("Paste", Codicons.Clippy, () => TryPasteFromClipboard()));
             if (!IsRootFolder(item))
             {
                 menu.Items.Add(ContextMenuHelper.Separator());
-                menu.Items.Add(ContextMenuHelper.Item("Rename", "\uE70F", () => DoRename(item)));
-                menu.Items.Add(ContextMenuHelper.Item("Delete", "\uE74D", () => DoDelete(item)));
+                menu.Items.Add(ContextMenuHelper.Item("Rename", Codicons.Rename, () => DoRename(item)));
+                menu.Items.Add(ContextMenuHelper.Item("Delete", Codicons.Trash, () => DoDelete(item)));
             }
             else if (IsTopLevelWorkspaceFolder(item))
             {
@@ -406,16 +406,16 @@ public partial class FileExplorerPanel : UserControl, IPanel
         else
         {
             // File item
-            menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
+            menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", Codicons.FolderOpened,
                 () => FileHelper.RevealInFileExplorer(item.FullPath)));
             menu.Items.Add(ContextMenuHelper.Separator());
-            menu.Items.Add(ContextMenuHelper.Item("Copy", "\uE8C8", () => CopyPathsToClipboard(item.FullPath)));
+            menu.Items.Add(ContextMenuHelper.Item("Copy", Codicons.Copy, () => CopyPathsToClipboard(item.FullPath)));
             if (ClipboardHasFileDropList())
-                menu.Items.Add(ContextMenuHelper.Item("Paste", "\uE77F", () => TryPasteFromClipboard()));
+                menu.Items.Add(ContextMenuHelper.Item("Paste", Codicons.Clippy, () => TryPasteFromClipboard()));
             menu.Items.Add(ContextMenuHelper.Separator());
             menu.Items.Add(ContextMenuHelper.Item("Duplicate", () => DoDuplicate(item)));
-            menu.Items.Add(ContextMenuHelper.Item("Rename", "\uE70F", () => DoRename(item)));
-            menu.Items.Add(ContextMenuHelper.Item("Delete", "\uE74D", () => DoDelete(item)));
+            menu.Items.Add(ContextMenuHelper.Item("Rename", Codicons.Rename, () => DoRename(item)));
+            menu.Items.Add(ContextMenuHelper.Item("Delete", Codicons.Trash, () => DoDelete(item)));
         }
 
         if (menu.Items.Count > 0)

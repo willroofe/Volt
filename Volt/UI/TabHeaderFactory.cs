@@ -243,7 +243,7 @@ internal class TabHeaderFactory
             var menu = ContextMenuHelper.Create();
             var canReveal = tab.FilePath != null && (File.Exists(tab.FilePath) || Directory.Exists(tab.FilePath));
             if (canReveal)
-                menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
+                menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", Codicons.FolderOpened,
                     () => FileHelper.RevealInFileExplorer(tab.FilePath!)));
 
             if (menu.Items.Count == 0)
