@@ -234,7 +234,6 @@ public partial class MainWindow
         RebuildEditorLayoutUi();
         UpdateActiveTabHooks(_activeTab);
         UpdateAllTabHeaders();
-        UpdateEditorSplitMenuState();
         Keyboard.Focus(activePaneLeaf.ActiveTab!.Editor);
     }
 
@@ -247,7 +246,6 @@ public partial class MainWindow
         if (_activeTab != null)
             Keyboard.Focus(_activeTab.Editor);
         UpdateAllTabHeaders();
-        UpdateEditorSplitMenuState();
         RefreshEditorTabSplitDragHost();
     }
 
@@ -265,7 +263,6 @@ public partial class MainWindow
         }
 
         UpdateAllTabHeaders();
-        UpdateEditorSplitMenuState();
         RefreshEditorTabSplitDragHost();
     }
 
@@ -298,23 +295,6 @@ public partial class MainWindow
         if (next?.ActiveTab == null) return;
         FocusLeaf(next.Id);
     }
-
-    private void UpdateEditorSplitMenuState()
-    {
-        bool split = EditorLayoutTree.IsSplit(_editorLayoutRoot);
-        MenuSplitEditor.IsEnabled = _activeTab != null;
-        MenuJoinEditor.IsEnabled = split && EditorLayoutTree.FindParentSplitOfLeaf(_editorLayoutRoot, _focusedLeafId) != null;
-        MenuJoinEditorAll.IsEnabled = split;
-        MenuSplitOrientation.IsEnabled = split && EditorLayoutTree.FindParentSplitOfLeaf(_editorLayoutRoot, _focusedLeafId) != null;
-    }
-
-    private void OnSplitEditor(object sender, RoutedEventArgs e) => EnterEditorSplit();
-
-    private void OnJoinEditor(object sender, RoutedEventArgs e) => JoinEditorWithSibling();
-
-    private void OnJoinEditorAll(object sender, RoutedEventArgs e) => JoinEditorFlattenAll();
-
-    private void OnToggleSplitOrientation(object sender, RoutedEventArgs e) => ToggleParentSplitOrientation();
 
     private static void UpdateTabOverflowIndicators(ScrollViewer sv, Border left, Border right)
     {
@@ -499,7 +479,6 @@ public partial class MainWindow
         RebuildEditorLayoutUi();
         UpdateActiveTabHooks(tab);
         UpdateAllTabHeaders();
-        UpdateEditorSplitMenuState();
         Keyboard.Focus(tab.Editor);
     }
 
@@ -573,17 +552,6 @@ public partial class MainWindow
 
     private EditorLayoutSnapshot? BuildEditorLayoutSnapshotForSave() =>
         EditorLayoutSnapshotSerializer.BuildSnapshot(_editorLayoutRoot, _focusedLeafId);
-
-    private bool TabContextCanJoinSiblingFromMenu(TabInfo tab)
-    {
-        if (!EditorLayoutTree.IsSplit(_editorLayoutRoot)) return false;
-        var leaf = EditorLayoutTree.FindLeafForTab(_editorLayoutRoot, tab);
-        return leaf != null && EditorLayoutTree.FindParentSplitOfLeaf(_editorLayoutRoot, leaf.Id) != null;
-    }
-
-    private bool TabContextCanJoinAllFromMenu(TabInfo tab) => EditorLayoutTree.IsSplit(_editorLayoutRoot);
-
-    private bool TabContextCanToggleOrientationFromMenu(TabInfo tab) => TabContextCanJoinSiblingFromMenu(tab);
 
     private void ApplyRestoredEditorLayoutIfAny(EditorLayoutSnapshot? snapshot)
     {

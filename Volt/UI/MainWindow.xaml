@@ -337,12 +337,6 @@
                     <MenuItem x:Name="MenuViewRight" Header="_Right Panel" IsCheckable="True" Click="OnToggleRightPanel"/>
                     <MenuItem x:Name="MenuViewTop" Header="_Top Panel" IsCheckable="True" Click="OnToggleTopPanel"/>
                     <MenuItem x:Name="MenuViewBottom" Header="_Bottom Panel" IsCheckable="True" Click="OnToggleBottomPanel"/>
-                    <Separator/>
-                    <MenuItem x:Name="MenuSplitEditor" Header="_Split Editor" Click="OnSplitEditor"/>
-                    <MenuItem x:Name="MenuJoinEditor" Header="_Join with Sibling" Click="OnJoinEditor" IsEnabled="False"/>
-                    <MenuItem x:Name="MenuJoinEditorAll" Header="Join _All Editor Groups" Click="OnJoinEditorAll" IsEnabled="False"/>
-                    <MenuItem x:Name="MenuSplitOrientation" Header="Split _Orientation"
-                              Click="OnToggleSplitOrientation" IsEnabled="False"/>
                 </MenuItem>
             </Menu>
 

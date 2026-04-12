@@ -110,31 +110,6 @@ public partial class MainWindow
         _tabHeaderFactory.CanTabEditorSplitOnLeaf = CanTabEditorSplitOnLeaf;
         _tabHeaderFactory.ResolveEditorTabStrip = ResolveEditorTabStripForTab;
 
-        _tabHeaderFactory.TabContextCanSplitGroup = _ => true;
-        _tabHeaderFactory.TabContextCanJoinSibling = TabContextCanJoinSiblingFromMenu;
-        _tabHeaderFactory.TabContextCanJoinAll = TabContextCanJoinAllFromMenu;
-        _tabHeaderFactory.TabContextCanToggleOrientation = TabContextCanToggleOrientationFromMenu;
-        _tabHeaderFactory.TabContextSplitGroup += tab =>
-        {
-            ActivateTab(tab);
-            EnterEditorSplit();
-        };
-        _tabHeaderFactory.TabContextJoinSibling += tab =>
-        {
-            ActivateTab(tab);
-            JoinEditorWithSibling();
-        };
-        _tabHeaderFactory.TabContextJoinAll += tab =>
-        {
-            ActivateTab(tab);
-            JoinEditorFlattenAll();
-        };
-        _tabHeaderFactory.TabContextToggleOrientation += tab =>
-        {
-            ActivateTab(tab);
-            ToggleParentSplitOrientation();
-        };
-
         // Create a placeholder tab only if there's no session to restore.
         // Full session restore is deferred to ContentRendered.
         if (!HasSessionToRestore())
@@ -146,7 +121,6 @@ public partial class MainWindow
         _keyBindingManager.Load(_settings.KeyBindings);
         ApplySettings();
         UpdateMenuGestureText();
-        UpdateEditorSplitMenuState();
         UpdateTabOverflowBrushes();
         RestoreWindowPosition();
 
@@ -1864,10 +1838,6 @@ public partial class MainWindow
         MenuViewRight.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleRightPanel);
         MenuViewTop.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleTopPanel);
         MenuViewBottom.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleBottomPanel);
-        MenuSplitEditor.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleEditorSplit);
-        MenuJoinEditor.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.JoinEditorSplit);
-        MenuJoinEditorAll.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.JoinEditorFlattenAll);
-        MenuSplitOrientation.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.SwitchEditorSplitOrientation);
     }
 
     private void StepFontSize(int direction)
