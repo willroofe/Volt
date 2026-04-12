@@ -295,8 +295,8 @@ public partial class MainWindow
 
         var glyph = new TextBlock
         {
-            Text = "\uE117",  // Refresh/sync glyph
-            FontFamily = new FontFamily("Segoe MDL2 Assets"),
+            Text = Codicons.Loading,
+            FontFamily = Codicons.Font,
             FontSize = 12,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
@@ -1430,15 +1430,15 @@ public partial class MainWindow
             };
             var iconGlyph = kind switch
             {
-                RecentItemKind.Folder => "\uE838",
-                RecentItemKind.Workspace => "\uE821",
-                _ => "\uE8A5"
+                RecentItemKind.Folder => Codicons.FolderOpened,
+                RecentItemKind.Workspace => Codicons.Project,
+                _ => Codicons.File
             };
             var item = new MenuItem { Header = header, Style = dropdownStyle };
             item.Icon = new System.Windows.Controls.TextBlock
             {
                 Text = iconGlyph,
-                FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"),
+                FontFamily = Codicons.Font,
                 FontSize = 14,
                 VerticalAlignment = VerticalAlignment.Center
             };

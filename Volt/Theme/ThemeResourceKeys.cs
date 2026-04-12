@@ -38,4 +38,11 @@ internal static class ThemeResourceKeys
     public const string ExplorerDropTarget = "ThemeExplorerDropTarget";
     public const string InputSelection = "ThemeInputSelection";
     public const string OverlayBg = "ThemeOverlayBg";
+
+    /// <summary>Main vector icon fill/stroke (multi-layer icons).</summary>
+    public const string IconPrimary = "ThemeIconPrimary";
+    /// <summary>Backing / secondary shapes.</summary>
+    public const string IconSecondary = "ThemeIconSecondary";
+    /// <summary>Highlights and small accent details.</summary>
+    public const string IconAccent = "ThemeIconAccent";
 }

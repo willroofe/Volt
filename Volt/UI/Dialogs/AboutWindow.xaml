@@ -24,7 +24,7 @@
                        Foreground="{DynamicResource ThemeTextFg}"
                        IsHitTestVisible="False"/>
             <Button Grid.Column="1" Style="{StaticResource CloseButton}"
-                    Content="&#xE8BB;" Click="OnClose"/>
+                    Click="OnClose"/>
         </Grid>
 
         <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource ThemeBorderBrush}"/>
@@ -40,11 +40,11 @@
             <StackPanel Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center">
                 <Viewbox Width="48" Height="48" HorizontalAlignment="Center">
                     <Canvas Width="400" Height="360">
-                        <Path Stroke="{DynamicResource ThemeTextFg}" StrokeThickness="16"
+                        <Path Style="{StaticResource IconStrokeSecondary}" StrokeThickness="16"
                               StrokeLineJoin="Miter" StrokeMiterLimit="10"
                               StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                               Data="M200,50.192 L350,310 L50,310 Z"/>
-                        <Path Stroke="{DynamicResource ThemeTextFg}" StrokeThickness="16"
+                        <Path Style="{StaticResource IconStrokePrimary}" StrokeThickness="16"
                               StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                               StrokeLineJoin="Round"
                               Data="M150,136.795 L300,223.397 M100,223.397 L150,310 M150,310 L225,180.096"/>
@@ -62,6 +62,13 @@
                 <TextBlock x:Name="CopyrightText" HorizontalAlignment="Center" Margin="0,4,0,0"
                            FontFamily="Segoe UI" FontSize="11"
                            Foreground="{DynamicResource ThemeTextFgMuted}"/>
+
+                <TextBlock HorizontalAlignment="Center" Margin="8,10,8,0"
+                           TextWrapping="Wrap" TextAlignment="Center"
+                           FontFamily="Segoe UI" FontSize="10"
+                           Foreground="{DynamicResource ThemeTextFgMuted}">
+                    UI glyphs use Microsoft vscode Codicons (CC BY 4.0). See Codicons-LICENSE.txt next to the app.
+                </TextBlock>
             </StackPanel>
 
             <!-- Update status + progress -->

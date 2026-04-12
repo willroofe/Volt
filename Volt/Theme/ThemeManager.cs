@@ -142,6 +142,9 @@ public class ThemeManager
             (ThemeResourceKeys.ExplorerItemSelected, c.ExplorerItemSelected),
             (ThemeResourceKeys.ExplorerDropTarget, c.ExplorerDropTarget),
             (ThemeResourceKeys.InputSelection, c.InputSelection),
+            (ThemeResourceKeys.IconPrimary, string.IsNullOrEmpty(c.IconPrimary) ? c.TextForeground : c.IconPrimary),
+            (ThemeResourceKeys.IconSecondary, string.IsNullOrEmpty(c.IconSecondary) ? c.TextForegroundMuted : c.IconSecondary),
+            (ThemeResourceKeys.IconAccent, string.IsNullOrEmpty(c.IconAccent) ? c.TextForegroundStrong : c.IconAccent),
         ];
         foreach (var (key, hex) in mapping)
             res[key] = ColorTheme.ParseBrush(hex);

@@ -17,7 +17,7 @@ public partial class TerminalPanel : UserControl, IPanel
 
     public string PanelId => "terminal";
     public string Title => "Terminal";
-    public string? IconGlyph => "\uE756"; // Segoe MDL2 CommandPrompt
+    public string? IconGlyph => Codicons.Terminal;
     public new UIElement Content => this;
 #pragma warning disable CS0067 // Title is fixed; event required by IPanel for other panels
     public event Action? TitleChanged;
@@ -244,7 +244,7 @@ public partial class TerminalPanel : UserControl, IPanel
             if (header.ContextMenu == null)
             {
                 var menu = ContextMenuHelper.Create();
-                menu.Items.Add(ContextMenuHelper.Item("Close", "\uE711", () => CloseSession(captured)));
+                menu.Items.Add(ContextMenuHelper.Item("Close", Codicons.Close, () => CloseSession(captured)));
                 header.ContextMenu = menu;
             }
             header.ContextMenu.IsOpen = true;
@@ -263,8 +263,8 @@ public partial class TerminalPanel : UserControl, IPanel
         menu.Placement = PlacementMode.Bottom;
         menu.PlacementTarget = btn;
         menu.PlacementRectangle = new Rect(0, btn.ActualHeight, btn.ActualWidth, 0);
-        menu.Items.Add(ContextMenuHelper.Item("PowerShell", "\uE756", () => NewSession(shellPreference: TerminalShellPreference.PowerShell)));
-        menu.Items.Add(ContextMenuHelper.Item("Command Prompt", "\uE756", () => NewSession(shellPreference: TerminalShellPreference.CommandPrompt)));
+        menu.Items.Add(ContextMenuHelper.Item("PowerShell", Codicons.Terminal, () => NewSession(shellPreference: TerminalShellPreference.PowerShell)));
+        menu.Items.Add(ContextMenuHelper.Item("Command Prompt", Codicons.Terminal, () => NewSession(shellPreference: TerminalShellPreference.CommandPrompt)));
         menu.IsOpen = true;
     }
 

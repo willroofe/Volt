@@ -23,19 +23,27 @@ public static class ContextMenuHelper
         return mi;
     }
 
-    /// <summary>Creates a themed MenuItem with a Segoe MDL2 Assets icon and a click handler.</summary>
+    /// <summary>Creates a themed MenuItem with a Codicon (<see cref="Codicons"/>) glyph and a click handler.</summary>
     public static MenuItem Item(string header, string iconGlyph, Action onClick)
     {
         var mi = Item(header, onClick);
         var icon = new TextBlock
         {
             Text = iconGlyph,
-            FontFamily = new FontFamily("Segoe MDL2 Assets"),
-            FontSize = 12,
+            FontFamily = Codicons.Font,
+            FontSize = 14,
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center
         };
         icon.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFg);
+        mi.Icon = icon;
+        return mi;
+    }
+
+    /// <summary>Creates a themed MenuItem with a vector icon (e.g. Viewbox from Icons.xaml, x:Shared="False").</summary>
+    public static MenuItem Item(string header, UIElement icon, Action onClick)
+    {
+        var mi = Item(header, onClick);
         mi.Icon = icon;
         return mi;
     }

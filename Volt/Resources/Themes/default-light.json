@@ -44,7 +44,10 @@
     "explorerItemHover": "#ECF0F8",
     "explorerItemSelected": "#DDE4F0",
     "explorerDropTarget": "#B0C8E4",
-    "inputSelection": "#503878C8"
+    "inputSelection": "#503878C8",
+    "iconPrimary": "#1A2030",
+    "iconSecondary": "#8898AC",
+    "iconAccent": "#2B6CB0"
   },
   "scopes": {
     "comment": "#8898AC",

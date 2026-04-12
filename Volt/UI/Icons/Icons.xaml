@@ -1,0 +1,54 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Multi-layer vector icons: assign one style per Path (Fill and/or Stroke). -->
+    <Style x:Key="IconFillPrimary" TargetType="Path">
+        <Setter Property="Fill" Value="{DynamicResource ThemeIconPrimary}"/>
+        <Setter Property="Stroke" Value="Transparent"/>
+    </Style>
+    <Style x:Key="IconFillSecondary" TargetType="Path">
+        <Setter Property="Fill" Value="{DynamicResource ThemeIconSecondary}"/>
+        <Setter Property="Stroke" Value="Transparent"/>
+    </Style>
+    <Style x:Key="IconFillAccent" TargetType="Path">
+        <Setter Property="Fill" Value="{DynamicResource ThemeIconAccent}"/>
+        <Setter Property="Stroke" Value="Transparent"/>
+    </Style>
+
+    <Style x:Key="IconStrokePrimary" TargetType="Path">
+        <Setter Property="Stroke" Value="{DynamicResource ThemeIconPrimary}"/>
+        <Setter Property="Fill" Value="Transparent"/>
+    </Style>
+    <Style x:Key="IconStrokeSecondary" TargetType="Path">
+        <Setter Property="Stroke" Value="{DynamicResource ThemeIconSecondary}"/>
+        <Setter Property="Fill" Value="Transparent"/>
+    </Style>
+    <Style x:Key="IconStrokeAccent" TargetType="Path">
+        <Setter Property="Stroke" Value="{DynamicResource ThemeIconAccent}"/>
+        <Setter Property="Fill" Value="Transparent"/>
+    </Style>
+
+    <!--
+      Example filled multi-tone glyph (24×24 design box). Use x:Shared="False" so each
+      menu/toolbar host gets its own instance: Content="{StaticResource Icon.DemoMultiToneSample}"
+    -->
+    <Viewbox x:Key="Icon.DemoMultiToneSample" x:Shared="False" Stretch="Uniform">
+        <Canvas Width="24" Height="24">
+            <Path Style="{StaticResource IconFillSecondary}">
+                <Path.Data>
+                    <EllipseGeometry Center="12,12" RadiusX="9" RadiusY="9"/>
+                </Path.Data>
+            </Path>
+            <Path Style="{StaticResource IconFillPrimary}">
+                <Path.Data>
+                    <EllipseGeometry Center="12,12" RadiusX="5.5" RadiusY="5.5"/>
+                </Path.Data>
+            </Path>
+            <Path Style="{StaticResource IconFillAccent}">
+                <Path.Data>
+                    <EllipseGeometry Center="12,9" RadiusX="2" RadiusY="2"/>
+                </Path.Data>
+            </Path>
+        </Canvas>
+    </Viewbox>
+</ResourceDictionary>

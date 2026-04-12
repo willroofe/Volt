@@ -9,8 +9,8 @@
             <DockPanel Height="33">
                 <Button x:Name="NewTabButton" DockPanel.Dock="Right"
                         Width="28" Height="28" Margin="4,0"
-                        Content="&#xE710;"
-                        FontFamily="Segoe MDL2 Assets" FontSize="10"
+                        Content="&#xEA60;"
+                        FontFamily="{x:Static local:Codicons.Font}" FontSize="10"
                         Foreground="{DynamicResource ThemeButtonFg}"
                         Background="Transparent" BorderThickness="0"
                         Focusable="False" Cursor="Hand"
@@ -45,7 +45,7 @@
                     <Border x:Name="TabOverflowLeft" Width="32"
                             HorizontalAlignment="Left" VerticalAlignment="Stretch"
                             IsHitTestVisible="False" Visibility="Collapsed">
-                        <TextBlock Text="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                        <TextBlock Text="&#xEAB5;" FontFamily="{x:Static local:Codicons.Font}" FontSize="12"
                                    Foreground="{DynamicResource ThemeTextFg}"
                                    HorizontalAlignment="Left" VerticalAlignment="Center"
                                    Margin="6,0,0,0"/>
@@ -53,7 +53,7 @@
                     <Border x:Name="TabOverflowRight" Width="32"
                             HorizontalAlignment="Right" VerticalAlignment="Stretch"
                             IsHitTestVisible="False" Visibility="Collapsed">
-                        <TextBlock Text="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                        <TextBlock Text="&#xEAB6;" FontFamily="{x:Static local:Codicons.Font}" FontSize="12"
                                    Foreground="{DynamicResource ThemeTextFg}"
                                    HorizontalAlignment="Right" VerticalAlignment="Center"
                                    Margin="0,0,6,0"/>

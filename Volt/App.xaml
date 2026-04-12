@@ -35,6 +35,11 @@
         <SolidColorBrush x:Key="ThemeExplorerItemSelected" Color="#D0D0D0"/>
         <SolidColorBrush x:Key="ThemeExplorerDropTarget" Color="#B8D4E8"/>
         <SolidColorBrush x:Key="ThemeInputSelection" Color="#80339900"/>
+        <SolidColorBrush x:Key="ThemeIconPrimary" Color="#111111"/>
+        <SolidColorBrush x:Key="ThemeIconSecondary" Color="#888888"/>
+        <SolidColorBrush x:Key="ThemeIconAccent" Color="#222222"/>
+
+        <!-- Codicon font: use {x:Static local:Codicons.Font} — single-string pack URIs are invalid for FontFamily. -->
 
         <!-- Theme-invariant overlay for modal dimming (like close-button red #E81123) -->
         <SolidColorBrush x:Key="ThemeOverlayBg" Color="#80000000"/>
@@ -48,7 +53,7 @@
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource ThemeButtonFg}"/>
             <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontSize" Value="11"/>
             <Setter Property="Focusable" Value="False"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -66,6 +71,7 @@
             </Setter>
         </Style>
         <Style x:Key="CloseButton" TargetType="Button" BasedOn="{StaticResource TitleBarButton}">
+            <Setter Property="Content" Value="&#xE8BB;"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -122,6 +128,7 @@
             <Setter Property="OverridesDefaultStyle" Value="True"/>
             <Setter Property="IsTabStop" Value="False"/>
             <Setter Property="Focusable" Value="False"/>
+            <Setter Property="FontFamily" Value="{x:Static local:Codicons.Font}"/>
             <Setter Property="Foreground" Value="{DynamicResource ThemeTextFgMuted}"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -163,7 +170,7 @@
                 <Border Grid.RowSpan="3" Background="{DynamicResource ThemeScrollBg}"/>
                 <RepeatButton Grid.Row="0" Style="{StaticResource ScrollBarArrowButton}"
                               Height="14" Command="ScrollBar.LineUpCommand"
-                              Content="&#xE70E;" FontFamily="Segoe MDL2 Assets" FontSize="8"/>
+                              Content="&#xEAB7;" FontSize="8"/>
                 <Track Grid.Row="1" x:Name="PART_Track" IsDirectionReversed="True">
                     <Track.DecreaseRepeatButton>
                         <RepeatButton Style="{StaticResource ScrollBarTrackButton}"
@@ -180,7 +187,7 @@
                 </Track>
                 <RepeatButton Grid.Row="2" Style="{StaticResource ScrollBarArrowButton}"
                               Height="14" Command="ScrollBar.LineDownCommand"
-                              Content="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="8"/>
+                              Content="&#xEAB4;" FontSize="8"/>
             </Grid>
         </ControlTemplate>
 
@@ -195,7 +202,7 @@
                 <Border Grid.ColumnSpan="3" Background="{DynamicResource ThemeScrollBg}"/>
                 <RepeatButton Grid.Column="0" Style="{StaticResource ScrollBarArrowButton}"
                               Width="14" Command="ScrollBar.LineLeftCommand"
-                              Content="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="8"/>
+                              Content="&#xEAB5;" FontSize="8"/>
                 <Track Grid.Column="1" x:Name="PART_Track">
                     <Track.DecreaseRepeatButton>
                         <RepeatButton Style="{StaticResource ScrollBarTrackButton}"
@@ -212,7 +219,7 @@
                 </Track>
                 <RepeatButton Grid.Column="2" Style="{StaticResource ScrollBarArrowButton}"
                               Width="14" Command="ScrollBar.LineRightCommand"
-                              Content="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="8"/>
+                              Content="&#xEAB6;" FontSize="8"/>
             </Grid>
         </ControlTemplate>
 
@@ -233,8 +240,8 @@
         </Style>
         <!-- Tab close button (icon button on tab headers) -->
         <Style x:Key="TabCloseButton" TargetType="Button">
-            <Setter Property="Content" Value="&#xE8BB;"/>
-            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="Content" Value="&#xEAB8;"/>
+            <Setter Property="FontFamily" Value="{x:Static local:Codicons.Font}"/>
             <Setter Property="FontSize" Value="8"/>
             <Setter Property="Width" Value="20"/>
             <Setter Property="Height" Value="20"/>
@@ -441,7 +448,7 @@
                                                Foreground="{DynamicResource ThemeTextFgMuted}"/>
                                     <!-- Submenu arrow -->
                                     <TextBlock x:Name="SubArrow" Grid.Column="3"
-                                               Text="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="8"
+                                               Text="&#xEAB6;" FontFamily="{x:Static local:Codicons.Font}" FontSize="8"
                                                VerticalAlignment="Center" Margin="0,0,8,0"
                                                Foreground="{DynamicResource ThemeTextFgMuted}"
                                                Visibility="Collapsed"/>

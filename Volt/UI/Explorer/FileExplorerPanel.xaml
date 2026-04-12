@@ -24,10 +24,10 @@
                         Background="Transparent"
                         Foreground="{DynamicResource ThemeTextFgMuted}"
                         Click="OnClearSearchClick">
-                    <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                    <TextBlock Text="&#xEA76;" FontFamily="{x:Static local:Codicons.Font}" FontSize="13"/>
                 </Button>
                 <TextBlock DockPanel.Dock="Left"
-                           Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                           Text="&#xEA6D;" FontFamily="{x:Static local:Codicons.Font}" FontSize="13"
                            Foreground="{DynamicResource ThemeTextFgMuted}"
                            VerticalAlignment="Center" Margin="6,0,0,0"/>
                 <TextBox x:Name="SearchInput"

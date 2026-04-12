@@ -34,6 +34,11 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        Resources.MergedDictionaries.Add(new ResourceDictionary
+        {
+            Source = new Uri("pack://application:,,,/Volt;component/UI/Icons/Icons.xaml", UriKind.Absolute)
+        });
+
         ThemeManager.Initialize();
         SyntaxManager.Initialize();
         Settings = AppSettings.Load();

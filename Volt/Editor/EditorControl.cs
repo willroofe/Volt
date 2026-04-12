@@ -1782,18 +1782,18 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         if (hasSel)
         {
-            var cut = ContextMenuHelper.Item("Cut", "\uE8C6", HandleCut);
+            var cut = ContextMenuHelper.Item("Cut", Codicons.ScreenCut, HandleCut);
             cut.InputGestureText = "Ctrl+X";
             menu.Items.Add(cut);
 
-            var copy = ContextMenuHelper.Item("Copy", "\uE8C8", HandleCopy);
+            var copy = ContextMenuHelper.Item("Copy", Codicons.Copy, HandleCopy);
             copy.InputGestureText = "Ctrl+C";
             menu.Items.Add(copy);
         }
 
         if (hasClip)
         {
-            var paste = ContextMenuHelper.Item("Paste", "\uE77F", HandlePaste);
+            var paste = ContextMenuHelper.Item("Paste", Codicons.Clippy, HandlePaste);
             paste.InputGestureText = "Ctrl+V";
             menu.Items.Add(paste);
         }
@@ -1801,7 +1801,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (menu.Items.Count > 0)
             menu.Items.Add(new System.Windows.Controls.Separator());
 
-        var selectAll = ContextMenuHelper.Item("Select All", "\uE8B3", HandleSelectAll);
+        var selectAll = ContextMenuHelper.Item("Select All", Codicons.ListSelection, HandleSelectAll);
         selectAll.InputGestureText = "Ctrl+A";
         menu.Items.Add(selectAll);
 

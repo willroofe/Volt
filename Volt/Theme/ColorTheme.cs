@@ -53,6 +53,13 @@ public class ChromeColors
     [JsonPropertyName("explorerItemSelected")] public string ExplorerItemSelected { get; set; } = "#D0D0D0";
     [JsonPropertyName("explorerDropTarget")] public string ExplorerDropTarget { get; set; } = "#B8D4E8";
     [JsonPropertyName("inputSelection")] public string InputSelection { get; set; } = "#80339900";
+
+    /// <summary>When empty in JSON, ThemeManager falls back to text foreground.</summary>
+    [JsonPropertyName("iconPrimary")] public string IconPrimary { get; set; } = "";
+    /// <summary>When empty, falls back to muted text.</summary>
+    [JsonPropertyName("iconSecondary")] public string IconSecondary { get; set; } = "";
+    /// <summary>When empty, falls back to strong text.</summary>
+    [JsonPropertyName("iconAccent")] public string IconAccent { get; set; } = "";
 }
 
 public class TerminalColors
