@@ -64,18 +64,6 @@ internal class TabHeaderFactory
     /// <summary>When null or returns false, editor-half drop is treated as a miss (no highlight / no split on release).</summary>
     public Func<TabInfo, string, EditorSplitOrientation, bool, bool>? CanTabEditorSplitOnLeaf { get; set; }
 
-    /// <summary>Right-click tab menu: split / join / orientation (handlers activate the tab first).</summary>
-    public event Action<TabInfo>? TabContextSplitGroup;
-    public event Action<TabInfo>? TabContextJoinSibling;
-    public event Action<TabInfo>? TabContextJoinAll;
-    public event Action<TabInfo>? TabContextToggleOrientation;
-
-    /// <summary>Optional per-tab enablement for tab context split commands (defaults true when unset).</summary>
-    public Func<TabInfo, bool>? TabContextCanSplitGroup { get; set; }
-    public Func<TabInfo, bool>? TabContextCanJoinSibling { get; set; }
-    public Func<TabInfo, bool>? TabContextCanJoinAll { get; set; }
-    public Func<TabInfo, bool>? TabContextCanToggleOrientation { get; set; }
-
     public void ApplyFixedWidth(Border header)
     {
         if (FixedWidth)
@@ -253,39 +241,9 @@ internal class TabHeaderFactory
         header.MouseRightButtonUp += (_, e) =>
         {
             var menu = ContextMenuHelper.Create();
-            bool anyEditorCommand = false;
-
-            if (TabContextCanSplitGroup?.Invoke(tab) ?? true)
-            {
-                menu.Items.Add(ContextMenuHelper.Item("Split this group", () => TabContextSplitGroup?.Invoke(tab)));
-                anyEditorCommand = true;
-            }
-
-            if (TabContextCanJoinSibling?.Invoke(tab) ?? false)
-            {
-                menu.Items.Add(ContextMenuHelper.Item("Join with sibling group",
-                    () => TabContextJoinSibling?.Invoke(tab)));
-                anyEditorCommand = true;
-            }
-
-            if (TabContextCanJoinAll?.Invoke(tab) ?? false)
-            {
-                menu.Items.Add(ContextMenuHelper.Item("Join all editor groups", () => TabContextJoinAll?.Invoke(tab)));
-                anyEditorCommand = true;
-            }
-
-            if (TabContextCanToggleOrientation?.Invoke(tab) ?? false)
-            {
-                menu.Items.Add(ContextMenuHelper.Item("Toggle split orientation",
-                    () => TabContextToggleOrientation?.Invoke(tab)));
-                anyEditorCommand = true;
-            }
-
             var canReveal = tab.FilePath != null && (File.Exists(tab.FilePath) || Directory.Exists(tab.FilePath));
-            if (canReveal && anyEditorCommand)
-                menu.Items.Add(ContextMenuHelper.Separator());
             if (canReveal)
-                menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer",
+                menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", "\uE8B7",
                     () => FileHelper.RevealInFileExplorer(tab.FilePath!)));
 
             if (menu.Items.Count == 0)
