@@ -11,22 +11,22 @@ Volt uses [Velopack](https://github.com/velopack/velopack) for installer packagi
 ```bash
 # 1. Build
 dotnet publish Volt/Volt.csproj -c Release -r win-x64 -o publish
-vpk pack --packId Volt --packVersion <VERSION> --packDir publish --mainExe Volt.exe --icon Volt/Resources/Volt.ico
+vpk pack --packId Volt --packVersion <VERSION> --packDir publish --mainExe Volt.exe --icon Volt/Resources/Volt.ico -o Volt/Releases
 
 # 2. Create GitHub release with proper notes (vpk auto-generates poor notes from last commit)
 gh release create v<VERSION> --title "Volt <VERSION>" --notes "<release notes>"
 
-# 3. Upload assets to the existing release using --merge
-GH_TOKEN=$(gh auth token) && vpk upload github --repoUrl https://github.com/willroofe/Volt --tag v<VERSION> --token "$GH_TOKEN" --merge --publish
+# 3. Upload assets to the existing release using --merge (must use the same -o as pack; see Checklist)
+GH_TOKEN=$(gh auth token) && vpk upload github --repoUrl https://github.com/willroofe/Volt --tag v<VERSION> --token "$GH_TOKEN" --merge --publish -o Volt/Releases
 ```
 
 ### Commands (PowerShell)
 
 ```powershell
 dotnet publish Volt/Volt.csproj -c Release -r win-x64 -o publish
-vpk pack --packId Volt --packVersion <VERSION> --packDir publish --mainExe Volt.exe --icon Volt/Resources/Volt.ico
+vpk pack --packId Volt --packVersion <VERSION> --packDir publish --mainExe Volt.exe --icon Volt/Resources/Volt.ico -o Volt/Releases
 gh release create v<VERSION> --title "Volt <VERSION>" --notes "<release notes>"
-$env:GH_TOKEN = (gh auth token); vpk upload github --repoUrl https://github.com/willroofe/Volt --tag v<VERSION> --token $env:GH_TOKEN --merge --publish
+$env:GH_TOKEN = (gh auth token); vpk upload github --repoUrl https://github.com/willroofe/Volt --tag v<VERSION> --token $env:GH_TOKEN --merge --publish -o Volt/Releases
 ```
 
 ### Why this order
@@ -37,6 +37,7 @@ Velopack’s default release creation only uses the last commit message, which p
 
 - Bump `--packVersion` and `--tag` for each release.
 - Write human-readable release notes summarizing all changes since the **last published** release, not just the last commit.
+- Use the **same** `-o` / `--outputDir` for `vpk pack` and `vpk upload github` (for example `-o Volt/Releases`). `vpk upload` defaults to `./Releases` at the repo root; if that folder still holds older `.nupkg` or installers from past experiments, Velopack can upload the wrong files to the new GitHub release.
 - Velopack auto-generates delta packages when a previous version’s `.nupkg` is in `Volt/Releases/`.
 - Release artifacts land in `Volt/Releases/` (Setup.exe, `.nupkg`, Portable.zip).
 - The app checks for updates on startup (silent) and via “Check for Updates” in the command palette.
