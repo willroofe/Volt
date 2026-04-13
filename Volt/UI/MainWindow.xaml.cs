@@ -475,6 +475,8 @@ public partial class MainWindow
     /// </summary>
     internal void RegisterTerminalAllowlist(TerminalView view)
     {
+        // Find: Ctrl+F
+        view.AddAllowlistedShortcut(Key.F, ModifierKeys.Control);
         // Command palette: Ctrl+Shift+P
         view.AddAllowlistedShortcut(Key.P, ModifierKeys.Control | ModifierKeys.Shift);
         // Switch editor tabs: Ctrl+Tab / Ctrl+Shift+Tab
@@ -1744,7 +1746,12 @@ public partial class MainWindow
             case VoltCommand.SaveAs: OnSaveAs(this, new RoutedEventArgs()); break;
             case VoltCommand.CloseTab: if (_activeTab != null) CloseTab(_activeTab); break;
             case VoltCommand.ReopenClosedTab: _ = RestoreClosedTabAsync(); break;
-            case VoltCommand.OpenFind: FindBarControl.Open(); break;
+            case VoltCommand.OpenFind:
+                if (IsKeyboardFocusWithinTerminalPanel())
+                    _terminalPanel.OpenFind();
+                else
+                    FindBarControl.Open();
+                break;
             case VoltCommand.ToggleReplace: FindBarControl.ToggleReplace(); break;
             case VoltCommand.CommandPalette: OpenCommandPalette(); break;
             case VoltCommand.OpenFolder: OpenFolderInExplorer(); break;
@@ -1768,6 +1775,18 @@ public partial class MainWindow
             case VoltCommand.SwitchEditorSplitOrientation: ToggleParentSplitOrientation(); break;
             case VoltCommand.FocusOtherEditorPane: FocusNextEditorLeafFromCommand(); break;
         }
+    }
+
+    private bool IsKeyboardFocusWithinTerminalPanel()
+    {
+        if (Keyboard.FocusedElement is not DependencyObject focused)
+            return false;
+        for (DependencyObject? current = focused; current != null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, _terminalPanel))
+                return true;
+        }
+        return false;
     }
 
     private void ToggleTerminalPanel()

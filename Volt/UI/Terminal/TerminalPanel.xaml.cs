@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -12,8 +13,12 @@ namespace Volt;
 
 public partial class TerminalPanel : UserControl, IPanel
 {
+    private readonly record struct TerminalFindMatch(int Line, int Col);
+
     private readonly List<TerminalSession> _sessions = new();
+    private readonly List<TerminalFindMatch> _findMatches = new();
     private TerminalSession? _active;
+    private int _currentFindMatchIndex = -1;
 
     public string PanelId => "terminal";
     public string Title => "Terminal";
@@ -159,6 +164,7 @@ public partial class TerminalPanel : UserControl, IPanel
 
     private void CloseSession(TerminalSession s)
     {
+        s.View.ClearFindHighlight();
         try { s.Dispose(); } catch { }
         _sessions.Remove(s);
         if (_active == s) _active = _sessions.Count > 0 ? _sessions[^1] : null;
@@ -168,8 +174,10 @@ public partial class TerminalPanel : UserControl, IPanel
 
     private void SetActive(TerminalSession? s)
     {
+        _active?.View.ClearFindHighlight();
         _active = s;
         ActiveContent.Content = s?.ScrollHost;
+        RecomputeFindMatches();
         ApplyActiveTabStyle();
         // Focus after layout: switching ContentPresenter content synchronously often drops Keyboard.Focus.
         if (s != null)
@@ -255,6 +263,152 @@ public partial class TerminalPanel : UserControl, IPanel
     }
 
     private void OnAddClicked(object sender, RoutedEventArgs e) => NewSession();
+
+    public bool IsFindOpen => FindPanel.Visibility == Visibility.Visible;
+
+    public void OpenFind()
+    {
+        FindPanel.Visibility = Visibility.Visible;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            FindInput.Focus();
+            FindInput.SelectAll();
+        }), DispatcherPriority.Input);
+        RecomputeFindMatches();
+    }
+
+    public void CloseFind()
+    {
+        FindPanel.Visibility = Visibility.Collapsed;
+        _findMatches.Clear();
+        _currentFindMatchIndex = -1;
+        FindMatchCountText.Text = "";
+        _active?.View.ClearFindHighlight();
+        TryFocusActiveSession();
+    }
+
+    private void OnFindInputTextChanged(object sender, TextChangedEventArgs e) => RecomputeFindMatches();
+
+    private void OnFindPrevClicked(object sender, RoutedEventArgs e) => NavigateFind(-1);
+
+    private void OnFindNextClicked(object sender, RoutedEventArgs e) => NavigateFind(+1);
+
+    private void OnFindCloseClicked(object sender, RoutedEventArgs e) => CloseFind();
+
+    private void OnFindInputPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            NavigateFind((Keyboard.Modifiers & ModifierKeys.Shift) != 0 ? -1 : +1);
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Escape)
+        {
+            CloseFind();
+            e.Handled = true;
+        }
+    }
+
+    private void RecomputeFindMatches()
+    {
+        _findMatches.Clear();
+        _currentFindMatchIndex = -1;
+        _active?.View.ClearFindHighlight();
+
+        var query = FindInput.Text;
+        if (_active?.Grid is not { } grid || string.IsNullOrEmpty(query))
+        {
+            UpdateFindMatchLabel();
+            return;
+        }
+
+        int totalLines = grid.ScrollbackCount + grid.Rows;
+        for (int line = 0; line < totalLines; line++)
+        {
+            string text = ReadLogicalLineText(grid, line);
+            if (text.Length == 0)
+                continue;
+            int start = 0;
+            while (start <= text.Length - query.Length)
+            {
+                int match = text.IndexOf(query, start, StringComparison.OrdinalIgnoreCase);
+                if (match < 0)
+                    break;
+                _findMatches.Add(new TerminalFindMatch(line, match));
+                start = match + 1;
+            }
+        }
+
+        if (_findMatches.Count > 0)
+            SelectFindMatch(0);
+        else
+            UpdateFindMatchLabel();
+    }
+
+    private void NavigateFind(int direction)
+    {
+        if (_findMatches.Count == 0)
+        {
+            _active?.View.ClearFindHighlight();
+            UpdateFindMatchLabel();
+            return;
+        }
+        int next = _currentFindMatchIndex + direction;
+        if (next < 0) next = _findMatches.Count - 1;
+        if (next >= _findMatches.Count) next = 0;
+        SelectFindMatch(next);
+    }
+
+    private void SelectFindMatch(int index)
+    {
+        if (_active?.View == null || _findMatches.Count == 0)
+        {
+            UpdateFindMatchLabel();
+            return;
+        }
+
+        _currentFindMatchIndex = Math.Clamp(index, 0, _findMatches.Count - 1);
+        var match = _findMatches[_currentFindMatchIndex];
+        _active.View.SetFindHighlight(match.Line, match.Col, Math.Max(1, FindInput.Text.Length));
+        _active.View.ScrollLogicalLineIntoView(match.Line);
+        UpdateFindMatchLabel();
+    }
+
+    private void UpdateFindMatchLabel()
+    {
+        if (string.IsNullOrEmpty(FindInput.Text))
+        {
+            FindMatchCountText.Text = "";
+            return;
+        }
+        if (_findMatches.Count == 0 || _currentFindMatchIndex < 0)
+        {
+            FindMatchCountText.Text = "No results";
+            return;
+        }
+        FindMatchCountText.Text = $"{_currentFindMatchIndex + 1} of {_findMatches.Count}";
+    }
+
+    private static int LogicalLineToGridRow(TerminalGrid grid, int logicalLine)
+    {
+        int sb = grid.ScrollbackCount;
+        if (logicalLine < sb)
+            return -(sb - logicalLine);
+        return logicalLine - sb;
+    }
+
+    private static string ReadLogicalLineText(TerminalGrid grid, int logicalLine)
+    {
+        int row = LogicalLineToGridRow(grid, logicalLine);
+        var sb = new StringBuilder(grid.Cols);
+        for (int col = 0; col < grid.Cols; col++)
+        {
+            char ch = grid.CellAt(row, col).Glyph;
+            sb.Append(ch == '\0' ? ' ' : ch);
+        }
+        return sb.ToString().TrimEnd();
+    }
 
     private void OnShellPickerClicked(object sender, RoutedEventArgs e)
     {

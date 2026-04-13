@@ -57,6 +57,9 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     private bool _selectGestureActive;
     private bool _pointerMovedWhileSelecting;
     private bool _hasSelection;
+    private int? _findHighlightLine;
+    private int _findHighlightCol;
+    private int _findHighlightLength;
     private static readonly Brush FallbackSelectionBrush = CreateFallbackSelectionBrush();
 
     private static Brush CreateFallbackSelectionBrush()
@@ -394,6 +397,35 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         return logicalLine - sb;
     }
 
+    public void SetFindHighlight(int logicalLine, int col, int length)
+    {
+        _findHighlightLine = logicalLine;
+        _findHighlightCol = Math.Max(0, col);
+        _findHighlightLength = Math.Max(1, length);
+        InvalidateVisual();
+    }
+
+    public void ClearFindHighlight()
+    {
+        _findHighlightLine = null;
+        _findHighlightCol = 0;
+        _findHighlightLength = 0;
+        InvalidateVisual();
+    }
+
+    public void ScrollLogicalLineIntoView(int logicalLine)
+    {
+        if (_grid == null) return;
+        int maxLine = _grid.ScrollbackCount + _grid.Rows - 1;
+        if (maxLine < 0) return;
+        logicalLine = Math.Clamp(logicalLine, 0, maxLine);
+        double cellHeight = _font.LineHeight;
+        if (cellHeight <= 0) return;
+        double targetTop = logicalLine * cellHeight;
+        double anchor = Math.Max(0, (ViewportHeightPx - cellHeight) * 0.5);
+        SetVerticalOffset(targetTop - anchor);
+    }
+
     private static void NormalizeSelectionEndpoints(int al, int ac, int bl, int bc, out int sl, out int sc, out int el, out int ec)
     {
         if (al < bl || (al == bl && ac <= bc))
@@ -493,6 +525,27 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
             new Rect(OutputPaddingLeft + segStart * cellWidth, y, segLen * cellWidth, cellHeight));
     }
 
+    private void DrawFindHighlightForRun(DrawingContext dc, int logicalLine, double y, double cellWidth, double cellHeight, int runStart, int runLen)
+    {
+        if (_grid == null || _findHighlightLine != logicalLine || _findHighlightLength <= 0)
+            return;
+        int maxCol = _grid.Cols - 1;
+        int hiStart = Math.Clamp(_findHighlightCol, 0, maxCol);
+        int hiEnd = Math.Clamp(_findHighlightCol + _findHighlightLength - 1, 0, maxCol);
+        if (hiStart > hiEnd)
+            return;
+        int runEnd = runStart + runLen - 1;
+        int segStart = Math.Max(runStart, hiStart);
+        int segEnd = Math.Min(runEnd, hiEnd);
+        if (segStart > segEnd)
+            return;
+        var brush = (Application.Current as App)?.ThemeManager?.FindMatchCurrentBrush;
+        if (brush == null)
+            return;
+        dc.DrawRectangle(brush, null,
+            new Rect(OutputPaddingLeft + segStart * cellWidth, y, (segEnd - segStart + 1) * cellWidth, cellHeight));
+    }
+
     private void RenderGridRow(DrawingContext dc, int logicalLine, int gridRow, double y, double cellWidth, double cellHeight, Brush defaultFg)
     {
         int col = 0;
@@ -526,6 +579,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
                     new Rect(OutputPaddingLeft + runStart * cellWidth, y, runLen * cellWidth, cellHeight));
             }
 
+            DrawFindHighlightForRun(dc, logicalLine, y, cellWidth, cellHeight, runStart, runLen);
             DrawSelectionForRun(dc, logicalLine, y, cellWidth, cellHeight, runStart, runLen);
 
             // Resolve foreground brush
