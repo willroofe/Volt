@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -47,6 +48,23 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     private double _lastCommittedCellWidth;
     private double _lastCommittedCellHeight;
     private bool _haveCommittedCellSize;
+
+    // Mouse selection (logical document line = 0 oldest scrollback; col 0..Cols-1)
+    private int _selAnchorLine;
+    private int _selAnchorCol;
+    private int _selExtentLine;
+    private int _selExtentCol;
+    private bool _selectGestureActive;
+    private bool _pointerMovedWhileSelecting;
+    private bool _hasSelection;
+    private static readonly Brush FallbackSelectionBrush = CreateFallbackSelectionBrush();
+
+    private static Brush CreateFallbackSelectionBrush()
+    {
+        var b = new SolidColorBrush(Color.FromArgb(0x60, 0x33, 0x99, 0xFF));
+        b.Freeze();
+        return b;
+    }
 
     protected override int VisualChildrenCount => 2;
     protected override Visual GetVisualChild(int index) => index == 0 ? _textVisual : _cursorVisual;
@@ -359,7 +377,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
             if (logicalLine < 0 || logicalLine >= totalLines) continue;
             double y = logicalLine * cellHeight;
             int gridRow = LogicalLineToGridRow(_grid, logicalLine);
-            RenderGridRow(dc, gridRow, y, cellWidth, cellHeight, defaultFg);
+            RenderGridRow(dc, logicalLine, gridRow, y, cellWidth, cellHeight, defaultFg);
         }
         dc.Pop();
         dc.Pop();
@@ -376,7 +394,106 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         return logicalLine - sb;
     }
 
-    private void RenderGridRow(DrawingContext dc, int gridRow, double y, double cellWidth, double cellHeight, Brush defaultFg)
+    private static void NormalizeSelectionEndpoints(int al, int ac, int bl, int bc, out int sl, out int sc, out int el, out int ec)
+    {
+        if (al < bl || (al == bl && ac <= bc))
+        {
+            sl = al;
+            sc = ac;
+            el = bl;
+            ec = bc;
+        }
+        else
+        {
+            sl = bl;
+            sc = bc;
+            el = al;
+            ec = ac;
+        }
+    }
+
+    private bool TryGetDisplayedSelectionNormalized(out int sl, out int sc, out int el, out int ec)
+    {
+        sl = sc = el = ec = 0;
+        if (_grid == null) return false;
+        NormalizeSelectionEndpoints(_selAnchorLine, _selAnchorCol, _selExtentLine, _selExtentCol, out sl, out sc, out el, out ec);
+        int maxLine = _grid.ScrollbackCount + _grid.Rows - 1;
+        if (maxLine < 0) return false;
+        sl = Math.Clamp(sl, 0, maxLine);
+        el = Math.Clamp(el, 0, maxLine);
+        if (sl > el)
+            (sl, sc, el, ec) = (el, ec, sl, sc);
+        int maxCol = _grid.Cols - 1;
+        sc = Math.Clamp(sc, 0, maxCol);
+        ec = Math.Clamp(ec, 0, maxCol);
+        bool dragging = _selectGestureActive;
+        bool previewOk = dragging && (_pointerMovedWhileSelecting || sl != el || sc != ec);
+        bool committedOk = !dragging && _hasSelection;
+        return previewOk || committedOk;
+    }
+
+    private void ClearSelection()
+    {
+        if (Mouse.Captured == this)
+            ReleaseMouseCapture();
+        _hasSelection = false;
+        _selectGestureActive = false;
+        _pointerMovedWhileSelecting = false;
+        _selAnchorLine = _selExtentLine = 0;
+        _selAnchorCol = _selExtentCol = 0;
+        InvalidateVisual();
+    }
+
+    private void FinalizeSelectionGesture()
+    {
+        _selectGestureActive = false;
+        NormalizeSelectionEndpoints(_selAnchorLine, _selAnchorCol, _selExtentLine, _selExtentCol, out int sl, out int sc, out int el, out int ec);
+        _hasSelection = _pointerMovedWhileSelecting || sl != el || sc != ec;
+        _pointerMovedWhileSelecting = false;
+        if (!_hasSelection)
+        {
+            _selAnchorLine = _selExtentLine = 0;
+            _selAnchorCol = _selExtentCol = 0;
+        }
+        InvalidateVisual();
+    }
+
+    private (int line, int col) HitTestLogicalCell(Point viewportPoint)
+    {
+        if (_grid == null) return (0, 0);
+        double cellH = _font.LineHeight;
+        double cellW = _font.CharWidth;
+        if (cellH <= 0 || cellW <= 0) return (0, 0);
+        double yDoc = viewportPoint.Y + _verticalOffset;
+        int maxLine = _grid.ScrollbackCount + _grid.Rows - 1;
+        int line = (int)Math.Floor(yDoc / cellH);
+        line = Math.Clamp(line, 0, Math.Max(0, maxLine));
+        double relX = viewportPoint.X - OutputPaddingLeft;
+        int col = (int)Math.Floor(relX / cellW);
+        col = Math.Clamp(col, 0, _grid.Cols - 1);
+        return (line, col);
+    }
+
+    private void DrawSelectionForRun(DrawingContext dc, int logicalLine, double y, double cellWidth, double cellHeight, int runStart, int runLen)
+    {
+        if (!TryGetDisplayedSelectionNormalized(out int sl, out int sc, out int el, out int ec))
+            return;
+        if (logicalLine < sl || logicalLine > el)
+            return;
+        int lineColStart = logicalLine == sl ? sc : 0;
+        int lineColEnd = logicalLine == el ? ec : _grid!.Cols - 1;
+        int runEnd = runStart + runLen;
+        int segStart = Math.Max(runStart, lineColStart);
+        int segEnd = Math.Min(runEnd - 1, lineColEnd);
+        if (segStart > segEnd)
+            return;
+        int segLen = segEnd - segStart + 1;
+        Brush hi = (Application.Current as App)?.ThemeManager?.SelectionBrush ?? FallbackSelectionBrush;
+        dc.DrawRectangle(hi, null,
+            new Rect(OutputPaddingLeft + segStart * cellWidth, y, segLen * cellWidth, cellHeight));
+    }
+
+    private void RenderGridRow(DrawingContext dc, int logicalLine, int gridRow, double y, double cellWidth, double cellHeight, Brush defaultFg)
     {
         int col = 0;
         while (col < _grid!.Cols)
@@ -408,6 +525,8 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
                 dc.DrawRectangle(bgBrush, null,
                     new Rect(OutputPaddingLeft + runStart * cellWidth, y, runLen * cellWidth, cellHeight));
             }
+
+            DrawSelectionForRun(dc, logicalLine, y, cellWidth, cellHeight, runStart, runLen);
 
             // Resolve foreground brush
             Brush fgBrush;
@@ -525,6 +644,17 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
 
         var mods = Keyboard.Modifiers;
 
+        if (e.Key == Key.Escape)
+        {
+            if (_hasSelection || _selectGestureActive)
+            {
+                ClearSelection();
+                e.Handled = true;
+                return;
+            }
+            // No local selection — let Escape reach the VT encoder for the shell
+        }
+
         // Reserved Volt shortcuts — bubble up unhandled so MainWindow handles them
         if (_allowlist.Contains((e.Key, mods))) return;
 
@@ -542,9 +672,16 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
             return;
         }
 
-        // Ctrl+C with no selection → SIGINT (v1: always SIGINT since selection isn't implemented yet)
+        // Ctrl+C copies when text is highlighted; otherwise send SIGINT
         if (mods == ModifierKeys.Control && e.Key == Key.C)
         {
+            if (TryGetDisplayedSelectionNormalized(out _, out _, out _, out _))
+            {
+                DoCopy();
+                ClearSelection();
+                e.Handled = true;
+                return;
+            }
             FollowCursorAfterUserInput();
             InputBytes?.Invoke(new byte[] { 0x03 });
             e.Handled = true;
@@ -578,6 +715,58 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         base.OnMouseLeftButtonDown(e);
         Focus();
         Keyboard.Focus(this);
+        var hit = HitTestLogicalCell(e.GetPosition(this));
+        _hasSelection = false;
+        _selAnchorLine = _selExtentLine = hit.line;
+        _selAnchorCol = _selExtentCol = hit.col;
+        _selectGestureActive = true;
+        _pointerMovedWhileSelecting = false;
+        CaptureMouse();
+        InvalidateVisual();
+        e.Handled = true;
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        if (!_selectGestureActive || e.LeftButton != MouseButtonState.Pressed)
+            return;
+        _pointerMovedWhileSelecting = true;
+        var hit = HitTestLogicalCell(e.GetPosition(this));
+        _selExtentLine = hit.line;
+        _selExtentCol = hit.col;
+        InvalidateVisual();
+    }
+
+    protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
+    {
+        base.OnMouseLeftButtonUp(e);
+        if (!_selectGestureActive)
+            return;
+        if (Mouse.Captured == this)
+            ReleaseMouseCapture();
+        FinalizeSelectionGesture();
+        e.Handled = true;
+    }
+
+    protected override void OnMouseRightButtonDown(MouseButtonEventArgs e)
+    {
+        base.OnMouseRightButtonDown(e);
+        if (_grid == null || !TryGetDisplayedSelectionNormalized(out _, out _, out _, out _))
+            return;
+        Focus();
+        Keyboard.Focus(this);
+        DoCopy();
+        ClearSelection();
+        e.Handled = true;
+    }
+
+    protected override void OnLostMouseCapture(MouseEventArgs e)
+    {
+        base.OnLostMouseCapture(e);
+        if (!_selectGestureActive)
+            return;
+        FinalizeSelectionGesture();
     }
 
     protected override void OnMouseWheel(MouseWheelEventArgs e)
@@ -594,7 +783,32 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
 
     private void DoCopy()
     {
-        // Selection support deferred to post-v1; this stub does nothing for now.
+        if (_grid == null || !TryGetDisplayedSelectionNormalized(out int sl, out int sc, out int el, out int ec))
+            return;
+        var sb = new StringBuilder();
+        for (int line = sl; line <= el; line++)
+        {
+            if (line > sl)
+                sb.Append(Environment.NewLine);
+            int gridRow = LogicalLineToGridRow(_grid, line);
+            int c0 = line == sl ? sc : 0;
+            int c1 = line == el ? ec : _grid.Cols - 1;
+            var lineSb = new StringBuilder(c1 - c0 + 1);
+            for (int c = c0; c <= c1; c++)
+            {
+                char g = _grid.CellAt(gridRow, c).Glyph;
+                lineSb.Append(g == '\0' ? ' ' : g);
+            }
+            sb.Append(lineSb.ToString().TrimEnd());
+        }
+        try
+        {
+            Clipboard.SetText(sb.ToString());
+        }
+        catch
+        {
+            // Clipboard can throw if another app holds it open
+        }
     }
 
     private void DoPaste()
