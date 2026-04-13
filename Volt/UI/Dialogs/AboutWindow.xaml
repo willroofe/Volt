@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="About Volt"
-        Width="360" Height="280"
+        Width="360" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         ShowInTaskbar="False">
@@ -32,44 +32,54 @@
         <!-- Content -->
         <Grid Margin="24,20,24,20">
             <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Logo + info -->
-            <StackPanel Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <Viewbox Width="48" Height="48" HorizontalAlignment="Center">
-                    <Canvas Width="400" Height="360">
-                        <Path Style="{StaticResource IconStrokeSecondary}" StrokeThickness="16"
+            <Grid Grid.Row="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Same paths and colouring as the Volt menu header (MainWindow.xaml). -->
+                <Viewbox Grid.Row="0" Width="48" Height="48" HorizontalAlignment="Center">
+                    <!-- Padded canvas: miter at triangle apex extends above original Y=50 origin. -->
+                    <Canvas Width="400" Height="390">
+                        <Path Stroke="{DynamicResource ThemeTextFg}" StrokeThickness="16"
                               StrokeLineJoin="Miter" StrokeMiterLimit="10"
                               StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                              Data="M200,50.192 L350,310 L50,310 Z"/>
-                        <Path Style="{StaticResource IconStrokePrimary}" StrokeThickness="16"
+                              Fill="Transparent"
+                              Data="M200,80.192 L350,340 L50,340 Z"/>
+                        <Path Stroke="{DynamicResource ThemeTextFg}" StrokeThickness="16"
                               StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                               StrokeLineJoin="Round"
-                              Data="M150,136.795 L300,223.397 M100,223.397 L150,310 M150,310 L225,180.096"/>
+                              Fill="Transparent"
+                              Data="M150,166.795 L300,253.397 M100,253.397 L150,340 M150,340 L225,210.096"/>
                     </Canvas>
                 </Viewbox>
 
-                <TextBlock Text="Volt" HorizontalAlignment="Center" Margin="0,8,0,0"
+                <TextBlock Grid.Row="1" Text="Volt" HorizontalAlignment="Center" Margin="0,8,0,0"
                            FontFamily="Segoe UI" FontSize="20" FontWeight="SemiBold"
                            Foreground="{DynamicResource ThemeTextFg}"/>
 
-                <TextBlock x:Name="VersionText" HorizontalAlignment="Center" Margin="0,4,0,0"
+                <TextBlock Grid.Row="2" x:Name="VersionText" HorizontalAlignment="Center" Margin="0,4,0,0"
                            FontFamily="Segoe UI" FontSize="12"
                            Foreground="{DynamicResource ThemeTextFgMuted}"/>
 
-                <TextBlock x:Name="CopyrightText" HorizontalAlignment="Center" Margin="0,4,0,0"
+                <TextBlock Grid.Row="3" x:Name="CopyrightText" HorizontalAlignment="Center" Margin="0,4,0,0"
                            FontFamily="Segoe UI" FontSize="11"
                            Foreground="{DynamicResource ThemeTextFgMuted}"/>
 
-                <TextBlock HorizontalAlignment="Center" Margin="8,10,8,0"
+                <TextBlock Grid.Row="4" Margin="8,10,8,0"
                            TextWrapping="Wrap" TextAlignment="Center"
                            FontFamily="Segoe UI" FontSize="10"
-                           Foreground="{DynamicResource ThemeTextFgMuted}">
-                    UI glyphs use Microsoft vscode Codicons (CC BY 4.0). See Codicons-LICENSE.txt next to the app.
-                </TextBlock>
-            </StackPanel>
+                           Foreground="{DynamicResource ThemeTextFgMuted}"
+                           Text="UI glyphs use Microsoft vscode Codicons (CC BY 4.0). See Codicons-LICENSE.txt next to the app."/>
+            </Grid>
 
             <!-- Update status + progress -->
             <StackPanel Grid.Row="1">
