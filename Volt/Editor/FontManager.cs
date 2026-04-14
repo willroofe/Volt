@@ -19,6 +19,7 @@ public class FontManager
     private FontWeight _fontWeight = FontWeights.Normal;
     private double _lineHeightMultiplier = 1.0;
     private double[] _uniformAdvanceWidths = Array.Empty<double>();
+    private ushort[] _charToGlyphMap = Array.Empty<ushort>();
 
     public double CharWidth { get; private set; }
     public double LineHeight { get; private set; }
@@ -106,6 +107,7 @@ public class FontManager
             fallback.TryGetGlyphTypeface(out gt);
         }
         if (gt != null) _glyphTypeface = gt;
+        BuildCharToGlyphMap();
 
         var sample = new FormattedText("X", CultureInfo.InvariantCulture,
             FlowDirection.LeftToRight, _monoTypeface, _fontSize, Brushes.White, Dpi);
@@ -115,6 +117,16 @@ public class FontManager
         _uniformAdvanceWidths = Array.Empty<double>();
 
         FontChanged?.Invoke();
+    }
+
+    private void BuildCharToGlyphMap()
+    {
+        _charToGlyphMap = new ushort[ushort.MaxValue + 1];
+        foreach (var kv in _glyphTypeface.CharacterToGlyphMap)
+        {
+            if ((uint)kv.Key <= char.MaxValue)
+                _charToGlyphMap[kv.Key] = kv.Value;
+        }
     }
 
     private void RecalcLineHeight()
@@ -130,13 +142,12 @@ public class FontManager
                               double x, double y, Brush brush)
     {
         if (length <= 0) return;
-        var map = _glyphTypeface.CharacterToGlyphMap;
         // Must allocate per call — GlyphRun retains a reference to the array
         var glyphIndices = new ushort[length];
         for (int i = 0; i < length; i++)
         {
             char ch = text[startIndex + i];
-            glyphIndices[i] = map.TryGetValue(ch, out var gi) ? gi : (ushort)0;
+            glyphIndices[i] = _charToGlyphMap[ch];
         }
         if (_uniformAdvanceWidths.Length < length)
         {

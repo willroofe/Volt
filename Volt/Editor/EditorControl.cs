@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -158,6 +159,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private readonly HashSet<int> _foldedLines = new();  // opener lines that are collapsed
     private BitArray? _hiddenLines;                       // derived: lines hidden by folds
     private int _hoverFoldLine = -1;                      // line with fold marker being hovered
+    private readonly Dictionary<int, StructuralBlockInfo?> _structuralBlockCache = new();
+
+    private readonly record struct StructuralBlockInfo(int CloseLine);
 
     private bool IsLineHidden(int line) =>
         _hiddenLines != null && line < _hiddenLines.Length && _hiddenLines[line];
@@ -197,6 +201,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private readonly TranslateTransform _textTransform = new();
     private readonly TranslateTransform _gutterTransform = new();
     private readonly RectangleGeometry _textClipGeom = new();
+    private bool _invalidateQueued;
     private bool _textVisualDirty = true;
     private bool _gutterVisualDirty = true;
     private int _renderedFirstLine = -1;
@@ -205,6 +210,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private int _gutterRenderedLastLine = -1;
     private const int RenderBufferLines = 50;
     private const int LongLineThreshold = 500_000; // skip expensive processing for lines longer than this
+    private const int CaretTokenizeMaxLineLength = 8_192;
     // Track rendered scroll region for long-line viewport clamping
     private double _renderedScrollX = double.NaN;
     private double _renderedScrollY = double.NaN;
@@ -380,6 +386,17 @@ public class EditorControl : FrameworkElement, IScrollInfo
         InvalidateVisual();
     }
 
+    private void RequestVisualInvalidation()
+    {
+        if (_invalidateQueued) return;
+        _invalidateQueued = true;
+        Dispatcher.BeginInvoke(() =>
+        {
+            _invalidateQueued = false;
+            InvalidateVisual();
+        }, DispatcherPriority.Render);
+    }
+
     private void UpdateCaretVisual()
     {
         using var dc = _caretVisual.RenderOpen();
@@ -452,6 +469,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _cleanUndoDepth--;
         _textVisualDirty = true;
         _bracketMatchDirty = true;
+        InvalidateStructuralBlockCache();
         InvalidateLineStatesFrom(dirtyFromLine);
         _buffer.IsDirty = true;
     }
@@ -537,6 +555,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _selection.Clear();
         _bracketMatchDirty = true;
         _tokenCacheDirty = true;
+        InvalidateStructuralBlockCache();
         _buffer.IsDirty = _undoManager.UndoCount != _cleanUndoDepth;
         UpdateExtent();
         InvalidateText();
@@ -562,13 +581,20 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     private bool IsCaretInsideString(string line, int caretCol)
     {
+        if (_grammar == null || line.Length > CaretTokenizeMaxLineLength)
+            return IsInsideQuotedStringFast(line, caretCol);
+
         EnsureLineStates(_caretLine);
         var inState = _caretLine < _lineStates.Count ? _lineStates[_caretLine] : SyntaxManager.DefaultState;
         List<SyntaxToken> tokens;
         if (_tokenCache.TryGetValue(_caretLine, out var cached) && cached.content == line && cached.inState == inState)
             tokens = cached.tokens;
         else
+        {
             tokens = SyntaxManager.Tokenize(line, _grammar, inState, out _);
+            // Reuse this tokenization in the immediate render pass after input.
+            _tokenCache[_caretLine] = (line, inState, tokens);
+        }
         if (tokens.Count > 0)
         {
             foreach (var token in tokens)
@@ -582,6 +608,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
             return false;
         }
 
+        return IsInsideQuotedStringFast(line, caretCol);
+    }
+
+    private static bool IsInsideQuotedStringFast(string line, int caretCol)
+    {
         char? openQuote = null;
         for (int i = 0; i < caretCol && i < line.Length; i++)
         {
@@ -886,7 +917,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     // ── Background line state precomputation ───────────────────────
     private int _precomputeGeneration;
-    private const int PrecomputeBatchSize = 5000;
+    private const int PrecomputeBatchSize = 256;
+    private const double PrecomputeBatchBudgetMs = 4.0;
 
     private void PrecomputeLineStates()
     {
@@ -896,8 +928,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             if (gen != _precomputeGeneration) return;
             if (_lineStates.Count > _buffer.Count) return;
-            int target = Math.Min(_lineStates.Count + PrecomputeBatchSize - 1, _buffer.Count);
-            EnsureLineStates(target);
+            var sw = Stopwatch.StartNew();
+            int before;
+            do
+            {
+                before = _lineStates.Count;
+                int target = Math.Min(_lineStates.Count + PrecomputeBatchSize - 1, _buffer.Count);
+                EnsureLineStates(target);
+            } while (_lineStates.Count <= _buffer.Count
+                     && _lineStates.Count > before
+                     && sw.Elapsed.TotalMilliseconds < PrecomputeBatchBudgetMs);
             if (_lineStates.Count <= _buffer.Count)
                 Dispatcher.BeginInvoke(ProcessBatch, DispatcherPriority.ApplicationIdle);
         }
@@ -1249,7 +1289,34 @@ public class EditorControl : FrameworkElement, IScrollInfo
             return;
         }
 
+        var editorBrush = ThemeManager.EditorFg;
         int pos = segStart;
+        int runStart = segStart;
+        int runEnd = segStart;
+        Brush? runBrush = null;
+
+        void FlushRun()
+        {
+            if (runBrush == null || runEnd <= runStart) return;
+            _font.DrawGlyphRun(dc, line, runStart, runEnd - runStart,
+                x + (runStart - segStart) * _font.CharWidth, y, runBrush);
+        }
+
+        void AppendRun(int start, int end, Brush brush)
+        {
+            if (end <= start) return;
+            if (runBrush != null && ReferenceEquals(runBrush, brush) && start == runEnd)
+            {
+                runEnd = end;
+                return;
+            }
+
+            FlushRun();
+            runBrush = brush;
+            runStart = start;
+            runEnd = end;
+        }
+
         foreach (var token in tokens)
         {
             int tEnd = token.Start + token.Length;
@@ -1259,16 +1326,15 @@ public class EditorControl : FrameworkElement, IScrollInfo
             int drawEnd = Math.Min(tEnd, segEnd);
 
             if (drawStart > pos)
-                _font.DrawGlyphRun(dc, line, pos, drawStart - pos,
-                    x + (pos - segStart) * _font.CharWidth, y, ThemeManager.EditorFg);
+                AppendRun(pos, drawStart, editorBrush);
             var brush = ThemeManager.GetScopeBrush(token.Scope);
-            _font.DrawGlyphRun(dc, line, drawStart, drawEnd - drawStart,
-                x + (drawStart - segStart) * _font.CharWidth, y, brush);
+            AppendRun(drawStart, drawEnd, brush);
             pos = drawEnd;
         }
         if (pos < segEnd)
-            _font.DrawGlyphRun(dc, line, pos, segEnd - pos,
-                x + (pos - segStart) * _font.CharWidth, y, ThemeManager.EditorFg);
+            AppendRun(pos, segEnd, editorBrush);
+
+        FlushRun();
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -1295,13 +1361,22 @@ public class EditorControl : FrameworkElement, IScrollInfo
         else
         {
             _hiddenLines = new BitArray(_buffer.Count);
+            List<int>? invalidOpeners = null;
             foreach (var opener in _foldedLines)
             {
                 int? closer = FindStructuralBlock(opener);
-                if (closer == null) { _foldedLines.Remove(opener); continue; }
+                if (closer == null)
+                {
+                    invalidOpeners ??= [];
+                    invalidOpeners.Add(opener);
+                    continue;
+                }
                 for (int i = opener + 1; i < closer.Value; i++)
                     _hiddenLines[i] = true;
             }
+            if (invalidOpeners != null)
+                foreach (int opener in invalidOpeners)
+                    _foldedLines.Remove(opener);
         }
 
         // If caret is inside a folded region, move it to the fold opener
@@ -1420,7 +1495,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     /// whose matching '}' is the first non-whitespace character on its line.
     /// </summary>
     private bool IsStructuralBlockOpen(int line)
-        => FindStructuralBlock(line) != null;
+        => GetStructuralBlockInfo(line) != null;
 
     /// <summary>
     /// Finds the closing line for a structural block opened on the given line.
@@ -1429,6 +1504,21 @@ public class EditorControl : FrameworkElement, IScrollInfo
     /// constructs like "eval { ... })").
     /// </summary>
     private int? FindStructuralBlock(int line)
+    {
+        return GetStructuralBlockInfo(line)?.CloseLine;
+    }
+
+    private StructuralBlockInfo? GetStructuralBlockInfo(int line)
+    {
+        if (line < 0 || line >= _buffer.Count) return null;
+        if (_structuralBlockCache.TryGetValue(line, out var cached))
+            return cached;
+        var computed = ComputeStructuralBlockInfo(line);
+        _structuralBlockCache[line] = computed;
+        return computed;
+    }
+
+    private StructuralBlockInfo? ComputeStructuralBlockInfo(int line)
     {
         if (_buffer[line].Length > LongLineThreshold) return null;
         var closer = BracketMatcher.FindBlockCloser(_buffer, line, LiteralSkip);
@@ -1442,7 +1532,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
             if (i != closer.Value.col) return null;
             break;
         }
-        return closer.Value.line;
+        return new StructuralBlockInfo(closer.Value.line);
+    }
+
+    private void InvalidateStructuralBlockCache()
+    {
+        _structuralBlockCache.Clear();
     }
 
     private void RenderIndentGuides(DrawingContext dc, int drawFirst, int drawLast)
@@ -1459,16 +1554,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
         // For each line in the draw range that opens a block, find its closer and draw a guide.
         for (int i = drawFirst; i <= drawLast; i++)
         {
-            if (!IsStructuralBlockOpen(i)) continue;
-
-            int? closeLine = FindStructuralBlock(i);
-            if (closeLine == null) continue;
-
-            int indentCol = MeasureIndentColumns(_buffer[closeLine.Value], TabSize);
+            var block = GetStructuralBlockInfo(i);
+            if (block == null) continue;
+            int closeLine = block.Value.CloseLine;
+            int indentCol = MeasureIndentColumns(_buffer[closeLine], TabSize);
             if (indentCol == 0) continue;
 
             int guideFirst = i + 1;
-            int guideLast = closeLine.Value - 1;
+            int guideLast = closeLine - 1;
             if (guideLast < guideFirst) continue;
 
             double x = baseX + indentCol * _font.CharWidth;
@@ -1498,9 +1591,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 if (openerLine == null) break;
                 int i = openerLine.Value;
 
-                int? closeLineN = FindStructuralBlock(i);
-                if (closeLineN == null) { searchLine = i; searchCol = 0; continue; }
-                int closeLine = closeLineN.Value;
+                var block = GetStructuralBlockInfo(i);
+                if (block == null) { searchLine = i; searchCol = 0; continue; }
+                int closeLine = block.Value.CloseLine;
 
                 // Set up next search from above this opener
                 searchLine = i;
@@ -1720,7 +1813,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 _hoverFoldLine = newHover;
                 Cursor = _hoverFoldLine >= 0 ? Cursors.Hand : Cursors.IBeam;
                 _gutterVisualDirty = true;
-                InvalidateVisual();
+                RequestVisualInvalidation();
             }
             else if (pos.X < _gutterWidth)
             {
@@ -1748,7 +1841,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _caretCol = col;
         _bracketMatchDirty = true;
         EnsureCaretVisible();
-        InvalidateVisual();
+        RequestVisualInvalidation();
         e.Handled = true;
     }
 
@@ -2556,7 +2649,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (Math.Abs(offset - _offset.X) < 0.01) return;
         _offset.X = offset;
         ScrollOwner?.InvalidateScrollInfo();
-        InvalidateVisual();
+        RequestVisualInvalidation();
     }
 
     public void SetVerticalOffset(double offset)
@@ -2566,7 +2659,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (Math.Abs(offset - _offset.Y) < 0.01) return;
         _offset.Y = offset;
         ScrollOwner?.InvalidateScrollInfo();
-        InvalidateVisual();
+        RequestVisualInvalidation();
     }
 
     public Rect MakeVisible(Visual visual, Rect rectangle) => rectangle;
@@ -2647,6 +2740,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _cleanUndoDepth = 0;
         _foldedLines.Clear();
         _hiddenLines = null;
+        InvalidateStructuralBlockCache();
         _find.Clear();
         _tokenCacheDirty = true;
         _lineNumStrings.Clear();
@@ -2682,6 +2776,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _undoManager.Clear();
         _cleanUndoDepth = 0;
         _find.Clear();
+        InvalidateStructuralBlockCache();
         _tokenCacheDirty = true;
         InvalidateLineStates();
         UpdateExtent();
@@ -2706,6 +2801,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         // Invalidate syntax and token cache only from the appended region
         InvalidateLineStatesFrom(dirtyFrom);
+        InvalidateStructuralBlockCache();
         for (int i = dirtyFrom; i < _buffer.Count; i++)
             _tokenCache.Remove(i);
 
@@ -2727,6 +2823,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _buffer.Clear();
         _foldedLines.Clear();
         _hiddenLines = null;
+        InvalidateStructuralBlockCache();
         // TrimExcess releases the backing arrays that Clear() leaves allocated
         _tokenCache.Clear();
         _tokenCache.TrimExcess();
@@ -2743,6 +2840,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public void InvalidateSyntax()
     {
         InvalidateLineStates();
+        InvalidateStructuralBlockCache();
         _tokenCacheDirty = true;
         InvalidateText();
         PrecomputeLineStates();
