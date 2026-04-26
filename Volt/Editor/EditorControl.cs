@@ -55,7 +55,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             if (_indentGuides == value) return;
             _indentGuides = value;
             _textVisualDirty = true;
-            InvalidateVisual();
+            RequestEditorFrame();
         }
     }
 
@@ -127,10 +127,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 double maxY = Math.Max(0, _extent.Height - _viewport.Height);
                 _offset.Y = Math.Clamp(newY, 0, maxY);
             }
-            _textTransform.Y = -_offset.Y;
-            _gutterTransform.Y = -_offset.Y;
+            ApplyScrollTransformsAndClip();
             ScrollOwner?.InvalidateScrollInfo();
-            InvalidateVisual();
+            MarkTextAndGutterDirty();
+            RequestEditorFrame();
         }
     }
 
@@ -150,7 +150,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
             else
             {
                 _caretVisible = true;
-                InvalidateVisual();
+                _caretVisualDirty = true;
+                RequestEditorFrame();
             }
         }
     }
@@ -195,15 +196,19 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private int _lineStatesDirtyFrom = int.MaxValue;
 
     // ── Layered rendering visuals ───────────────────────────────────
+    private readonly DrawingVisual _decorationsVisual = new();
     private readonly DrawingVisual _textVisual = new();
     private readonly DrawingVisual _gutterVisual = new();
     private readonly DrawingVisual _caretVisual = new();
     private readonly TranslateTransform _textTransform = new();
     private readonly TranslateTransform _gutterTransform = new();
     private readonly RectangleGeometry _textClipGeom = new();
-    private bool _invalidateQueued;
+    private readonly EditorPerformanceTrace _perf = EditorPerformanceTrace.Shared;
+    private bool _editorFrameQueued;
+    private bool _decorationsVisualDirty = true;
     private bool _textVisualDirty = true;
     private bool _gutterVisualDirty = true;
+    private bool _caretVisualDirty = true;
     private int _renderedFirstLine = -1;
     private int _renderedLastLine = -1;
     private int _gutterRenderedFirstLine = -1;
@@ -267,12 +272,23 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public event EventHandler? DirtyChanged;
     public event EventHandler? CaretMoved;
 
+    public new void InvalidateVisual()
+    {
+        MarkTextAndGutterDirty();
+        base.InvalidateVisual();
+        RequestEditorFrame();
+    }
+
     public int CaretLine => _caretLine;
     public int CaretCol => _caretCol;
     public long CharCount => _buffer.CharCount;
 
     // ── Mouse drag ───────────────────────────────────────────────────
     private bool _isDragging;
+    private readonly DispatcherTimer _dragAutoScrollTimer;
+    private Point _lastDragPoint;
+    private const double DragAutoScrollIntervalMs = 33;
+    private const double DragAutoScrollMaxLinesPerTick = 24;
 
     // ── Gutter width (computed) ──────────────────────────────────────
     private double _gutterWidth;
@@ -326,6 +342,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
             UpdateCaretVisual();
         };
 
+        _dragAutoScrollTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(DragAutoScrollIntervalMs) };
+        _dragAutoScrollTimer.Tick += (_, _) => OnDragAutoScrollTick();
+
         _textVisual.Transform = _textTransform;
         _textVisual.Clip = _textClipGeom;
         _gutterVisual.Transform = _gutterTransform;
@@ -333,6 +352,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         TextOptions.SetTextRenderingMode(_gutterVisual, TextRenderingMode.ClearType);
         TextOptions.SetTextHintingMode(_textVisual, TextHintingMode.Fixed);
         TextOptions.SetTextHintingMode(_gutterVisual, TextHintingMode.Fixed);
+        AddVisualChild(_decorationsVisual);
         AddVisualChild(_textVisual);
         AddVisualChild(_gutterVisual);
         AddVisualChild(_caretVisual);
@@ -345,24 +365,27 @@ public class EditorControl : FrameworkElement, IScrollInfo
             Keyboard.Focus(this);
             _blinkTimer.Start();
             UpdateExtent();
+            RequestEditorFrame();
         };
 
         Unloaded += (_, _) =>
         {
             _blinkTimer.Stop();
+            StopDragAutoScroll();
             _font.BeforeFontChanged -= OnBeforeFontChanged;
             _font.FontChanged -= OnFontChanged;
             ThemeManager.ThemeChanged -= OnThemeChanged;
         };
     }
 
-    // ── Visual tree (layered children: text → gutter → caret) ─────
-    protected override int VisualChildrenCount => 3;
+    // ── Visual tree (layered children: decorations → text → gutter → caret) ─────
+    protected override int VisualChildrenCount => 4;
     protected override Visual GetVisualChild(int index) => index switch
     {
-        0 => _textVisual,
-        1 => _gutterVisual,
-        2 => _caretVisual,
+        0 => _decorationsVisual,
+        1 => _textVisual,
+        2 => _gutterVisual,
+        3 => _caretVisual,
         _ => throw new ArgumentOutOfRangeException(nameof(index))
     };
 
@@ -371,30 +394,141 @@ public class EditorControl : FrameworkElement, IScrollInfo
         RecalcWrapData();
         _textVisualDirty = true;
         _gutterVisualDirty = true;
+        _decorationsVisualDirty = true;
+        _caretVisualDirty = true;
         UpdateExtent();
-        InvalidateVisual();
+        RequestEditorFrame();
     }
 
     private void InvalidateText()
     {
         _textVisualDirty = true;
         _gutterVisualDirty = true;
+        _decorationsVisualDirty = true;
+        _caretVisualDirty = true;
         _renderedFirstLine = -1;
         _renderedLastLine = -1;
         _gutterRenderedFirstLine = -1;
         _gutterRenderedLastLine = -1;
-        InvalidateVisual();
+        RequestEditorFrame();
     }
 
-    private void RequestVisualInvalidation()
+    private void RequestEditorFrame()
     {
-        if (_invalidateQueued) return;
-        _invalidateQueued = true;
-        Dispatcher.BeginInvoke(() =>
+        bool coalesced = _editorFrameQueued;
+        _perf.RecordFrameRequest(coalesced);
+        if (coalesced) return;
+
+        _editorFrameQueued = true;
+        Dispatcher.BeginInvoke(new Action(ProcessEditorFrame), DispatcherPriority.Render);
+    }
+
+    private void ApplyScrollTransformsAndClip()
+    {
+        _textTransform.X = -(_offset.X - _textXBias);
+        _textTransform.Y = -_offset.Y;
+        _gutterTransform.Y = -_offset.Y;
+
+        _textClipGeom.Rect = new Rect(
+            _gutterWidth + _offset.X - _textXBias, _offset.Y,
+            Math.Max(0, ActualWidth - _gutterWidth), Math.Max(0, ActualHeight));
+    }
+
+    private void MarkDecorationsDirty()
+    {
+        _decorationsVisualDirty = true;
+        _caretVisualDirty = true;
+    }
+
+    private void MarkTextAndGutterDirty()
+    {
+        _textVisualDirty = true;
+        _gutterVisualDirty = true;
+        MarkDecorationsDirty();
+    }
+
+    private static long StartPerfTimer(bool enabled) => enabled ? Stopwatch.GetTimestamp() : 0;
+
+    private static double StopPerfTimer(bool enabled, long startTimestamp)
+        => enabled ? EditorPerformanceTrace.ElapsedMilliseconds(startTimestamp) : 0;
+
+    private void ProcessEditorFrame()
+    {
+        _editorFrameQueued = false;
+
+        bool perfEnabled = _perf.Enabled;
+        long frameStart = StartPerfTimer(perfEnabled);
+        double textMs = 0;
+        double gutterMs = 0;
+        double decorationsMs = 0;
+        double caretMs = 0;
+        bool rebuiltText = false;
+        bool rebuiltGutter = false;
+        bool rebuiltDecorations = false;
+        bool rebuiltCaret = false;
+
+        ClampCaret();
+
+        if (_tokenCacheDirty)
         {
-            _invalidateQueued = false;
-            InvalidateVisual();
-        }, DispatcherPriority.Render);
+            _tokenCache.Clear();
+            _tokenCacheDirty = false;
+            MarkTextAndGutterDirty();
+        }
+
+        var (firstLine, lastLine) = VisibleLineRange();
+
+        bool longLineScrolled = !double.IsNaN(_renderedScrollX)
+            && (Math.Abs(_offset.X - _renderedScrollX) > _viewport.Width * 0.25
+                || Math.Abs(_offset.Y - _renderedScrollY) > _viewport.Height * 0.25);
+
+        if (_textVisualDirty
+            || firstLine < _renderedFirstLine
+            || lastLine > _renderedLastLine
+            || longLineScrolled)
+        {
+            long textStart = StartPerfTimer(perfEnabled);
+            RenderTextVisual(firstLine, lastLine);
+            textMs = StopPerfTimer(perfEnabled, textStart);
+            _textVisualDirty = false;
+            rebuiltText = true;
+        }
+
+        if (_gutterVisualDirty
+            || firstLine < _gutterRenderedFirstLine
+            || lastLine > _gutterRenderedLastLine)
+        {
+            long gutterStart = StartPerfTimer(perfEnabled);
+            RenderGutterVisual(firstLine, lastLine);
+            gutterMs = StopPerfTimer(perfEnabled, gutterStart);
+            _gutterVisualDirty = false;
+            rebuiltGutter = true;
+        }
+
+        if (_decorationsVisualDirty)
+        {
+            long decorationsStart = StartPerfTimer(perfEnabled);
+            RenderDecorationsVisual(firstLine, lastLine);
+            decorationsMs = StopPerfTimer(perfEnabled, decorationsStart);
+            _decorationsVisualDirty = false;
+            rebuiltDecorations = true;
+        }
+
+        ApplyScrollTransformsAndClip();
+
+        if (_caretVisualDirty)
+        {
+            long caretStart = StartPerfTimer(perfEnabled);
+            UpdateCaretVisual();
+            caretMs = StopPerfTimer(perfEnabled, caretStart);
+            _caretVisualDirty = false;
+            rebuiltCaret = true;
+        }
+
+        _perf.RecordFrame(
+            StopPerfTimer(perfEnabled, frameStart),
+            rebuiltText, rebuiltGutter, rebuiltDecorations, rebuiltCaret,
+            textMs, gutterMs, decorationsMs, caretMs);
     }
 
     private void UpdateCaretVisual()
@@ -726,8 +860,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
             double newY = (_wrap.CumulOffset(anchorLine) + newWrap) * _font.LineHeight + anchorDelta;
             double maxY = Math.Max(0, _wrap.TotalVisualLines * _font.LineHeight + _viewport.Height / 2 - _viewport.Height);
             _offset.Y = Math.Clamp(newY, 0, maxY);
-            _textTransform.Y = -_offset.Y;
-            _gutterTransform.Y = -_offset.Y;
+            ApplyScrollTransformsAndClip();
+            MarkDecorationsDirty();
         }
 
         int digits = _buffer.Count > 0
@@ -737,6 +871,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             _gutterDigits = digits;
             _gutterWidth = digits * _font.CharWidth + GutterRightMargin + FoldGutterWidth;
+            MarkTextAndGutterDirty();
         }
 
         int maxLen = _buffer.UpdateMaxForLine(_caretLine);
@@ -822,7 +957,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _gutterVisualDirty = true;
             _prevCaretLine = _caretLine;
         }
-        InvalidateVisual();
+        MarkDecorationsDirty();
+        RequestEditorFrame();
         CaretMoved?.Invoke(this, EventArgs.Empty);
     }
 
@@ -970,20 +1106,20 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     protected override void OnRender(DrawingContext dc)
     {
-        ClampCaret();
+        bool perfEnabled = _perf.Enabled;
+        long start = StartPerfTimer(perfEnabled);
+        base.OnRender(dc);
+        if (!_editorFrameQueued)
+            ProcessEditorFrame();
+        _perf.RecordOnRender(StopPerfTimer(perfEnabled, start));
+    }
 
-        if (_tokenCacheDirty)
-        {
-            _tokenCache.Clear();
-            _tokenCacheDirty = false;
-            _textVisualDirty = true;
-            _gutterVisualDirty = true;
-        }
-
-        var (firstLine, lastLine) = VisibleLineRange();
+    private void RenderDecorationsVisual(int firstLine, int lastLine)
+    {
+        using var dc = _decorationsVisual.RenderOpen();
 
         dc.DrawRectangle(ThemeManager.EditorBg, null,
-            new Rect(0, 0, ActualWidth, ActualHeight));
+            new Rect(0, 0, Math.Max(0, ActualWidth), Math.Max(0, ActualHeight)));
 
         if (_caretLine >= firstLine && _caretLine <= lastLine)
         {
@@ -1109,38 +1245,6 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 }
             }
         }
-
-        // For long lines, the rendered region is clamped to the viewport.
-        // Re-render when scroll moves beyond the rendered buffer zone.
-        bool longLineScrolled = !double.IsNaN(_renderedScrollX)
-            && (Math.Abs(_offset.X - _renderedScrollX) > _viewport.Width * 0.25
-                || Math.Abs(_offset.Y - _renderedScrollY) > _viewport.Height * 0.25);
-
-        if (_textVisualDirty
-            || firstLine < _renderedFirstLine
-            || lastLine > _renderedLastLine
-            || longLineScrolled)
-        {
-            RenderTextVisual(firstLine, lastLine);
-            _textVisualDirty = false;
-        }
-        if (_gutterVisualDirty
-            || firstLine < _gutterRenderedFirstLine
-            || lastLine > _gutterRenderedLastLine)
-        {
-            RenderGutterVisual(firstLine, lastLine);
-            _gutterVisualDirty = false;
-        }
-
-        // Set transform/clip AFTER RenderTextVisual so _textXBias is up to date
-        _textTransform.X = -(_offset.X - _textXBias);
-        _textTransform.Y = -_offset.Y;
-        _gutterTransform.Y = -_offset.Y;
-
-        _textClipGeom.Rect = new Rect(
-            _gutterWidth + _offset.X - _textXBias, _offset.Y,
-            Math.Max(0, ActualWidth - _gutterWidth), ActualHeight);
-        UpdateCaretVisual();
     }
 
     private void RenderWrappedSelection(DrawingContext dc, int line, int selStart, int selEnd, int sl, int sc, int el)
@@ -1406,7 +1510,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         SetVerticalOffset(Math.Max(0, target));
         ResetCaret();
         _textVisualDirty = true;
-        InvalidateVisual();
+        RequestEditorFrame();
     }
 
     /// <summary>Fold the block at or enclosing the caret.</summary>
@@ -1731,19 +1835,130 @@ public class EditorControl : FrameworkElement, IScrollInfo
     {
         _caretVisible = true;
         if (_caretBlinkMs > 0) _blinkTimer.Start();
-        InvalidateVisual();
+        MarkDecorationsDirty();
+        RequestEditorFrame();
     }
 
     protected override void OnLostKeyboardFocus(KeyboardFocusChangedEventArgs e)
     {
         _blinkTimer.Stop();
         _caretVisible = false;
-        InvalidateVisual();
+        MarkDecorationsDirty();
+        RequestEditorFrame();
     }
 
     // ──────────────────────────────────────────────────────────────────
     //  Mouse
     // ──────────────────────────────────────────────────────────────────
+    private bool IsDragAutoScrollPoint(Point pos)
+    {
+        if (ActualWidth <= 0 || ActualHeight <= 0) return false;
+        if (pos.Y < 0 || pos.Y > ActualHeight) return true;
+        return !_wordWrap && (pos.X < 0 || pos.X > ActualWidth);
+    }
+
+    private double DragAutoScrollStep(double outsidePixels)
+    {
+        double lineHeight = _font.LineHeight > 0 ? _font.LineHeight : 16;
+        double lines = Math.Clamp(1 + outsidePixels / lineHeight, 1, DragAutoScrollMaxLinesPerTick);
+        return lines * lineHeight;
+    }
+
+    private bool ApplyDragAutoScroll(Point pos)
+    {
+        bool scrolled = false;
+
+        if (pos.Y < 0)
+        {
+            double before = _offset.Y;
+            SetVerticalOffset(_offset.Y - DragAutoScrollStep(-pos.Y));
+            scrolled = scrolled || Math.Abs(_offset.Y - before) >= 0.01;
+        }
+        else if (pos.Y > ActualHeight)
+        {
+            double before = _offset.Y;
+            SetVerticalOffset(_offset.Y + DragAutoScrollStep(pos.Y - ActualHeight));
+            scrolled = scrolled || Math.Abs(_offset.Y - before) >= 0.01;
+        }
+
+        if (!_wordWrap)
+        {
+            if (pos.X < 0)
+            {
+                double before = _offset.X;
+                SetHorizontalOffset(_offset.X - DragAutoScrollStep(-pos.X));
+                scrolled = scrolled || Math.Abs(_offset.X - before) >= 0.01;
+            }
+            else if (pos.X > ActualWidth)
+            {
+                double before = _offset.X;
+                SetHorizontalOffset(_offset.X + DragAutoScrollStep(pos.X - ActualWidth));
+                scrolled = scrolled || Math.Abs(_offset.X - before) >= 0.01;
+            }
+        }
+
+        return scrolled;
+    }
+
+    private void UpdateDragAutoScroll(Point pos)
+    {
+        if (_isDragging && IsDragAutoScrollPoint(pos))
+        {
+            if (!_dragAutoScrollTimer.IsEnabled)
+                _dragAutoScrollTimer.Start();
+        }
+        else
+        {
+            StopDragAutoScroll();
+        }
+    }
+
+    private void StopDragAutoScroll()
+    {
+        if (_dragAutoScrollTimer.IsEnabled)
+            _dragAutoScrollTimer.Stop();
+    }
+
+    private void OnDragAutoScrollTick()
+    {
+        if (!_isDragging || !IsMouseCaptured)
+        {
+            StopDragAutoScroll();
+            return;
+        }
+
+        if (!IsDragAutoScrollPoint(_lastDragPoint))
+        {
+            StopDragAutoScroll();
+            return;
+        }
+
+        ApplyDragAutoScroll(_lastDragPoint);
+        UpdateDragSelection(_lastDragPoint, ensureCaretVisible: false);
+    }
+
+    private bool UpdateDragSelection(Point pos, bool ensureCaretVisible)
+    {
+        var (line, col) = HitTest(pos);
+
+        if (line == _caretLine && col == _caretCol)
+            return false;
+
+        if (line != _selection.AnchorLine || col != _selection.AnchorCol)
+            _selection.HasSelection = true;
+
+        _caretLine = line;
+        _caretCol = col;
+        _bracketMatchDirty = true;
+        if (ensureCaretVisible)
+            EnsureCaretVisible();
+        bool dragCoalesced = _editorFrameQueued;
+        MarkDecorationsDirty();
+        RequestEditorFrame();
+        _perf.RecordDragMove(dragCoalesced);
+        return true;
+    }
+
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         Focus();
@@ -1765,6 +1980,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         CaptureMouse();
         var (line, col) = HitTest(pos);
+        _lastDragPoint = pos;
 
         if (e.ClickCount == 2)
         {
@@ -1789,6 +2005,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _caretCol = col;
         }
         _isDragging = true;
+        UpdateDragAutoScroll(pos);
         ResetPreferredCol();
         ResetCaret();
         e.Handled = true;
@@ -1797,6 +2014,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     protected override void OnMouseMove(MouseEventArgs e)
     {
         var pos = e.GetPosition(this);
+        _lastDragPoint = pos;
 
         // Update fold gutter hover state and cursor
         if (!_isDragging)
@@ -1813,7 +2031,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 _hoverFoldLine = newHover;
                 Cursor = _hoverFoldLine >= 0 ? Cursors.Hand : Cursors.IBeam;
                 _gutterVisualDirty = true;
-                RequestVisualInvalidation();
+                RequestEditorFrame();
             }
             else if (pos.X < _gutterWidth)
             {
@@ -1826,30 +2044,29 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
 
         if (!_isDragging) return;
-        var (line, col) = HitTest(pos);
-
-        if (line == _caretLine && col == _caretCol)
+        bool autoScrolling = IsDragAutoScrollPoint(pos);
+        UpdateDragAutoScroll(pos);
+        if (!UpdateDragSelection(pos, ensureCaretVisible: !autoScrolling))
         {
             e.Handled = true;
             return;
         }
-
-        if (line != _selection.AnchorLine || col != _selection.AnchorCol)
-            _selection.HasSelection = true;
-
-        _caretLine = line;
-        _caretCol = col;
-        _bracketMatchDirty = true;
-        EnsureCaretVisible();
-        RequestVisualInvalidation();
         e.Handled = true;
     }
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
         _isDragging = false;
+        StopDragAutoScroll();
         ReleaseMouseCapture();
         e.Handled = true;
+    }
+
+    protected override void OnLostMouseCapture(MouseEventArgs e)
+    {
+        base.OnLostMouseCapture(e);
+        _isDragging = false;
+        StopDragAutoScroll();
     }
 
     protected override void OnMouseLeave(MouseEventArgs e)
@@ -1859,7 +2076,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _hoverFoldLine = -1;
             Cursor = Cursors.IBeam;
             _gutterVisualDirty = true;
-            InvalidateVisual();
+            RequestEditorFrame();
         }
     }
 
@@ -2366,7 +2583,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _caretLine = _buffer.Count - 1;
         _caretCol = _buffer[_buffer.Count - 1].Length;
         _selection.HasSelection = true;
-        InvalidateVisual();
+        _bracketMatchDirty = true;
+        _gutterVisualDirty = true;
+        MarkDecorationsDirty();
+        RequestEditorFrame();
     }
 
     private void HandleCopy()
@@ -2612,7 +2832,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         EnsureCaretVisible();
         ResetCaret();
         _textVisualDirty = true;
-        InvalidateVisual();
+        RequestEditorFrame();
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -2648,8 +2868,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
         offset = Math.Round(offset * _font.Dpi) / _font.Dpi;
         if (Math.Abs(offset - _offset.X) < 0.01) return;
         _offset.X = offset;
+        ApplyScrollTransformsAndClip();
+        MarkDecorationsDirty();
         ScrollOwner?.InvalidateScrollInfo();
-        RequestVisualInvalidation();
+        _perf.RecordScrollOffsetUpdate();
+        RequestEditorFrame();
     }
 
     public void SetVerticalOffset(double offset)
@@ -2658,8 +2881,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
         offset = Math.Round(offset * _font.Dpi) / _font.Dpi;
         if (Math.Abs(offset - _offset.Y) < 0.01) return;
         _offset.Y = offset;
+        ApplyScrollTransformsAndClip();
+        MarkDecorationsDirty();
         ScrollOwner?.InvalidateScrollInfo();
-        RequestVisualInvalidation();
+        _perf.RecordScrollOffsetUpdate();
+        RequestEditorFrame();
     }
 
     public Rect MakeVisible(Visual visual, Rect rectangle) => rectangle;
@@ -2687,6 +2913,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             _textVisualDirty = true;
             _gutterVisualDirty = true;
+            MarkDecorationsDirty();
         }
         _viewport = availableSize;
         UpdateExtent();
@@ -2703,9 +2930,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             _textVisualDirty = true;
             _gutterVisualDirty = true;
+            MarkDecorationsDirty();
             SetHorizontalOffset(_offset.X);
             SetVerticalOffset(_offset.Y);
+            ApplyScrollTransformsAndClip();
             ScrollOwner?.InvalidateScrollInfo();
+            RequestEditorFrame();
         }
         return finalSize;
     }
@@ -2758,6 +2988,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _caretLine = Math.Clamp(line, 0, _buffer.Count - 1);
         _caretCol = Math.Clamp(col, 0, _buffer[_caretLine].Length);
         _selection.Clear();
+        _bracketMatchDirty = true;
+        _gutterVisualDirty = true;
+        MarkDecorationsDirty();
+        RequestEditorFrame();
     }
 
     /// <summary>
@@ -2884,13 +3118,15 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _find.Search(_buffer, query, matchCase, _caretLine, _caretCol, useRegex, wholeWord, selectionBounds);
         if (_find.MatchCount > 0)
             NavigateToCurrentMatch(preserveSelection);
-        InvalidateVisual();
+        MarkDecorationsDirty();
+        RequestEditorFrame();
     }
 
     public void ClearFindMatches()
     {
         _find.Clear();
-        InvalidateVisual();
+        MarkDecorationsDirty();
+        RequestEditorFrame();
     }
 
     public void FindNext()
@@ -2898,7 +3134,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (_find.MatchCount == 0) return;
         _find.MoveNext();
         NavigateToCurrentMatch();
-        InvalidateVisual();
+        MarkDecorationsDirty();
+        RequestEditorFrame();
     }
 
     public void FindPrevious()
@@ -2906,7 +3143,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (_find.MatchCount == 0) return;
         _find.MovePrevious();
         NavigateToCurrentMatch();
-        InvalidateVisual();
+        MarkDecorationsDirty();
+        RequestEditorFrame();
     }
 
     public void ReplaceCurrent(string replacement)
@@ -2920,7 +3158,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _find.Search(_buffer, _find.LastQuery, _find.LastMatchCase, _caretLine, _caretCol, _find.LastUseRegex, _find.LastWholeWord);
         _buffer.InvalidateMaxLineLength();
         _gutterVisualDirty = true;
-        InvalidateVisual();
+        MarkDecorationsDirty();
+        RequestEditorFrame();
     }
 
     public void ReplaceAll(string query, string replacement, bool matchCase, bool useRegex = false, bool wholeWord = false,
@@ -2942,7 +3181,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _tokenCacheDirty = true;
         InvalidateLineStates();
         _gutterVisualDirty = true;
-        InvalidateVisual();
+        MarkDecorationsDirty();
+        RequestEditorFrame();
     }
 
     private void NavigateToCurrentMatch(bool preserveSelection = false)
