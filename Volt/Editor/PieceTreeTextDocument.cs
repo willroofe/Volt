@@ -11,6 +11,7 @@ namespace Volt;
 public sealed class PieceTreeTextDocument : ITextDocument
 {
     private const int StreamBufferSize = 1 << 20;
+    private const int OriginalLineCacheLimit = 4096;
 
     private enum PieceKind { Original, Add }
 
@@ -32,6 +33,7 @@ public sealed class PieceTreeTextDocument : ITextDocument
     private readonly List<LinePiece> _pieces = [];
     private readonly List<string> _addLines = [];
     private readonly Dictionary<int, string> _originalLineCache = new();
+    private readonly Queue<int> _originalLineCacheOrder = new();
     private FileStream? _sourceStream;
     private LineIndex _index = null!;
     private string _lineEnding = Environment.NewLine;
@@ -372,7 +374,7 @@ public sealed class PieceTreeTextDocument : ITextDocument
         CloseSourceStream();
         _pieces.Clear();
         _addLines.Clear();
-        _originalLineCache.Clear();
+        ClearOriginalLineCache();
         _lineCount = 0;
         InsertLines(0, [""]);
         IsDirty = false;
@@ -454,10 +456,27 @@ public sealed class PieceTreeTextDocument : ITextDocument
 
         var bytes = ReadOriginalLineBytes(originalLine);
         var text = Encoding.GetString(bytes);
-        if (_originalLineCache.Count > 512)
-            _originalLineCache.Clear();
-        _originalLineCache[originalLine] = text;
+        AddOriginalLineCacheEntry(originalLine, text);
         return text;
+    }
+
+    private void AddOriginalLineCacheEntry(int originalLine, string text)
+    {
+        _originalLineCache[originalLine] = text;
+        _originalLineCacheOrder.Enqueue(originalLine);
+
+        while (_originalLineCache.Count > OriginalLineCacheLimit
+               && _originalLineCacheOrder.TryDequeue(out int evictLine))
+        {
+            if (evictLine != originalLine)
+                _originalLineCache.Remove(evictLine);
+        }
+    }
+
+    private void ClearOriginalLineCache()
+    {
+        _originalLineCache.Clear();
+        _originalLineCacheOrder.Clear();
     }
 
     private byte[] ReadOriginalLineBytes(int originalLine)
@@ -540,7 +559,7 @@ public sealed class PieceTreeTextDocument : ITextDocument
         _pieces.Clear();
         _pieces.Add(new LinePiece(PieceKind.Original, 0, _lineCount));
         _addLines.Clear();
-        _originalLineCache.Clear();
+        ClearOriginalLineCache();
         _editGeneration++;
     }
 

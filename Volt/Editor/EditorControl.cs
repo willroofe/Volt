@@ -212,6 +212,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private readonly RectangleGeometry _textClipGeom = new();
     private readonly EditorPerformanceTrace _perf = EditorPerformanceTrace.Shared;
     private bool _editorFrameQueued;
+    private DispatcherOperation? _editorFrameOperation;
     private bool _decorationsVisualDirty = true;
     private bool _textVisualDirty = true;
     private bool _gutterVisualDirty = true;
@@ -220,7 +221,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private int _renderedLastLine = -1;
     private int _gutterRenderedFirstLine = -1;
     private int _gutterRenderedLastLine = -1;
-    private const int RenderBufferLines = 50;
+    private const int RenderBufferLines = 80;
+    private const int RenderBufferRefreshLines = 24;
     private const int LongLineThreshold = 500_000; // skip expensive processing for lines longer than this
     private const int CaretTokenizeMaxLineLength = 8_192;
     // Current wrap and syntax state implementations are whole-document indexes.
@@ -438,7 +440,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (coalesced) return;
 
         _editorFrameQueued = true;
-        Dispatcher.BeginInvoke(new Action(ProcessEditorFrame), DispatcherPriority.Render);
+        _editorFrameOperation = Dispatcher.BeginInvoke(new Action(ProcessEditorFrame), DispatcherPriority.Render);
+    }
+
+    private void ProcessEditorFrameImmediately()
+    {
+        if (_editorFrameOperation?.Status == DispatcherOperationStatus.Pending)
+            _editorFrameOperation.Abort();
+        _editorFrameOperation = null;
+        _editorFrameQueued = false;
+        ProcessEditorFrame();
     }
 
     private void ApplyScrollTransformsAndClip()
@@ -470,9 +481,40 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private static double StopPerfTimer(bool enabled, long startTimestamp)
         => enabled ? EditorPerformanceTrace.ElapsedMilliseconds(startTimestamp) : 0;
 
+    private bool IsTextViewportCovered(int firstLine, int lastLine) =>
+        !_textVisualDirty
+        && _renderedFirstLine >= 0
+        && firstLine >= _renderedFirstLine
+        && lastLine <= _renderedLastLine;
+
+    private bool IsGutterViewportCovered(int firstLine, int lastLine) =>
+        !_gutterVisualDirty
+        && _gutterRenderedFirstLine >= 0
+        && firstLine >= _gutterRenderedFirstLine
+        && lastLine <= _gutterRenderedLastLine;
+
+    private bool TextViewportNeedsRefresh(int firstLine, int lastLine, bool longLineScrolled = false) =>
+        _textVisualDirty
+        || _renderedFirstLine < 0
+        || (_renderedFirstLine > 0 && firstLine < _renderedFirstLine + RenderBufferRefreshLines)
+        || (_renderedLastLine < _buffer.Count - 1 && lastLine > _renderedLastLine - RenderBufferRefreshLines)
+        || longLineScrolled;
+
+    private bool GutterViewportNeedsRefresh(int firstLine, int lastLine) =>
+        _gutterVisualDirty
+        || _gutterRenderedFirstLine < 0
+        || (_gutterRenderedFirstLine > 0 && firstLine < _gutterRenderedFirstLine + RenderBufferRefreshLines)
+        || (_gutterRenderedLastLine < _buffer.Count - 1 && lastLine > _gutterRenderedLastLine - RenderBufferRefreshLines);
+
+    private bool IsLongLineViewportStale() =>
+        !double.IsNaN(_renderedScrollX)
+        && (Math.Abs(_offset.X - _renderedScrollX) > _viewport.Width * 0.25
+            || Math.Abs(_offset.Y - _renderedScrollY) > _viewport.Height * 0.25);
+
     private void ProcessEditorFrame()
     {
         _editorFrameQueued = false;
+        _editorFrameOperation = null;
 
         bool perfEnabled = _perf.Enabled;
         long frameStart = StartPerfTimer(perfEnabled);
@@ -496,14 +538,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         var (firstLine, lastLine) = VisibleLineRange();
 
-        bool longLineScrolled = !double.IsNaN(_renderedScrollX)
-            && (Math.Abs(_offset.X - _renderedScrollX) > _viewport.Width * 0.25
-                || Math.Abs(_offset.Y - _renderedScrollY) > _viewport.Height * 0.25);
+        bool longLineScrolled = IsLongLineViewportStale();
 
-        if (_textVisualDirty
-            || firstLine < _renderedFirstLine
-            || lastLine > _renderedLastLine
-            || longLineScrolled)
+        if (TextViewportNeedsRefresh(firstLine, lastLine, longLineScrolled))
         {
             long textStart = StartPerfTimer(perfEnabled);
             RenderTextVisual(firstLine, lastLine);
@@ -512,9 +549,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             rebuiltText = true;
         }
 
-        if (_gutterVisualDirty
-            || firstLine < _gutterRenderedFirstLine
-            || lastLine > _gutterRenderedLastLine)
+        if (GutterViewportNeedsRefresh(firstLine, lastLine))
         {
             long gutterStart = StartPerfTimer(perfEnabled);
             RenderGutterVisual(firstLine, lastLine);
@@ -2917,10 +2952,20 @@ public class EditorControl : FrameworkElement, IScrollInfo
         offset = Math.Round(offset * _font.Dpi) / _font.Dpi;
         if (Math.Abs(offset - _offset.X) < 0.01) return;
         _offset.X = offset;
-        ApplyScrollTransformsAndClip();
         MarkDecorationsDirty();
         ScrollOwner?.InvalidateScrollInfo();
         _perf.RecordScrollOffsetUpdate();
+
+        var (firstLine, lastLine) = VisibleLineRange();
+        if (!IsTextViewportCovered(firstLine, lastLine)
+            || !IsGutterViewportCovered(firstLine, lastLine)
+            || IsLongLineViewportStale())
+        {
+            ProcessEditorFrameImmediately();
+            return;
+        }
+
+        ApplyScrollTransformsAndClip();
         RequestEditorFrame();
     }
 
@@ -2930,10 +2975,19 @@ public class EditorControl : FrameworkElement, IScrollInfo
         offset = Math.Round(offset * _font.Dpi) / _font.Dpi;
         if (Math.Abs(offset - _offset.Y) < 0.01) return;
         _offset.Y = offset;
-        ApplyScrollTransformsAndClip();
         MarkDecorationsDirty();
         ScrollOwner?.InvalidateScrollInfo();
         _perf.RecordScrollOffsetUpdate();
+
+        var (firstLine, lastLine) = VisibleLineRange();
+        if (!IsTextViewportCovered(firstLine, lastLine)
+            || !IsGutterViewportCovered(firstLine, lastLine))
+        {
+            ProcessEditorFrameImmediately();
+            return;
+        }
+
+        ApplyScrollTransformsAndClip();
         RequestEditorFrame();
     }
 
