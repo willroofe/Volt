@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Diagnostics;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -12,7 +13,7 @@ namespace Volt;
 public class EditorControl : FrameworkElement, IScrollInfo
 {
     // ── Extracted components ─────────────────────────────────────────
-    private readonly TextBuffer _buffer = new();
+    private ITextDocument _buffer = new TextBuffer();
     private readonly UndoManager _undoManager = new();
     private int _cleanUndoDepth; // undo stack depth when last marked clean (-1 = unreachable)
     private readonly SelectionManager _selection = new();
@@ -67,7 +68,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             if (_wordWrapAtWords == value) return;
             _wordWrapAtWords = value;
-            if (_wordWrap) InvalidateWrapLayout();
+            if (IsWordWrapActive) InvalidateWrapLayout();
         }
     }
 
@@ -79,7 +80,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             if (_wordWrapIndent == value) return;
             _wordWrapIndent = value;
-            if (_wordWrap) InvalidateWrapLayout();
+            if (IsWordWrapActive) InvalidateWrapLayout();
         }
     }
 
@@ -90,11 +91,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
         set
         {
             if (_wordWrap == value) return;
+            bool wasWordWrapActive = IsWordWrapActive;
             // Anchor to top visible line so toggling wrap doesn't shift the viewport
             int anchorLine;
             int anchorWrap = 0;
             double anchorDelta;
-            if (_wordWrap && _wrap.HasValidData(_buffer.Count) && _wrap.TotalVisualLines > 0)
+            if (wasWordWrapActive && _wrap.HasValidData(_buffer.Count) && _wrap.TotalVisualLines > 0)
             {
                 int topVisual = Math.Clamp((int)(_offset.Y / _font.LineHeight), 0, _wrap.TotalVisualLines - 1);
                 (anchorLine, anchorWrap) = VisualToLogical(topVisual);
@@ -108,13 +110,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _wordWrap = value;
             _skipWrapAnchor = true;
             RecalcWrapData();
-            if (_wordWrap) SetHorizontalOffset(0);
+            bool isWordWrapActive = IsWordWrapActive;
+            if (isWordWrapActive) SetHorizontalOffset(0);
             _textVisualDirty = true;
             _gutterVisualDirty = true;
             UpdateExtent();
             _skipWrapAnchor = false;
             // Restore scroll so the same logical line stays at the top of the viewport
-            if (_wordWrap && _wrap.HasValidData(_buffer.Count))
+            if (isWordWrapActive && _wrap.HasValidData(_buffer.Count))
             {
                 int newWrap = Math.Min(anchorWrap, VisualLineCount(anchorLine) - 1);
                 double newY = (_wrap.CumulOffset(anchorLine) + newWrap) * _font.LineHeight + anchorDelta;
@@ -194,6 +197,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ── Multi-line syntax state ────────────────────────────────────
     private readonly List<LineState> _lineStates = new();
     private int _lineStatesDirtyFrom = int.MaxValue;
+    private bool CanUseWholeDocumentLayout => _buffer.Count <= WholeDocumentLayoutLineLimit;
+    private bool IsWordWrapActive => _wordWrap && CanUseWholeDocumentLayout;
+    private bool UseSequentialSyntaxStates =>
+        _grammar != null && CanUseWholeDocumentLayout;
 
     // ── Layered rendering visuals ───────────────────────────────────
     private readonly DrawingVisual _decorationsVisual = new();
@@ -216,12 +223,20 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private const int RenderBufferLines = 50;
     private const int LongLineThreshold = 500_000; // skip expensive processing for lines longer than this
     private const int CaretTokenizeMaxLineLength = 8_192;
+    // Current wrap and syntax state implementations are whole-document indexes.
+    // Keep large file scrolling viewport-only until these become progressive indexes.
+    private const int WholeDocumentLayoutLineLimit = 200_000;
     // Track rendered scroll region for long-line viewport clamping
     private double _renderedScrollX = double.NaN;
     private double _renderedScrollY = double.NaN;
     // Bias subtracted from content-space X coords to keep values small enough for
     // WPF's float32 render pipeline. Zero for normal files.
     private double _textXBias;
+    // Biases subtracted from content-space Y coords for layered visuals. At high
+    // line counts, drawing at line * LineHeight and translating by a huge scroll
+    // offset causes WPF float precision loss and visible text/gutter drift.
+    private double _textYBias;
+    private double _gutterYBias;
 
     // ── Font property delegation ─────────────────────────────────────
     public string FontFamilyName
@@ -333,7 +348,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         FocusVisualStyle = null;
         Cursor = Cursors.IBeam;
 
-        _buffer.DirtyChanged += (_, _) => DirtyChanged?.Invoke(this, EventArgs.Empty);
+        _buffer.DirtyChanged += OnDocumentDirtyChanged;
 
         _blinkTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _blinkTimer.Tick += (_, _) =>
@@ -377,6 +392,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
             ThemeManager.ThemeChanged -= OnThemeChanged;
         };
     }
+
+    private void OnDocumentDirtyChanged(object? sender, EventArgs e) =>
+        DirtyChanged?.Invoke(this, EventArgs.Empty);
 
     // ── Visual tree (layered children: decorations → text → gutter → caret) ─────
     protected override int VisualChildrenCount => 4;
@@ -426,11 +444,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void ApplyScrollTransformsAndClip()
     {
         _textTransform.X = -(_offset.X - _textXBias);
-        _textTransform.Y = -_offset.Y;
-        _gutterTransform.Y = -_offset.Y;
+        _textTransform.Y = -(_offset.Y - _textYBias);
+        _gutterTransform.Y = -(_offset.Y - _gutterYBias);
 
         _textClipGeom.Rect = new Rect(
-            _gutterWidth + _offset.X - _textXBias, _offset.Y,
+            _gutterWidth + _offset.X - _textXBias, _offset.Y - _textYBias,
             Math.Max(0, ActualWidth - _gutterWidth), Math.Max(0, ActualHeight));
     }
 
@@ -718,8 +736,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (_grammar == null || line.Length > CaretTokenizeMaxLineLength)
             return IsInsideQuotedStringFast(line, caretCol);
 
-        EnsureLineStates(_caretLine);
-        var inState = _caretLine < _lineStates.Count ? _lineStates[_caretLine] : SyntaxManager.DefaultState;
+        var inState = GetSyntaxInputState(_caretLine);
         List<SyntaxToken> tokens;
         if (_tokenCache.TryGetValue(_caretLine, out var cached) && cached.content == line && cached.inState == inState)
             tokens = cached.tokens;
@@ -769,7 +786,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     private (int line, int col) HitTest(Point pos)
     {
-        if (!_wordWrap && !HasFoldLayout)
+        if (!IsWordWrapActive && !HasFoldLayout)
         {
             int line = (int)((pos.Y + _offset.Y) / _font.LineHeight);
             line = Math.Clamp(line, 0, _buffer.Count - 1);
@@ -840,11 +857,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     private void UpdateExtent()
     {
+        bool wordWrapActive = IsWordWrapActive;
         // Anchor scroll to the top visible logical line across wrap recalculations
         int anchorLine = -1;
         int anchorWrap = 0;
         double anchorDelta = 0;
-        if ((_wordWrap || HasFoldLayout) && !_skipWrapAnchor && _wrap.HasValidData(_buffer.Count) && _wrap.TotalVisualLines > 0)
+        if ((wordWrapActive || HasFoldLayout) && !_skipWrapAnchor && _wrap.HasValidData(_buffer.Count) && _wrap.TotalVisualLines > 0)
         {
             int topVisual = Math.Clamp((int)(_offset.Y / _font.LineHeight), 0, _wrap.TotalVisualLines - 1);
             (anchorLine, anchorWrap) = VisualToLogical(topVisual);
@@ -854,7 +872,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         RecalcWrapData();
 
         // Restore scroll position so the same logical line stays at top
-        if ((_wordWrap || HasFoldLayout) && anchorLine >= 0 && _wrap.HasValidData(_buffer.Count))
+        if ((wordWrapActive || HasFoldLayout) && anchorLine >= 0 && _wrap.HasValidData(_buffer.Count))
         {
             int newWrap = Math.Min(anchorWrap, VisualLineCount(anchorLine) - 1);
             double newY = (_wrap.CumulOffset(anchorLine) + newWrap) * _font.LineHeight + anchorDelta;
@@ -877,10 +895,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
         int maxLen = _buffer.UpdateMaxForLine(_caretLine);
 
         var newExtent = new Size(
-            _wordWrap
+            wordWrapActive
                 ? _viewport.Width
                 : _gutterWidth + GutterPadding + maxLen * _font.CharWidth + HorizontalScrollPadding,
-            (_wordWrap || HasFoldLayout ? _wrap.TotalVisualLines : _buffer.Count) * _font.LineHeight + _viewport.Height / 2);
+            (wordWrapActive || HasFoldLayout ? _wrap.TotalVisualLines : _buffer.Count) * _font.LineHeight + _viewport.Height / 2);
 
         if (Math.Abs(newExtent.Width - _extent.Width) > 0.5
             || Math.Abs(newExtent.Height - _extent.Height) > 0.5)
@@ -893,30 +911,33 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void RecalcWrapData()
     {
         double textAreaWidth = _viewport.Width - _gutterWidth - GutterPadding;
-        _wrap.Recalculate(_wordWrap, _wordWrapAtWords, _wordWrapIndent, _buffer, textAreaWidth, _font.CharWidth, _hiddenLines);
+        _wrap.Recalculate(IsWordWrapActive, _wordWrapAtWords, _wordWrapIndent, _buffer, textAreaWidth, _font.CharWidth, _hiddenLines);
     }
 
     // ── Wrap coordinate helpers (delegate to WrapLayout) ────────────
     private int LogicalToVisualLine(int logLine, int col = 0) =>
-        _wrap.LogicalToVisualLine(_wordWrap, logLine, col);
+        _wrap.LogicalToVisualLine(IsWordWrapActive, logLine, col);
 
     private double GetVisualY(int logLine, int col = 0) =>
-        _wrap.GetVisualY(_wordWrap, logLine, _font.LineHeight, col);
+        _wrap.GetVisualY(IsWordWrapActive, logLine, _font.LineHeight, col);
+
+    private double GetLineTopY(int logLine) =>
+        (IsWordWrapActive || HasFoldLayout ? _wrap.CumulOffset(logLine) : logLine) * _font.LineHeight;
 
     private (int logLine, int wrapIndex) VisualToLogical(int visualLine) =>
-        _wrap.VisualToLogical(_wordWrap, visualLine, _buffer.Count);
+        _wrap.VisualToLogical(IsWordWrapActive, visualLine, _buffer.Count);
 
     private int VisualLineCount(int logLine) =>
-        _wrap.VisualLineCount(_wordWrap, logLine);
+        _wrap.VisualLineCount(IsWordWrapActive, logLine);
 
     private int WrapColStart(int logLine, int wrapIndex) =>
-        _wrap.WrapColStart(_wordWrap, logLine, wrapIndex);
+        _wrap.WrapColStart(IsWordWrapActive, logLine, wrapIndex);
 
     private double WrapIndentPx(int logLine, int wrapIndex) =>
-        _wrap.WrapIndentPx(_wordWrap, logLine, wrapIndex, _font.CharWidth);
+        _wrap.WrapIndentPx(IsWordWrapActive, logLine, wrapIndex, _font.CharWidth);
 
     private (double x, double y) GetPixelForPosition(int line, int col) =>
-        _wrap.GetPixelForPosition(_wordWrap, line, col, _gutterWidth, GutterPadding,
+        _wrap.GetPixelForPosition(IsWordWrapActive, line, col, _gutterWidth, GutterPadding,
             _font.CharWidth, _font.LineHeight, _offset.X, _offset.Y);
 
     private void EnsureCaretVisible()
@@ -928,7 +949,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         else if (caretBottom > _offset.Y + _viewport.Height)
             SetVerticalOffset(caretBottom - _viewport.Height);
 
-        if (!_wordWrap)
+        if (!IsWordWrapActive)
         {
             double caretX = _gutterWidth + GutterPadding + _caretCol * _font.CharWidth;
             if (caretX - _offset.X < _gutterWidth + GutterPadding)
@@ -992,6 +1013,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     private void EnsureLineStates(int throughLine)
     {
+        if (!UseSequentialSyntaxStates)
+        {
+            if (_lineStates.Count == 0)
+                _lineStates.Add(SyntaxManager.DefaultState);
+            return;
+        }
+
         if (_lineStates.Count == 0)
             _lineStates.Add(SyntaxManager.DefaultState);
 
@@ -1040,6 +1068,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
         return outState;
     }
 
+    private LineState GetSyntaxInputState(int line)
+    {
+        if (!UseSequentialSyntaxStates)
+            return SyntaxManager.DefaultState;
+        EnsureLineStates(line);
+        return line < _lineStates.Count ? _lineStates[line] : SyntaxManager.DefaultState;
+    }
+
     private void InvalidateLineStates()
     {
         _lineStates.Clear();
@@ -1059,6 +1095,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void PrecomputeLineStates()
     {
         int gen = ++_precomputeGeneration;
+        if (!UseSequentialSyntaxStates)
+        {
+            _lineStates.Clear();
+            _lineStatesDirtyFrom = int.MaxValue;
+            return;
+        }
 
         void ProcessBatch()
         {
@@ -1086,7 +1128,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     private (int first, int last) VisibleLineRange()
     {
-        if (!_wordWrap && !HasFoldLayout)
+        if (!IsWordWrapActive && !HasFoldLayout)
         {
             int first = Math.Max(0, (int)(_offset.Y / _font.LineHeight));
             int last = Math.Min(_buffer.Count - 1,
@@ -1137,7 +1179,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 int selStart = i == sl ? sc : 0;
                 int selEnd = i == el ? ec : _buffer[i].Length;
 
-                if (!_wordWrap && !HasFoldLayout)
+                if (!IsWordWrapActive && !HasFoldLayout)
                 {
                     double y = i * _font.LineHeight - _offset.Y;
                     double x1 = _gutterWidth + GutterPadding + selStart * _font.CharWidth - _offset.X;
@@ -1173,7 +1215,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     ? ThemeManager.FindMatchCurrentBrush
                     : ThemeManager.FindMatchBrush;
 
-                if (!_wordWrap && !HasFoldLayout)
+                if (!IsWordWrapActive && !HasFoldLayout)
                 {
                     double pxStart = mCol * _font.CharWidth;
                     double pxEnd = (mCol + mLen) * _font.CharWidth;
@@ -1290,6 +1332,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         using var dc = _textVisual.RenderOpen();
 
         if (drawLast < drawFirst) return;
+        _textYBias = GetLineTopY(drawFirst);
 
         // Compute X bias before rendering. When long lines are visible, bias
         // shifts content-space X origin near the viewport to avoid float32
@@ -1302,7 +1345,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (_indentGuides)
             RenderIndentGuides(dc, drawFirst, drawLast);
 
-        EnsureLineStates(drawLast);
+        if (UseSequentialSyntaxStates)
+            EnsureLineStates(drawLast);
         for (int i = drawFirst; i <= drawLast; i++)
         {
             if (IsLineHidden(i)) continue;
@@ -1310,7 +1354,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             if (line.Length == 0) continue;
             double x = _gutterWidth + GutterPadding;
 
-            var inState = i < _lineStates.Count ? _lineStates[i] : SyntaxManager.DefaultState;
+            var inState = GetSyntaxInputState(i);
             if (!_tokenCache.TryGetValue(i, out var cached)
                 || cached.content != line || cached.inState != inState)
             {
@@ -1322,9 +1366,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 cached = _tokenCache[i];
             }
 
-            if (!_wordWrap || VisualLineCount(i) <= 1)
+            if (!IsWordWrapActive || VisualLineCount(i) <= 1)
             {
-                double y = _wordWrap || HasFoldLayout ? _wrap.CumulOffset(i) * _font.LineHeight : i * _font.LineHeight;
+                double y = GetLineTopY(i) - _textYBias;
                 int segStart = 0;
                 int segEnd = line.Length;
                 if (line.Length > LongLineThreshold)
@@ -1350,7 +1394,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 {
                     int segStart = WrapColStart(i, w);
                     int segEnd = w + 1 < vCount ? WrapColStart(i, w + 1) : line.Length;
-                    double y = (baseCumul + w) * _font.LineHeight;
+                    double y = (baseCumul + w) * _font.LineHeight - _textYBias;
                     double wx = x + WrapIndentPx(i, w);
                     RenderLineTokens(dc, line, wx, y, segStart, segEnd, cached.tokens);
                 }
@@ -1670,7 +1714,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
             double x = baseX + indentCol * _font.CharWidth;
             double yTop, yBot;
-            if (!_wordWrap && !HasFoldLayout)
+            if (!IsWordWrapActive && !HasFoldLayout)
             {
                 yTop = guideFirst * _font.LineHeight;
                 yBot = (guideLast + 1) * _font.LineHeight;
@@ -1681,6 +1725,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 yBot = (_wrap.CumulOffset(guideLast) + VisualLineCount(guideLast)) * _font.LineHeight;
             }
 
+            yTop -= _textYBias;
+            yBot -= _textYBias;
             if (yTop < yBot)
                 dc.DrawLine(pen, new Point(x, yTop), new Point(x, yBot));
         }
@@ -1714,7 +1760,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
                 double x = baseX + indentCol * _font.CharWidth;
                 double yTop, yBot;
-                if (!_wordWrap && !HasFoldLayout)
+                if (!IsWordWrapActive && !HasFoldLayout)
                 {
                     yTop = guideFirst * _font.LineHeight;
                     yBot = (guideLast + 1) * _font.LineHeight;
@@ -1725,6 +1771,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     yBot = (_wrap.CumulOffset(guideLast) + VisualLineCount(guideLast)) * _font.LineHeight;
                 }
 
+                yTop -= _textYBias;
+                yBot -= _textYBias;
                 dc.DrawLine(pen, new Point(x, yTop), new Point(x, yBot));
             }
         }
@@ -1738,9 +1786,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
         using var dc = _gutterVisual.RenderOpen();
 
         if (drawLast < drawFirst) return;
+        _gutterYBias = GetLineTopY(drawFirst);
 
         double bgTop, bgBottom;
-        if (_wordWrap || HasFoldLayout)
+        if (IsWordWrapActive || HasFoldLayout)
         {
             bgTop = _wrap.CumulOffset(drawFirst) * _font.LineHeight;
             int lastVisual = _wrap.CumulOffset(drawLast) + VisualLineCount(drawLast);
@@ -1751,6 +1800,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
             bgTop = drawFirst * _font.LineHeight;
             bgBottom = (drawLast + 1) * _font.LineHeight;
         }
+        bgTop -= _gutterYBias;
+        bgBottom -= _gutterYBias;
 
         dc.DrawRectangle(ThemeManager.EditorBg, null,
             new Rect(0, bgTop, _gutterWidth, bgBottom - bgTop));
@@ -1761,9 +1812,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         for (int i = drawFirst; i <= drawLast; i++)
         {
             if (IsLineHidden(i)) continue;
-            double y = _wordWrap || HasFoldLayout
-                ? _wrap.CumulOffset(i) * _font.LineHeight
-                : i * _font.LineHeight;
+            double y = GetLineTopY(i) - _gutterYBias;
             var brush = i == _caretLine
                 ? ThemeManager.ActiveLineNumberFg : ThemeManager.GutterFg;
             int lineNum = i + 1;
@@ -1854,7 +1903,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     {
         if (ActualWidth <= 0 || ActualHeight <= 0) return false;
         if (pos.Y < 0 || pos.Y > ActualHeight) return true;
-        return !_wordWrap && (pos.X < 0 || pos.X > ActualWidth);
+        return !IsWordWrapActive && (pos.X < 0 || pos.X > ActualWidth);
     }
 
     private double DragAutoScrollStep(double outsidePixels)
@@ -1881,7 +1930,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             scrolled = scrolled || Math.Abs(_offset.Y - before) >= 0.01;
         }
 
-        if (!_wordWrap)
+        if (!IsWordWrapActive)
         {
             if (pos.X < 0)
             {
@@ -2945,10 +2994,23 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     public string LineEnding => _buffer.LineEndingDisplay;
 
+    public Encoding FileEncoding
+    {
+        get => _buffer.Encoding;
+        set => _buffer.Encoding = value;
+    }
+
+    public void SetDocument(ITextDocument document)
+    {
+        _buffer.DirtyChanged -= OnDocumentDirtyChanged;
+        _buffer = document;
+        _buffer.DirtyChanged += OnDocumentDirtyChanged;
+        ResetAfterContentLoad();
+    }
+
     public void SetContent(string text)
     {
-        _buffer.SetContent(text, TabSize);
-        ResetAfterContentLoad();
+        SetDocument(DocumentFactory.FromText(text, TabSize, _buffer.Encoding));
     }
 
     /// <summary>
@@ -2957,8 +3019,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
     /// </summary>
     public void SetPreparedContent(TextBuffer.PreparedContent prepared)
     {
-        _buffer.SetPreparedContent(prepared);
-        ResetAfterContentLoad();
+        var document = new TextBuffer { Encoding = _buffer.Encoding };
+        document.SetPreparedContent(prepared);
+        SetDocument(document);
     }
 
     private void ResetAfterContentLoad()
@@ -3000,12 +3063,19 @@ public class EditorControl : FrameworkElement, IScrollInfo
     /// </summary>
     public void ReloadContent(string text)
     {
+        ReloadDocument(DocumentFactory.FromText(text, TabSize, _buffer.Encoding));
+    }
+
+    public void ReloadDocument(ITextDocument document)
+    {
         var savedVOffset = _offset.Y;
         var savedHOffset = _offset.X;
         var savedLine = _caretLine;
         var savedCol = _caretCol;
 
-        _buffer.SetContent(text, TabSize);
+        _buffer.DirtyChanged -= OnDocumentDirtyChanged;
+        _buffer = document;
+        _buffer.DirtyChanged += OnDocumentDirtyChanged;
         _selection.Clear();
         _undoManager.Clear();
         _cleanUndoDepth = 0;
@@ -3045,6 +3115,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
     }
 
     public string GetContent() => _buffer.GetContent();
+
+    public Task SaveToFileAsync(string path, Encoding encoding, CancellationToken cancellationToken = default)
+    {
+        _buffer.Encoding = encoding;
+        return _buffer.SaveAsync(path, cancellationToken);
+    }
 
     /// <summary>
     /// Release undo history, buffer, and caches to free memory when closing a tab.
@@ -3207,7 +3283,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         double targetY = GetVisualY(line) - (_viewport.Height - _font.LineHeight) / 2;
         SetVerticalOffset(targetY);
 
-        if (_wordWrap)
+        if (IsWordWrapActive)
             return;
 
         double caretX = _gutterWidth + GutterPadding + _caretCol * _font.CharWidth;

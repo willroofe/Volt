@@ -19,7 +19,7 @@ public class FindManager
     public bool LastUseRegex { get; private set; }
     public bool LastWholeWord { get; private set; }
 
-    public void Search(TextBuffer buffer, string query, bool matchCase, int caretLine, int caretCol,
+    public void Search(ITextDocument buffer, string query, bool matchCase, int caretLine, int caretCol,
         bool useRegex = false, bool wholeWord = false,
         (int startLine, int startCol, int endLine, int endCol)? selectionBounds = null)
     {
@@ -75,7 +75,7 @@ public class FindManager
         });
     }
 
-    private void SearchLiteral(TextBuffer buffer, string query, bool matchCase)
+    private void SearchLiteral(ITextDocument buffer, string query, bool matchCase)
     {
         var comparison = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
         for (int line = 0; line < buffer.Count; line++)
@@ -91,7 +91,7 @@ public class FindManager
         }
     }
 
-    private void SearchRegex(TextBuffer buffer, string query, bool matchCase)
+    private void SearchRegex(ITextDocument buffer, string query, bool matchCase)
     {
         Regex regex;
         try

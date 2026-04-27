@@ -92,15 +92,9 @@ internal static class FileHelper
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
             FileShare.ReadWrite | FileShare.Delete, bufferSize: 1 << 20);
-        // Read raw bytes in one shot to avoid StreamReader's StringBuilder growth
-        int length = (int)stream.Length;
-        var bytes = new byte[length];
-        stream.ReadExactly(bytes);
-        // Skip BOM if present
-        var preamble = encoding.Preamble;
-        if (preamble.Length > 0 && bytes.AsSpan().StartsWith(preamble))
-            return encoding.GetString(bytes, preamble.Length, length - preamble.Length);
-        return encoding.GetString(bytes);
+        using var reader = new StreamReader(stream, encoding, detectEncodingFromByteOrderMarks: true,
+            bufferSize: 1 << 20);
+        return reader.ReadToEnd();
     }
 
     /// <summary>
@@ -187,6 +181,56 @@ internal static class FileHelper
             return new UnicodeEncoding(true, true);
 
         return new UTF8Encoding(false);
+    }
+
+    public static string DetectLineEnding(string path, Encoding encoding)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete, bufferSize: 64 * 1024);
+        using var reader = new StreamReader(stream, encoding, detectEncodingFromByteOrderMarks: true,
+            bufferSize: 64 * 1024);
+
+        Span<char> buffer = stackalloc char[8192];
+        int crlf = 0;
+        int lf = 0;
+        char previous = '\0';
+        while (true)
+        {
+            int read = reader.Read(buffer);
+            if (read == 0) break;
+            for (int i = 0; i < read; i++)
+            {
+                char ch = buffer[i];
+                if (ch == '\n')
+                {
+                    if (previous == '\r') crlf++;
+                    else lf++;
+                    if ((crlf | lf) >= 100)
+                        return lf > crlf ? "\n" : "\r\n";
+                }
+                previous = ch;
+            }
+        }
+
+        if (crlf == 0 && lf == 0) return Environment.NewLine;
+        return lf > crlf ? "\n" : "\r\n";
+    }
+
+    public static bool LooksLikeBinary(string path, Encoding encoding)
+    {
+        if (encoding is UnicodeEncoding or UTF32Encoding)
+            return false;
+
+        Span<byte> buffer = stackalloc byte[8192];
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+        int read = stream.Read(buffer);
+        for (int i = 0; i < read; i++)
+        {
+            if (buffer[i] == 0)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>Opens Windows File Explorer at the folder, or with the file selected.</summary>

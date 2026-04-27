@@ -46,24 +46,22 @@ public partial class MainWindow
 
     internal EditorControl? Editor => _activeTab?.Editor;
 
-    private record FileLoadResult(Encoding Encoding, TextBuffer.PreparedContent Prepared, long FileSize, byte[]? TailBytes);
+    private record FileLoadResult(ITextDocument Document, long FileSize, byte[]? TailBytes);
 
     private static Task<FileLoadResult> LoadFileDataAsync(string path, int tabSize) => Task.Run(() =>
     {
-        var enc = FileHelper.DetectEncoding(path);
-        var text = FileHelper.ReadAllText(path, enc);
-        var prep = TextBuffer.PrepareContent(text, tabSize);
+        var document = DocumentFactory.OpenAsync(path, tabSize).GetAwaiter().GetResult();
         var size = new FileInfo(path).Length;
         var tail = FileHelper.ReadTailVerifyBytes(path, size);
-        return new FileLoadResult(enc, prep, size, tail);
+        return new FileLoadResult(document, size, tail);
     });
 
     private void ApplyFileLoadResult(TabInfo tab, FileLoadResult result)
     {
         tab.IsLoading = false;
         HideTabSpinner(tab);
-        tab.FileEncoding = result.Encoding;
-        tab.Editor.SetPreparedContent(result.Prepared);
+        tab.FileEncoding = result.Document.Encoding;
+        tab.Editor.SetDocument(result.Document);
         tab.LastKnownFileSize = result.FileSize;
         tab.TailVerifyBytes = result.TailBytes;
         tab.StartWatching();
@@ -656,7 +654,7 @@ public partial class MainWindow
             _closedTabPaths.RemoveAt(_closedTabPaths.Count - 1);
             if (!File.Exists(path))
                 continue;
-            if (!CheckFileSize(path))
+            if (!CheckFileCanOpen(path))
                 continue;
             var tab = await OpenFileInTabAsync(path, reuseUntitled: true, activate: true);
             if (tab != null)
@@ -820,7 +818,7 @@ public partial class MainWindow
             return null;
         }
 
-        if (!CheckFileSize(path)) return null;
+        if (!CheckFileCanOpen(fullPath)) return null;
 
         // Reuse current tab if untitled and clean
         TabInfo tab;
@@ -1297,17 +1295,27 @@ public partial class MainWindow
 
     private void UpdateTitle() => Title = "Volt";
 
-    private const long MaxFileSizeBytes = 500L * 1024 * 1024;
-
-    private bool CheckFileSize(string path)
+    private bool CheckFileCanOpen(string path)
     {
-        var info = new FileInfo(path);
-        if (!info.Exists || info.Length <= MaxFileSizeBytes) return true;
-        double sizeMb = info.Length / (1024.0 * 1024.0);
-        ThemedMessageBox.Show(this,
-            $"The file is {sizeMb:F0} MB which exceeds the 500 MB limit.",
-            "File Too Large");
-        return false;
+        if (!File.Exists(path)) return true;
+        try
+        {
+            var encoding = FileHelper.DetectEncoding(path);
+            if (!FileHelper.LooksLikeBinary(path, encoding)) return true;
+            ThemedMessageBox.Show(this,
+                "Volt can open very large text files, but this file appears to contain binary data.",
+                "Binary File");
+            return false;
+        }
+        catch (IOException)
+        {
+            return true;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            ThemedMessageBox.Show(this, $"Could not open the file:\n\n{ex.Message}", "Open Failed");
+            return false;
+        }
     }
 
     private bool PromptSaveTab(TabInfo tab)
@@ -1375,7 +1383,7 @@ public partial class MainWindow
         tab.StopWatching();
         try
         {
-            FileHelper.AtomicWriteText(tab.FilePath!, tab.Editor.GetContent(), tab.FileEncoding);
+            tab.Editor.SaveToFileAsync(tab.FilePath!, tab.FileEncoding).GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {
@@ -1458,10 +1466,11 @@ public partial class MainWindow
             else
             {
                 // Full reload: file was truncated, edited in place, or this is the first load
-                tab.FileEncoding = FileHelper.DetectEncoding(tab.FilePath);
-                tab.Editor.ReloadContent(FileHelper.ReadAllText(tab.FilePath, tab.FileEncoding));
+                var result = LoadFileDataAsync(tab.FilePath, tab.Editor.TabSize).GetAwaiter().GetResult();
+                tab.FileEncoding = result.Document.Encoding;
+                tab.Editor.ReloadDocument(result.Document);
                 tab.LastKnownFileSize = currentSize;
-                tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(tab.FilePath, currentSize);
+                tab.TailVerifyBytes = result.TailBytes;
             }
 
             tab.LastKnownWriteTimeUtc = File.GetLastWriteTimeUtc(tab.FilePath);

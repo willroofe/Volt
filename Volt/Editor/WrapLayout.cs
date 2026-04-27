@@ -45,7 +45,7 @@ internal class WrapLayout
     /// clears arrays and sets TotalVisualLines to the buffer line count.
     /// </summary>
     public void Recalculate(bool wordWrap, bool breakAtWords, bool wrapIndent,
-        TextBuffer buffer, double textAreaWidth, double charWidth,
+        ITextDocument buffer, double textAreaWidth, double charWidth,
         BitArray? hiddenLines = null)
     {
         if (!wordWrap && hiddenLines == null)
@@ -112,7 +112,7 @@ internal class WrapLayout
         return indent;
     }
 
-    private void ComputeIndents(TextBuffer buffer, int count)
+    private void ComputeIndents(ITextDocument buffer, int count)
     {
         for (int i = 0; i < count; i++)
             _wrapIndent![i] = MeasureIndent(buffer[i]);
@@ -130,7 +130,7 @@ internal class WrapLayout
         return Math.Max(1, _charsPerVisualLine - indent);
     }
 
-    private void RecalcCharBreak(TextBuffer buffer, int count)
+    private void RecalcCharBreak(ITextDocument buffer, int count)
     {
         _wrapColStarts = null;
         if (_wrapIndent != null)
@@ -150,7 +150,7 @@ internal class WrapLayout
         _totalVisualLines = cumul;
     }
 
-    private void RecalcCharBreakIndented(TextBuffer buffer, int count)
+    private void RecalcCharBreakIndented(ITextDocument buffer, int count)
     {
         _colStartBuffer.Clear();
         int cumul = 0;
@@ -191,7 +191,7 @@ internal class WrapLayout
 
     private readonly List<int> _colStartBuffer = new();
 
-    private void RecalcWordBreak(TextBuffer buffer, int count)
+    private void RecalcWordBreak(ITextDocument buffer, int count)
     {
         _colStartBuffer.Clear();
         int cumul = 0;

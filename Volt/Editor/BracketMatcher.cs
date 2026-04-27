@@ -27,7 +27,7 @@ public static class BracketMatcher
 
     /// <param name="skip">Optional predicate: returns true for (line, col) positions to ignore (e.g. inside strings/comments).</param>
     public static (int line, int col, int matchLine, int matchCol)? FindMatch(
-        TextBuffer buffer, int caretLine, int caretCol, Func<int, int, bool>? skip = null)
+        ITextDocument buffer, int caretLine, int caretCol, Func<int, int, bool>? skip = null)
     {
         caretLine = Math.Clamp(caretLine, 0, Math.Max(0, buffer.Count - 1));
         caretCol = Math.Clamp(caretCol, 0, buffer[caretLine].Length);
@@ -63,7 +63,7 @@ public static class BracketMatcher
     }
 
     private static (int line, int col, int matchLine, int matchCol)? FindEnclosing(
-        TextBuffer buffer, int caretLine, int caretCol, Func<int, int, bool>? skip)
+        ITextDocument buffer, int caretLine, int caretCol, Func<int, int, bool>? skip)
     {
         // depths[0] = '(', depths[1] = '{', depths[2] = '['
         var depths = new int[3];
@@ -120,14 +120,14 @@ public static class BracketMatcher
     /// Used by indent guide rendering to find matching braces.
     /// </summary>
     public static (int line, int col)? ScanForward(
-        TextBuffer buffer, char opener, char closer, int startLine, int startCol)
+        ITextDocument buffer, char opener, char closer, int startLine, int startCol)
         => ScanForBracket(buffer, opener, closer, startLine, startCol, forward: true);
 
     /// <summary>
     /// Returns the code-context brace balance for a line: +1 per '{' and -1 per '}'
     /// that are not inside strings or comments (as determined by the skip predicate).
     /// </summary>
-    public static int CodeBraceBalance(TextBuffer buffer, int line, Func<int, int, bool>? skip = null)
+    public static int CodeBraceBalance(ITextDocument buffer, int line, Func<int, int, bool>? skip = null)
     {
         if (line < 0 || line >= buffer.Count) return 0;
         string text = buffer[line];
@@ -145,13 +145,13 @@ public static class BracketMatcher
     /// Returns true if the line has more '{' than '}' in code context
     /// (ignoring braces inside strings and comments).
     /// </summary>
-    public static bool IsBlockOpen(TextBuffer buffer, int line, Func<int, int, bool>? skip = null)
+    public static bool IsBlockOpen(ITextDocument buffer, int line, Func<int, int, bool>? skip = null)
         => CodeBraceBalance(buffer, line, skip) > 0;
 
     /// <summary>
     /// Returns true if the line has more '}' than '{' in code context.
     /// </summary>
-    public static bool IsBlockClose(TextBuffer buffer, int line, Func<int, int, bool>? skip = null)
+    public static bool IsBlockClose(ITextDocument buffer, int line, Func<int, int, bool>? skip = null)
         => CodeBraceBalance(buffer, line, skip) < 0;
 
     /// <summary>
@@ -160,7 +160,7 @@ public static class BracketMatcher
     /// The "last unmatched" brace is the one whose matching '}' is NOT on the same line —
     /// i.e. the brace that opens the block continuing to subsequent lines.
     /// </summary>
-    public static (int line, int col)? FindBlockCloser(TextBuffer buffer, int openLine, Func<int, int, bool>? skip = null)
+    public static (int line, int col)? FindBlockCloser(ITextDocument buffer, int openLine, Func<int, int, bool>? skip = null)
     {
         if (openLine < 0 || openLine >= buffer.Count) return null;
         string text = buffer[openLine];
@@ -189,7 +189,7 @@ public static class BracketMatcher
     /// Used by fold-at-caret and indent guide backward scanning.
     /// </summary>
     public static int? FindEnclosingOpenBrace(
-        TextBuffer buffer, int fromLine, int fromCol, Func<int, int, bool>? skip = null)
+        ITextDocument buffer, int fromLine, int fromCol, Func<int, int, bool>? skip = null)
     {
         int depth = 0;
         int line = fromLine;
@@ -226,7 +226,7 @@ public static class BracketMatcher
     }
 
     private static (int line, int col)? ScanForBracket(
-        TextBuffer buffer, char bracket, char target, int startLine, int startCol, bool forward,
+        ITextDocument buffer, char bracket, char target, int startLine, int startCol, bool forward,
         Func<int, int, bool>? skip = null)
     {
         int depth = 1;

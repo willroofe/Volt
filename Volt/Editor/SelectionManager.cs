@@ -30,7 +30,7 @@ public class SelectionManager
     /// Clamps both anchor and caret positions to valid buffer bounds.
     /// Mutates AnchorLine/AnchorCol as well as the ref caret parameters.
     /// </summary>
-    public void ClampToBuffer(TextBuffer buffer, ref int caretLine, ref int caretCol)
+    public void ClampToBuffer(ITextDocument buffer, ref int caretLine, ref int caretCol)
     {
         int maxLine = Math.Max(0, buffer.Count - 1);
         AnchorLine = Math.Clamp(AnchorLine, 0, maxLine);
@@ -46,7 +46,7 @@ public class SelectionManager
         return (caretLine, caretCol, AnchorLine, AnchorCol);
     }
 
-    public string GetSelectedText(TextBuffer buffer, int caretLine, int caretCol)
+    public string GetSelectedText(ITextDocument buffer, int caretLine, int caretCol)
     {
         if (!HasSelection) return "";
         ClampToBuffer(buffer, ref caretLine, ref caretCol);
@@ -66,7 +66,7 @@ public class SelectionManager
     /// Delete the selected text from the buffer.
     /// Returns the new caret position (line, col).
     /// </summary>
-    public (int line, int col) DeleteSelection(TextBuffer buffer, int caretLine, int caretCol)
+    public (int line, int col) DeleteSelection(ITextDocument buffer, int caretLine, int caretCol)
     {
         if (!HasSelection) return (caretLine, caretCol);
         ClampToBuffer(buffer, ref caretLine, ref caretCol);
