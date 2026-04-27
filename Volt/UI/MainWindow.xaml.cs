@@ -669,6 +669,119 @@ public partial class MainWindow
 
     private void OnReopenClosedTab(object sender, RoutedEventArgs e) => _ = RestoreClosedTabAsync();
 
+    private void OnWindowDragOver(object sender, DragEventArgs e)
+    {
+        if (IsDropOverExplorerPanel(e) || IsInternalExplorerFileDrag(e))
+            return;
+
+        var files = GetDroppedFilePaths(e).ToList();
+        if (files.Count == 0)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                e.Effects = DragDropEffects.None;
+                e.Handled = true;
+            }
+            return;
+        }
+
+        e.Effects = GetFileOpenDropEffect(e.AllowedEffects);
+        e.Handled = true;
+    }
+
+    private async void OnWindowDrop(object sender, DragEventArgs e)
+    {
+        if (IsDropOverExplorerPanel(e) || IsInternalExplorerFileDrag(e))
+            return;
+
+        var files = GetDroppedFilePaths(e).ToList();
+        if (files.Count == 0)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                e.Effects = DragDropEffects.None;
+                e.Handled = true;
+            }
+            return;
+        }
+
+        e.Effects = GetFileOpenDropEffect(e.AllowedEffects);
+        e.Handled = true;
+        await OpenFilesInTabsAsync(files);
+    }
+
+    private async Task OpenFilesInTabsAsync(IEnumerable<string> paths)
+    {
+        TabInfo? lastTab = null;
+        foreach (var path in paths.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            bool isFirst = lastTab == null;
+            var tab = await OpenFileInTabAsync(path, reuseUntitled: isFirst, activate: isFirst);
+            if (tab != null)
+            {
+                _settings.AddRecentItem(path, RecentItemKind.File);
+                lastTab = tab;
+            }
+        }
+
+        if (lastTab != null)
+        {
+            _settings.Save();
+            FindBarControl.RefreshSearch();
+        }
+    }
+
+    private static IEnumerable<string> GetDroppedFilePaths(DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop))
+            yield break;
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths)
+            yield break;
+
+        foreach (var path in paths)
+        {
+            if (File.Exists(path))
+                yield return path;
+        }
+    }
+
+    private static DragDropEffects GetFileOpenDropEffect(DragDropEffects allowedEffects)
+    {
+        if ((allowedEffects & DragDropEffects.Copy) != 0) return DragDropEffects.Copy;
+        if ((allowedEffects & DragDropEffects.Link) != 0) return DragDropEffects.Link;
+        if ((allowedEffects & DragDropEffects.Move) != 0) return DragDropEffects.Move;
+        return DragDropEffects.None;
+    }
+
+    private bool IsDropOverExplorerPanel(DragEventArgs e) =>
+        e.OriginalSource is DependencyObject source && IsWithinElement(source, _explorerPanel);
+
+    private static bool IsInternalExplorerFileDrag(DragEventArgs e) =>
+        e.Data.GetDataPresent(ExplorerTreeControl.InternalFileDragFormat);
+
+    private static bool IsWithinElement(DependencyObject source, DependencyObject ancestor)
+    {
+        for (DependencyObject? current = source; current != null; current = GetParent(current))
+        {
+            if (ReferenceEquals(current, ancestor))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static DependencyObject? GetParent(DependencyObject current)
+    {
+        try
+        {
+            return VisualTreeHelper.GetParent(current) ?? LogicalTreeHelper.GetParent(current);
+        }
+        catch (InvalidOperationException)
+        {
+            return LogicalTreeHelper.GetParent(current);
+        }
+    }
+
     /// <summary>Checks whether any session data exists that RestoreSession will act on.</summary>
     private bool HasSessionToRestore()
     {
@@ -1383,24 +1496,7 @@ public partial class MainWindow
         };
         if (dlg.ShowDialog() != true) return;
 
-        TabInfo? lastTab = null;
-        foreach (var fileName in dlg.FileNames)
-        {
-            // Only reuse untitled tab for the first file opened
-            bool isFirst = lastTab == null;
-            var tab = await OpenFileInTabAsync(fileName, reuseUntitled: isFirst, activate: isFirst);
-            if (tab != null)
-            {
-                _settings.AddRecentItem(fileName, RecentItemKind.File);
-                lastTab = tab;
-            }
-        }
-
-        if (lastTab != null)
-        {
-            _settings.Save();
-            FindBarControl.RefreshSearch();
-        }
+        await OpenFilesInTabsAsync(dlg.FileNames);
     }
 
     private void OnOpenRecentSubmenuOpened(object sender, RoutedEventArgs e)

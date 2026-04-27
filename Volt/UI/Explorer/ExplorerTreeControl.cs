@@ -12,6 +12,8 @@ namespace Volt;
 
 public class ExplorerTreeControl : FrameworkElement, IScrollInfo
 {
+    internal const string InternalFileDragFormat = "Volt.Explorer.FileDrag";
+
     private const double RowHeight = 24;
     private const double IndentWidth = 10;
     private const double ArrowZoneWidth = 20;
@@ -839,6 +841,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
                 if (!string.IsNullOrEmpty(item.FullPath))
                 {
                     var data = new DataObject(DataFormats.FileDrop, new[] { item.FullPath });
+                    data.SetData(InternalFileDragFormat, true);
                     DragDrop.DoDragDrop(this, data, DragDropEffects.Move);
                 }
                 _isDragging = false;

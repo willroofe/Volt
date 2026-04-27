@@ -7,7 +7,10 @@
         Background="{DynamicResource ThemeChromeBrush}"
         BorderBrush="{DynamicResource ThemeChromeBrush}"
         BorderThickness="0,0,1,1"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        AllowDrop="True"
+        DragOver="OnWindowDragOver"
+        Drop="OnWindowDrop">
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="32" ResizeBorderThickness="6"
                       GlassFrameThickness="-1"
