@@ -23,7 +23,12 @@ public partial class FindBar : UserControl
     private (int startLine, int startCol, int endLine, int endCol)? _selectionBoundsAtOpen;
     private EditorControl? _editor;
     private bool _navigating;
+    private const int SearchProgressRevealMs = 180;
     private DispatcherTimer? _selectionDebounce;
+    private DispatcherTimer? _searchDebounce;
+    private DispatcherTimer? _progressRevealTimer;
+    private int _progressRevealGeneration = -1;
+    private bool _progressVisible;
     private (int startLine, int startCol, int endLine, int endCol)? _pendingSelectionBounds;
 
     public event EventHandler? Closed;
@@ -56,13 +61,16 @@ public partial class FindBar : UserControl
         {
             _editor.CaretMoved -= OnEditorCaretMoved;
             _editor.PreviewMouseLeftButtonUp -= OnEditorMouseUp;
+            _editor.FindStateChanged -= OnFindStateChanged;
         }
         _editor = editor;
         if (_editor != null)
         {
             _editor.CaretMoved += OnEditorCaretMoved;
             _editor.PreviewMouseLeftButtonUp += OnEditorMouseUp;
+            _editor.FindStateChanged += OnFindStateChanged;
         }
+        UpdateFindState(_editor?.FindSnapshot ?? FindSnapshot.Empty);
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -176,6 +184,8 @@ public partial class FindBar : UserControl
     {
         _editor?.ClearFindMatches();
         _selectionDebounce?.Stop();
+        _searchDebounce?.Stop();
+        HidePendingProgress();
         Visibility = Visibility.Collapsed;
         _matchCount.Text = "";
         _findInSelection = false;
@@ -198,7 +208,7 @@ public partial class FindBar : UserControl
 
     private void OnInputTextChanged(object sender, TextChangedEventArgs e)
     {
-        UpdateSearch();
+        QueueSearch();
     }
 
     private void OnMatchCaseClick(object sender, RoutedEventArgs e)
@@ -279,8 +289,27 @@ public partial class FindBar : UserControl
     //  Search core
     // ──────────────────────────────────────────────────────────────────
 
+    private void QueueSearch()
+    {
+        HidePendingProgress();
+        _matchCount.Text = "";
+        if (_searchDebounce == null)
+        {
+            _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+            _searchDebounce.Tick += (_, _) =>
+            {
+                _searchDebounce.Stop();
+                UpdateSearch();
+            };
+        }
+
+        _searchDebounce.Stop();
+        _searchDebounce.Start();
+    }
+
     private void UpdateSearch()
     {
+        _searchDebounce?.Stop();
         if (_editor == null) return;
 
         var query = _input.Text;
@@ -288,6 +317,7 @@ public partial class FindBar : UserControl
         {
             _editor.ClearFindMatches();
             _matchCount.Text = "";
+            HidePendingProgress();
             return;
         }
 
@@ -295,35 +325,139 @@ public partial class FindBar : UserControl
         {
             _editor.ClearFindMatches();
             _matchCount.Text = "No results";
+            HidePendingProgress();
             return;
         }
 
         _editor.SetFindMatches(query, _matchCase, _useRegex, _wholeWord,
             _findInSelection ? _selectionBounds : null,
             preserveSelection: _findInSelection || _selectionBoundsAtOpen != null);
-        UpdateMatchCountLabel();
+        UpdateFindState(_editor.FindSnapshot);
+    }
+
+    private void OnFindStateChanged(object? sender, FindSnapshot snapshot)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => UpdateFindState(snapshot));
+            return;
+        }
+
+        UpdateFindState(snapshot);
     }
 
     private void UpdateMatchCountLabel()
     {
-        if (_editor == null || _editor.FindMatchCount == 0)
+        UpdateFindState(_editor?.FindSnapshot ?? FindSnapshot.Empty);
+    }
+
+    private void EnsureProgressRevealTimer()
+    {
+        if (_progressRevealTimer != null) return;
+        _progressRevealTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(SearchProgressRevealMs) };
+        _progressRevealTimer.Tick += (_, _) =>
         {
-            _matchCount.Text = _input.Text.Length > 0 ? "No results" : "";
+            _progressRevealTimer.Stop();
+            _progressVisible = true;
+            UpdateFindState(_editor?.FindSnapshot ?? FindSnapshot.Empty);
+        };
+    }
+
+    private void HidePendingProgress()
+    {
+        _progressRevealTimer?.Stop();
+        _progressRevealGeneration = -1;
+        _progressVisible = false;
+    }
+
+    private void UpdateFindState(FindSnapshot snapshot)
+    {
+        if (_input.Text.Length == 0 || !snapshot.HasQuery)
+        {
+            HidePendingProgress();
+            _matchCount.Text = "";
+            UpdateReplaceButtons(snapshot);
             return;
         }
-        _matchCount.Text = $"{_editor.CurrentMatchIndex + 1} of {_editor.FindMatchCount}";
+
+        if (snapshot.InvalidRegex)
+        {
+            HidePendingProgress();
+            _matchCount.Text = "Invalid regex";
+            UpdateReplaceButtons(snapshot);
+            return;
+        }
+
+        if (snapshot.TotalMatches == 0 && snapshot.IsComplete)
+        {
+            HidePendingProgress();
+            _matchCount.Text = "No results";
+            UpdateReplaceButtons(snapshot);
+            return;
+        }
+
+        if (snapshot.RetentionLimitExceeded && snapshot.IsComplete)
+        {
+            HidePendingProgress();
+            _matchCount.Text = $"{snapshot.TotalMatches} found";
+            UpdateReplaceButtons(snapshot);
+            return;
+        }
+
+        if (snapshot.IsSearching)
+        {
+            if (_progressRevealGeneration != snapshot.Generation)
+            {
+                _progressRevealGeneration = snapshot.Generation;
+                _progressVisible = false;
+                EnsureProgressRevealTimer();
+                _progressRevealTimer!.Stop();
+                _progressRevealTimer.Start();
+            }
+
+            UpdateReplaceButtons(snapshot);
+            if (!_progressVisible)
+                return;
+
+            int percent = (int)Math.Floor(snapshot.Progress * 100);
+            _matchCount.Text = snapshot.CurrentOrdinal is { } ordinal
+                ? $"{ordinal} of {snapshot.TotalMatches}+ · Searching {percent}%"
+                : $"{snapshot.TotalMatches}+ found · Searching {percent}%";
+            return;
+        }
+
+        HidePendingProgress();
+        _matchCount.Text = snapshot.CurrentRetainedIndex >= 0
+            ? $"{snapshot.CurrentRetainedIndex + 1} of {snapshot.TotalMatches}"
+            : $"{snapshot.TotalMatches} found";
+        UpdateReplaceButtons(snapshot);
+    }
+
+    private void UpdateReplaceButtons(FindSnapshot snapshot)
+    {
+        bool hasCurrent = snapshot.CurrentMatch != null;
+        _replaceButton.IsEnabled = hasCurrent;
+        _replaceAllButton.IsEnabled = snapshot.CanReplaceAll;
+        _replaceAllButton.ToolTip = snapshot.RetentionLimitExceeded
+            ? "Too many matches for Replace All. Narrow the search."
+            : "Replace all matches";
     }
 
     private void DoReplace()
     {
-        if (_editor == null || _editor.FindMatchCount == 0) return;
+        if (_editor == null || _editor.FindSnapshot.CurrentMatch == null) return;
         WithNavigationGuard(() => _editor.ReplaceCurrent(_replaceInput.Text));
         UpdateSearch();
     }
 
     private void DoReplaceAll()
     {
-        if (_editor == null || _editor.FindMatchCount == 0) return;
+        if (_editor == null || !_editor.FindSnapshot.CanReplaceAll)
+        {
+            UpdateMatchCountLabel();
+            return;
+        }
+
         _editor.ReplaceAll(_input.Text, _replaceInput.Text, _matchCase, _useRegex, _wholeWord,
             _findInSelection ? _selectionBounds : null);
         UpdateSearch();

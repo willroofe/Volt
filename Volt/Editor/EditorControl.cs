@@ -25,6 +25,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public SyntaxManager SyntaxManager { get; }
 
     private SyntaxDefinition? _grammar;
+    private int? _pendingFindNavigationGeneration;
+    private bool _pendingFindPreserveSelection;
 
     public string LanguageName => _grammar?.Name ?? "Plain Text";
 
@@ -288,6 +290,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public bool IsDirty => _buffer.IsDirty;
     public event EventHandler? DirtyChanged;
     public event EventHandler? CaretMoved;
+    public event EventHandler<FindSnapshot>? FindStateChanged;
 
     public new void InvalidateVisual()
     {
@@ -351,6 +354,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         Cursor = Cursors.IBeam;
 
         _buffer.DirtyChanged += OnDocumentDirtyChanged;
+        _find.Changed += OnFindChanged;
 
         _blinkTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _blinkTimer.Tick += (_, _) =>
@@ -397,6 +401,19 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private void OnDocumentDirtyChanged(object? sender, EventArgs e) =>
         DirtyChanged?.Invoke(this, EventArgs.Empty);
+
+    private void OnFindChanged(object? sender, FindSnapshot snapshot)
+    {
+        if (_pendingFindNavigationGeneration == snapshot.Generation && snapshot.CurrentMatch != null)
+        {
+            NavigateToCurrentMatch(_pendingFindPreserveSelection);
+            _pendingFindNavigationGeneration = null;
+        }
+
+        MarkDecorationsDirty();
+        RequestEditorFrame();
+        FindStateChanged?.Invoke(this, snapshot);
+    }
 
     // ── Visual tree (layered children: decorations → text → gutter → caret) ─────
     protected override int VisualChildrenCount => 4;
@@ -1233,20 +1250,15 @@ public class EditorControl : FrameworkElement, IScrollInfo
             }
         }
 
-        if (_find.MatchCount > 0)
+        var visibleFindMatches = _find.GetMatchesInRange(firstLine, lastLine);
+        if (visibleFindMatches.Count > 0)
         {
-            int lo = 0, hi = _find.Matches.Count - 1;
-            while (lo <= hi)
+            var currentMatch = _find.GetCurrentMatch();
+            foreach (var match in visibleFindMatches)
             {
-                int mid = (lo + hi) / 2;
-                if (_find.Matches[mid].Line < firstLine) lo = mid + 1; else hi = mid - 1;
-            }
-            for (int m = lo; m < _find.Matches.Count; m++)
-            {
-                var (mLine, mCol, mLen) = _find.Matches[m];
-                if (mLine > lastLine) break;
+                var (mLine, mCol, mLen) = match;
                 if (IsLineHidden(mLine)) continue;
-                var brush = m == _find.CurrentIndex
+                var brush = currentMatch == match
                     ? ThemeManager.FindMatchCurrentBrush
                     : ThemeManager.FindMatchBrush;
 
@@ -3229,6 +3241,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     public int FindMatchCount => _find.MatchCount;
     public int CurrentMatchIndex => _find.CurrentIndex;
+    public FindSnapshot FindSnapshot => _find.Snapshot;
 
     public string GetSelectedText()
     {
@@ -3245,24 +3258,35 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public void SetFindMatches(string query, bool matchCase, bool useRegex = false, bool wholeWord = false,
         (int, int, int, int)? selectionBounds = null, bool preserveSelection = false)
     {
-        _find.Search(_buffer, query, matchCase, _caretLine, _caretCol, useRegex, wholeWord, selectionBounds);
-        if (_find.MatchCount > 0)
-            NavigateToCurrentMatch(preserveSelection);
-        MarkDecorationsDirty();
-        RequestEditorFrame();
+        FindSelectionRange? selection = null;
+        if (selectionBounds is { } bounds)
+        {
+            var (sl, sc, el, ec) = bounds;
+            selection = new FindSelectionRange(sl, sc, el, ec);
+        }
+
+        var generation = _find.StartSearch(
+            _buffer,
+            new FindQuery(query, matchCase, useRegex, wholeWord, selection),
+            _caretLine,
+            _caretCol,
+            action => Dispatcher.BeginInvoke(action, DispatcherPriority.Background));
+        _pendingFindNavigationGeneration = generation;
+        _pendingFindPreserveSelection = preserveSelection;
     }
 
     public void ClearFindMatches()
     {
         _find.Clear();
+        _pendingFindNavigationGeneration = null;
         MarkDecorationsDirty();
         RequestEditorFrame();
     }
 
     public void FindNext()
     {
-        if (_find.MatchCount == 0) return;
-        _find.MoveNext();
+        if (_find.Snapshot.RetainedMatchCount == 0 && !_find.Snapshot.IsSearching) return;
+        _find.MoveNextAsync().GetAwaiter().GetResult();
         NavigateToCurrentMatch();
         MarkDecorationsDirty();
         RequestEditorFrame();
@@ -3270,8 +3294,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     public void FindPrevious()
     {
-        if (_find.MatchCount == 0) return;
-        _find.MovePrevious();
+        if (_find.Snapshot.RetainedMatchCount == 0 && !_find.Snapshot.IsSearching) return;
+        _find.MovePreviousAsync().GetAwaiter().GetResult();
         NavigateToCurrentMatch();
         MarkDecorationsDirty();
         RequestEditorFrame();
@@ -3285,7 +3309,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
         var scope = BeginEdit(line, line);
         _buffer.ReplaceAt(line, col, len, replacement);
         EndEdit(scope);
-        _find.Search(_buffer, _find.LastQuery, _find.LastMatchCase, _caretLine, _caretCol, _find.LastUseRegex, _find.LastWholeWord);
+        var generation = _find.StartSearch(
+            _buffer,
+            new FindQuery(_find.LastQuery, _find.LastMatchCase, _find.LastUseRegex, _find.LastWholeWord, _find.LastSelection),
+            _caretLine,
+            _caretCol,
+            action => Dispatcher.BeginInvoke(action, DispatcherPriority.Background));
+        _pendingFindNavigationGeneration = generation;
+        _pendingFindPreserveSelection = false;
         _buffer.InvalidateMaxLineLength();
         _gutterVisualDirty = true;
         MarkDecorationsDirty();
@@ -3299,7 +3330,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (range == null) return;
         var (firstLine, lastLine) = range.Value;
         var scope = BeginEdit(firstLine, lastLine);
-        var matches = _find.Matches;
+        var matches = _find.Snapshot.RetainedMatches;
         for (int i = matches.Count - 1; i >= 0; i--)
         {
             var (line, col, len) = matches[i];

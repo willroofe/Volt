@@ -23,18 +23,24 @@ public class FindBenchmarks
     [Benchmark(Description = "Search common term (50K lines)")]
     public void SearchCommon()
     {
-        _find.Search(_buffer, "var", false, 0, 0);
+        SearchToCompletion("var", matchCase: false);
     }
 
     [Benchmark(Description = "Search rare term (50K lines)")]
     public void SearchRare()
     {
-        _find.Search(_buffer, "49999", false, 0, 0);
+        SearchToCompletion("49999", matchCase: false);
     }
 
     [Benchmark(Description = "Search case-sensitive (50K lines)")]
     public void SearchCaseSensitive()
     {
-        _find.Search(_buffer, "hello", true, 0, 0);
+        SearchToCompletion("hello", matchCase: true);
+    }
+
+    private void SearchToCompletion(string query, bool matchCase)
+    {
+        _find.StartSearch(_buffer, new FindQuery(query, matchCase), 0, 0);
+        while (_find.RunNextBatch()) { }
     }
 }

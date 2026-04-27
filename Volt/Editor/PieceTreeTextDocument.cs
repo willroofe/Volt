@@ -492,7 +492,8 @@ public sealed class PieceTreeTextDocument : ITextDocument
 
         var bytes = new byte[(int)length];
         var stream = GetSourceStream();
-        stream.Position = start;
+        if (stream.Position != start)
+            stream.Position = start;
         stream.ReadExactly(bytes);
 
         int trimmed = bytes.Length;
