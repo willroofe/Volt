@@ -803,7 +803,11 @@ public partial class EditorControl
         private IDirect3DSurface9? _d3d9Surface;
         private ID2D1CommandList? _textLayer;
         private ID2D1CommandList? _gutterLayer;
+        private IDWriteFontFace? _fontFace;
+        private readonly Dictionary<int, DirectGlyphRunBuffers> _glyphRunBuffers = new();
         private string _fontFormatKey = "";
+        private double _fontSize;
+        private double _glyphBaseline;
         private int _pixelWidth;
         private int _pixelHeight;
         private double _dpi;
@@ -957,7 +961,7 @@ public partial class EditorControl
         {
             if (_dwriteFactory == null) return;
             string key = $"{familyName}|{fontSize:F3}|{lineHeight:F3}|{baseline:F3}|{tabStop:F3}|{weightName}";
-            if (key == _fontFormatKey && _textFormat != null) return;
+            if (key == _fontFormatKey && _textFormat != null && _fontFace != null) return;
 
             _textFormat?.Dispose();
             _textFormat = _dwriteFactory.CreateTextFormat(
@@ -971,7 +975,26 @@ public partial class EditorControl
             _textFormat.ParagraphAlignment = ParagraphAlignment.Near;
             _textFormat.IncrementalTabStop = (float)Math.Max(1, Scale(tabStop));
             _textFormat.SetLineSpacing(LineSpacingMethod.Uniform, (float)Math.Max(1, Scale(lineHeight)), (float)Math.Max(0, Scale(baseline)));
+
+            _fontFace?.Dispose();
+            _fontFace = CreateFontFace(familyName, MapFontWeight(weightName))
+                ?? CreateFontFace("Consolas", Vortice.DirectWrite.FontWeight.Normal);
+            _fontSize = fontSize;
+            _glyphBaseline = baseline;
             _fontFormatKey = key;
+        }
+
+        private IDWriteFontFace? CreateFontFace(string familyName, Vortice.DirectWrite.FontWeight weight)
+        {
+            if (_dwriteFactory == null) return null;
+
+            using var collection = _dwriteFactory.GetSystemFontCollection(false);
+            if (!collection.FindFamilyName(familyName, out uint familyIndex))
+                return null;
+
+            using var family = collection.GetFontFamily(familyIndex);
+            using var font = family.GetFirstMatchingFont(weight, Vortice.DirectWrite.FontStretch.Normal, Vortice.DirectWrite.FontStyle.Normal);
+            return font.CreateFontFace();
         }
 
         public void ReplaceTextLayer(Action render)
@@ -1056,7 +1079,34 @@ public partial class EditorControl
 
         public int DrawText(string text, int startIndex, int length, double x, double y, double charWidth, double lineHeight, Brush brush)
         {
-            if (_d2dContext == null || _textFormat == null || length <= 0) return 0;
+            if (_d2dContext == null || length <= 0) return 0;
+            if (_fontFace != null)
+            {
+                var buffers = GetGlyphRunBuffers(length);
+                for (int i = 0; i < length; i++)
+                    buffers.CodePoints[i] = text[startIndex + i];
+
+                _fontFace.GetGlyphIndices(
+                    new ReadOnlySpan<uint>(buffers.CodePoints),
+                    new Span<ushort>(buffers.GlyphIndices)).CheckError();
+
+                float advance = (float)Scale(charWidth);
+                if (float.IsNaN(buffers.Advance) || Math.Abs(buffers.Advance - advance) > 0.001f)
+                {
+                    Array.Fill(buffers.Advances, advance);
+                    buffers.Advance = advance;
+                }
+
+                buffers.GlyphRun.FontFace = _fontFace;
+                buffers.GlyphRun.FontEmSize = (float)Scale(_fontSize);
+                var origin = new Vector2(
+                    MathF.Round((float)Scale(x)),
+                    MathF.Round((float)Scale(y + _glyphBaseline)));
+                _d2dContext.DrawGlyphRun(origin, buffers.GlyphRun, BrushFor(brush), MeasuringMode.Natural);
+                return 1;
+            }
+
+            if (_textFormat == null) return 0;
             var run = text.Substring(startIndex, length);
             var rect = new D2DRect(
                 (float)Scale(x),
@@ -1065,6 +1115,14 @@ public partial class EditorControl
                 (float)Math.Max(1, Scale(lineHeight)));
             _d2dContext.DrawText(run, _textFormat, rect, BrushFor(brush), DrawTextOptions.Clip, MeasuringMode.Natural);
             return 1;
+        }
+
+        private DirectGlyphRunBuffers GetGlyphRunBuffers(int length)
+        {
+            if (_glyphRunBuffers.TryGetValue(length, out var buffers)) return buffers;
+            buffers = new DirectGlyphRunBuffers(length);
+            _glyphRunBuffers[length] = buffers;
+            return buffers;
         }
 
         public void FillRectangle(double x, double y, double width, double height, Brush brush)
@@ -1164,6 +1222,8 @@ public partial class EditorControl
             foreach (var brush in _brushes.Values)
                 brush.Dispose();
             _brushes.Clear();
+            _fontFace?.Dispose();
+            _glyphRunBuffers.Clear();
             _textFormat?.Dispose();
             _textRenderingParams?.Dispose();
             _dwriteFactory?.Dispose();
@@ -1232,6 +1292,32 @@ public partial class EditorControl
             float g = ((argb >> 8) & 0xFF) / 255f;
             float b = (argb & 0xFF) / 255f;
             return new Color4(r, g, b, a);
+        }
+
+        private sealed class DirectGlyphRunBuffers
+        {
+            public readonly uint[] CodePoints;
+            public readonly ushort[] GlyphIndices;
+            public readonly float[] Advances;
+            public readonly GlyphOffset[] Offsets;
+            public readonly Vortice.DirectWrite.GlyphRun GlyphRun;
+            public float Advance = float.NaN;
+
+            public DirectGlyphRunBuffers(int length)
+            {
+                CodePoints = new uint[length];
+                GlyphIndices = new ushort[length];
+                Advances = new float[length];
+                Offsets = new GlyphOffset[length];
+                GlyphRun = new Vortice.DirectWrite.GlyphRun
+                {
+                    Indices = GlyphIndices,
+                    Advances = Advances,
+                    Offsets = Offsets,
+                    IsSideways = false,
+                    BidiLevel = 0
+                };
+            }
         }
     }
 }
