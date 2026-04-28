@@ -10,7 +10,7 @@ using System.Windows.Threading;
 
 namespace Volt;
 
-public class EditorControl : FrameworkElement, IScrollInfo
+public partial class EditorControl : FrameworkElement, IScrollInfo
 {
     // ── Extracted components ─────────────────────────────────────────
     private ITextDocument _buffer = new TextBuffer();
@@ -209,10 +209,20 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private readonly DrawingVisual _textVisual = new();
     private readonly DrawingVisual _gutterVisual = new();
     private readonly DrawingVisual _caretVisual = new();
+    private readonly DrawingVisual _gpuVisual = new();
     private readonly TranslateTransform _textTransform = new();
     private readonly TranslateTransform _gutterTransform = new();
     private readonly RectangleGeometry _textClipGeom = new();
     private readonly EditorPerformanceTrace _perf = EditorPerformanceTrace.Shared;
+    private readonly EditorRenderMode _requestedRenderMode = EditorRendererSettings.RequestedMode();
+    private readonly WpfEditorRenderer _wpfRenderer = new();
+    private Direct2DEditorRenderer? _direct2DRenderer;
+    private IEditorRenderer? _activeRenderer;
+    private EditorRenderMode _activeRenderMode = EditorRenderMode.Wpf;
+    private string? _rendererFallbackReason;
+    private int _rendererLoggedPixelWidth = -1;
+    private int _rendererLoggedPixelHeight = -1;
+    private double _rendererLoggedDpi = -1;
     private bool _editorFrameQueued;
     private DispatcherOperation? _editorFrameOperation;
     private bool _decorationsVisualDirty = true;
@@ -302,6 +312,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public int CaretLine => _caretLine;
     public int CaretCol => _caretCol;
     public long CharCount => _buffer.CharCount;
+    internal EditorRenderMode RequestedRenderMode => _requestedRenderMode;
+    internal EditorRenderMode ActiveRenderMode => _activeRenderMode;
+    internal string? RendererFallbackReason => _rendererFallbackReason;
 
     // ── Mouse drag ───────────────────────────────────────────────────
     private bool _isDragging;
@@ -373,6 +386,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         TextOptions.SetTextRenderingMode(_gutterVisual, TextRenderingMode.ClearType);
         TextOptions.SetTextHintingMode(_textVisual, TextHintingMode.Fixed);
         TextOptions.SetTextHintingMode(_gutterVisual, TextHintingMode.Fixed);
+        _activeRenderer = _wpfRenderer;
+        AddVisualChild(_gpuVisual);
         AddVisualChild(_decorationsVisual);
         AddVisualChild(_textVisual);
         AddVisualChild(_gutterVisual);
@@ -386,6 +401,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             Keyboard.Focus(this);
             _blinkTimer.Start();
             UpdateExtent();
+            InitializeRequestedRenderer();
             RequestEditorFrame();
         };
 
@@ -396,6 +412,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _font.BeforeFontChanged -= OnBeforeFontChanged;
             _font.FontChanged -= OnFontChanged;
             ThemeManager.ThemeChanged -= OnThemeChanged;
+            _direct2DRenderer?.Dispose();
+            _direct2DRenderer = null;
+            _activeRenderer = _wpfRenderer;
+            _activeRenderMode = EditorRenderMode.Wpf;
         };
     }
 
@@ -415,14 +435,15 @@ public class EditorControl : FrameworkElement, IScrollInfo
         FindStateChanged?.Invoke(this, snapshot);
     }
 
-    // ── Visual tree (layered children: decorations → text → gutter → caret) ─────
-    protected override int VisualChildrenCount => 4;
+    // ── Visual tree (GPU surface → decorations → text → gutter → caret) ─────
+    protected override int VisualChildrenCount => 5;
     protected override Visual GetVisualChild(int index) => index switch
     {
-        0 => _decorationsVisual,
-        1 => _textVisual,
-        2 => _gutterVisual,
-        3 => _caretVisual,
+        0 => _gpuVisual,
+        1 => _decorationsVisual,
+        2 => _textVisual,
+        3 => _gutterVisual,
+        4 => _caretVisual,
         _ => throw new ArgumentOutOfRangeException(nameof(index))
     };
 
@@ -556,6 +577,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
         var (firstLine, lastLine) = VisibleLineRange();
 
         bool longLineScrolled = IsLongLineViewportStale();
+
+        if (TryRenderDirect2DFrame(firstLine, lastLine, longLineScrolled, perfEnabled, frameStart))
+            return;
 
         if (TextViewportNeedsRefresh(firstLine, lastLine, longLineScrolled))
         {

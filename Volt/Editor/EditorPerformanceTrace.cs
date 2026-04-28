@@ -23,6 +23,15 @@ internal sealed class EditorPerformanceTrace
     private int _scrollOffsetUpdates;
     private int _dragMoves;
     private int _dragCoalesces;
+    private int _gpuStaticLayerRebuilds;
+    private int _gpuDynamicLayerRedraws;
+    private int _gpuGlyphRuns;
+    private int _gpuSelectionRectangles;
+    private int _lastViewportPixelWidth;
+    private int _lastViewportPixelHeight;
+    private int _lastVisibleLines;
+    private int _lastDrawnLines;
+    private double _lastDpi;
 
     private double _frameMs;
     private double _onRenderMs;
@@ -30,6 +39,7 @@ internal sealed class EditorPerformanceTrace
     private double _gutterMs;
     private double _decorationMs;
     private double _caretMs;
+    private double _gpuPresentMs;
 
     private EditorPerformanceTrace()
     {
@@ -43,6 +53,22 @@ internal sealed class EditorPerformanceTrace
     }
 
     public bool Enabled { get; }
+
+    public void LogRendererState(
+        EditorRenderMode requestedMode,
+        EditorRenderMode activeMode,
+        int viewportPixelWidth,
+        int viewportPixelHeight,
+        double dpi,
+        string? fallbackReason = null)
+    {
+        if (!Enabled) return;
+        string suffix = string.IsNullOrWhiteSpace(fallbackReason)
+            ? ""
+            : $" fallback=\"{fallbackReason}\"";
+        Log($"renderer requested={requestedMode} active={activeMode} wpfTier={RenderCapability.Tier >> 16} " +
+            $"viewport={viewportPixelWidth}x{viewportPixelHeight} dpi={dpi:F2}{suffix}");
+    }
 
     public static double ElapsedMilliseconds(long startTimestamp)
         => (Stopwatch.GetTimestamp() - startTimestamp) * 1000.0 / Stopwatch.Frequency;
@@ -75,6 +101,29 @@ internal sealed class EditorPerformanceTrace
         {
             _dragMoves++;
             if (coalesced) _dragCoalesces++;
+            FlushIfDue();
+        }
+    }
+
+    public void RecordGpuFrame(
+        int viewportPixelWidth,
+        int viewportPixelHeight,
+        double dpi,
+        EditorRenderFrameStats stats)
+    {
+        if (!Enabled) return;
+        lock (_gate)
+        {
+            _lastViewportPixelWidth = viewportPixelWidth;
+            _lastViewportPixelHeight = viewportPixelHeight;
+            _lastDpi = dpi;
+            _lastVisibleLines = stats.VisibleLines;
+            _lastDrawnLines = stats.DrawnLines;
+            _gpuStaticLayerRebuilds += stats.StaticLayerRebuilds;
+            _gpuDynamicLayerRedraws += stats.DynamicLayerRedraws;
+            _gpuGlyphRuns += stats.GlyphRuns;
+            _gpuSelectionRectangles += stats.SelectionRectangles;
+            _gpuPresentMs += stats.PresentMilliseconds;
             FlushIfDue();
         }
     }
@@ -142,7 +191,12 @@ internal sealed class EditorPerformanceTrace
             $"decor={_decorationRebuilds} avgDecor={Average(_decorationMs, _decorationRebuilds):F2}ms " +
             $"caret={_caretRebuilds} avgCaret={Average(_caretMs, _caretRebuilds):F2}ms " +
             $"scrollOffsets={_scrollOffsetUpdates} frameRequests={_frameRequests} " +
-            $"requestCoalesces={_frameRequestCoalesces} dragMoves={_dragMoves} dragCoalesces={_dragCoalesces}";
+            $"requestCoalesces={_frameRequestCoalesces} dragMoves={_dragMoves} dragCoalesces={_dragCoalesces} " +
+            $"gpuStatic={_gpuStaticLayerRebuilds} gpuDynamic={_gpuDynamicLayerRedraws} " +
+            $"gpuGlyphRuns={_gpuGlyphRuns} gpuSelectionRects={_gpuSelectionRectangles} " +
+            $"avgGpuPresent={Average(_gpuPresentMs, _gpuDynamicLayerRedraws):F2}ms " +
+            $"viewport={_lastViewportPixelWidth}x{_lastViewportPixelHeight} dpi={_lastDpi:F2} " +
+            $"visibleLines={_lastVisibleLines} drawnLines={_lastDrawnLines}";
 
         Reset();
         Log(message);
@@ -162,12 +216,17 @@ internal sealed class EditorPerformanceTrace
         _scrollOffsetUpdates = 0;
         _dragMoves = 0;
         _dragCoalesces = 0;
+        _gpuStaticLayerRebuilds = 0;
+        _gpuDynamicLayerRedraws = 0;
+        _gpuGlyphRuns = 0;
+        _gpuSelectionRectangles = 0;
         _frameMs = 0;
         _onRenderMs = 0;
         _textMs = 0;
         _gutterMs = 0;
         _decorationMs = 0;
         _caretMs = 0;
+        _gpuPresentMs = 0;
     }
 
     private void Log(string message)
