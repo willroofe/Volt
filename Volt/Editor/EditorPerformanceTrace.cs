@@ -55,7 +55,7 @@ internal sealed class EditorPerformanceTrace
     public bool Enabled { get; }
 
     public void LogRendererState(
-        EditorRenderMode requestedMode,
+        EditorRenderMode preferredMode,
         EditorRenderMode activeMode,
         int viewportPixelWidth,
         int viewportPixelHeight,
@@ -66,7 +66,7 @@ internal sealed class EditorPerformanceTrace
         string suffix = string.IsNullOrWhiteSpace(fallbackReason)
             ? ""
             : $" fallback=\"{fallbackReason}\"";
-        Log($"renderer requested={requestedMode} active={activeMode} wpfTier={RenderCapability.Tier >> 16} " +
+        Log($"renderer preferred={preferredMode} active={activeMode} wpfTier={RenderCapability.Tier >> 16} " +
             $"viewport={viewportPixelWidth}x{viewportPixelHeight} dpi={dpi:F2}{suffix}");
     }
 

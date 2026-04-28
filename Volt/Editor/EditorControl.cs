@@ -132,7 +132,6 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
                 double maxY = Math.Max(0, _extent.Height - _viewport.Height);
                 _offset.Y = Math.Clamp(newY, 0, maxY);
             }
-            ApplyScrollTransformsAndClip();
             ScrollOwner?.InvalidateScrollInfo();
             MarkTextAndGutterDirty();
             RequestEditorFrame();
@@ -210,22 +209,16 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
     private readonly DrawingVisual _gutterVisual = new();
     private readonly DrawingVisual _caretVisual = new();
     private readonly DrawingVisual _gpuVisual = new();
-    private readonly TranslateTransform _textTransform = new();
-    private readonly TranslateTransform _gutterTransform = new();
-    private readonly RectangleGeometry _textClipGeom = new();
     private readonly EditorPerformanceTrace _perf = EditorPerformanceTrace.Shared;
-    private readonly EditorRenderMode _requestedRenderMode = EditorRendererSettings.RequestedMode();
-    private readonly WpfEditorRenderer _wpfRenderer = new();
+    private readonly EditorRenderMode _preferredRenderMode = EditorRendererSettings.PreferredMode();
     private Direct2DEditorRenderer? _direct2DRenderer;
-    private IEditorRenderer? _activeRenderer;
-    private EditorRenderMode _activeRenderMode = EditorRenderMode.Wpf;
-    private string? _rendererFallbackReason;
+    private EditorRenderMode _activeRenderMode = EditorRenderMode.Unsupported;
+    private string? _rendererUnsupportedReason;
     private int _rendererLoggedPixelWidth = -1;
     private int _rendererLoggedPixelHeight = -1;
     private double _rendererLoggedDpi = -1;
     private bool _editorFrameQueued;
     private DispatcherOperation? _editorFrameOperation;
-    private bool _decorationsVisualDirty = true;
     private bool _textVisualDirty = true;
     private bool _gutterVisualDirty = true;
     private bool _caretVisualDirty = true;
@@ -244,11 +237,11 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
     private double _renderedScrollX = double.NaN;
     private double _renderedScrollY = double.NaN;
     // Bias subtracted from content-space X coords to keep values small enough for
-    // WPF's float32 render pipeline. Zero for normal files.
+    // the GPU text layer's float32 transform pipeline. Zero for normal files.
     private double _textXBias;
     // Biases subtracted from content-space Y coords for layered visuals. At high
     // line counts, drawing at line * LineHeight and translating by a huge scroll
-    // offset causes WPF float precision loss and visible text/gutter drift.
+    // offset causes float precision loss and visible text/gutter drift.
     private double _textYBias;
     private double _gutterYBias;
 
@@ -312,9 +305,9 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
     public int CaretLine => _caretLine;
     public int CaretCol => _caretCol;
     public long CharCount => _buffer.CharCount;
-    internal EditorRenderMode RequestedRenderMode => _requestedRenderMode;
+    internal EditorRenderMode PreferredRenderMode => _preferredRenderMode;
     internal EditorRenderMode ActiveRenderMode => _activeRenderMode;
-    internal string? RendererFallbackReason => _rendererFallbackReason;
+    internal string? RendererUnsupportedReason => _rendererUnsupportedReason;
 
     // ── Mouse drag ───────────────────────────────────────────────────
     private bool _isDragging;
@@ -379,14 +372,10 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
         _dragAutoScrollTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(DragAutoScrollIntervalMs) };
         _dragAutoScrollTimer.Tick += (_, _) => OnDragAutoScrollTick();
 
-        _textVisual.Transform = _textTransform;
-        _textVisual.Clip = _textClipGeom;
-        _gutterVisual.Transform = _gutterTransform;
         TextOptions.SetTextRenderingMode(_textVisual, TextRenderingMode.ClearType);
         TextOptions.SetTextRenderingMode(_gutterVisual, TextRenderingMode.ClearType);
         TextOptions.SetTextHintingMode(_textVisual, TextHintingMode.Fixed);
         TextOptions.SetTextHintingMode(_gutterVisual, TextHintingMode.Fixed);
-        _activeRenderer = _wpfRenderer;
         AddVisualChild(_gpuVisual);
         AddVisualChild(_decorationsVisual);
         AddVisualChild(_textVisual);
@@ -401,7 +390,7 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
             Keyboard.Focus(this);
             _blinkTimer.Start();
             UpdateExtent();
-            InitializeRequestedRenderer();
+            InitializePreferredRenderer();
             RequestEditorFrame();
         };
 
@@ -414,8 +403,7 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
             ThemeManager.ThemeChanged -= OnThemeChanged;
             _direct2DRenderer?.Dispose();
             _direct2DRenderer = null;
-            _activeRenderer = _wpfRenderer;
-            _activeRenderMode = EditorRenderMode.Wpf;
+            _activeRenderMode = EditorRenderMode.Unsupported;
         };
     }
 
@@ -452,7 +440,6 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
         RecalcWrapData();
         _textVisualDirty = true;
         _gutterVisualDirty = true;
-        _decorationsVisualDirty = true;
         _caretVisualDirty = true;
         UpdateExtent();
         RequestEditorFrame();
@@ -462,7 +449,6 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
     {
         _textVisualDirty = true;
         _gutterVisualDirty = true;
-        _decorationsVisualDirty = true;
         _caretVisualDirty = true;
         _renderedFirstLine = -1;
         _renderedLastLine = -1;
@@ -490,20 +476,8 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
         ProcessEditorFrame();
     }
 
-    private void ApplyScrollTransformsAndClip()
-    {
-        _textTransform.X = -(_offset.X - _textXBias);
-        _textTransform.Y = -(_offset.Y - _textYBias);
-        _gutterTransform.Y = -(_offset.Y - _gutterYBias);
-
-        _textClipGeom.Rect = new Rect(
-            _gutterWidth + _offset.X - _textXBias, _offset.Y - _textYBias,
-            Math.Max(0, ActualWidth - _gutterWidth), Math.Max(0, ActualHeight));
-    }
-
     private void MarkDecorationsDirty()
     {
-        _decorationsVisualDirty = true;
         _caretVisualDirty = true;
     }
 
@@ -556,14 +530,6 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
 
         bool perfEnabled = _perf.Enabled;
         long frameStart = StartPerfTimer(perfEnabled);
-        double textMs = 0;
-        double gutterMs = 0;
-        double decorationsMs = 0;
-        double caretMs = 0;
-        bool rebuiltText = false;
-        bool rebuiltGutter = false;
-        bool rebuiltDecorations = false;
-        bool rebuiltCaret = false;
 
         ClampCaret();
 
@@ -581,48 +547,20 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
         if (TryRenderDirect2DFrame(firstLine, lastLine, longLineScrolled, perfEnabled, frameStart))
             return;
 
-        if (TextViewportNeedsRefresh(firstLine, lastLine, longLineScrolled))
-        {
-            long textStart = StartPerfTimer(perfEnabled);
-            RenderTextVisual(firstLine, lastLine);
-            textMs = StopPerfTimer(perfEnabled, textStart);
-            _textVisualDirty = false;
-            rebuiltText = true;
-        }
-
-        if (GutterViewportNeedsRefresh(firstLine, lastLine))
-        {
-            long gutterStart = StartPerfTimer(perfEnabled);
-            RenderGutterVisual(firstLine, lastLine);
-            gutterMs = StopPerfTimer(perfEnabled, gutterStart);
-            _gutterVisualDirty = false;
-            rebuiltGutter = true;
-        }
-
-        if (_decorationsVisualDirty)
-        {
-            long decorationsStart = StartPerfTimer(perfEnabled);
-            RenderDecorationsVisual(firstLine, lastLine);
-            decorationsMs = StopPerfTimer(perfEnabled, decorationsStart);
-            _decorationsVisualDirty = false;
-            rebuiltDecorations = true;
-        }
-
-        ApplyScrollTransformsAndClip();
-
-        if (_caretVisualDirty)
-        {
-            long caretStart = StartPerfTimer(perfEnabled);
-            UpdateCaretVisual();
-            caretMs = StopPerfTimer(perfEnabled, caretStart);
-            _caretVisualDirty = false;
-            rebuiltCaret = true;
-        }
+        if (_activeRenderMode != EditorRenderMode.Unsupported)
+            MarkRendererUnsupported("Direct2D renderer is unavailable.");
+        RenderUnsupportedRendererNotice();
 
         _perf.RecordFrame(
             StopPerfTimer(perfEnabled, frameStart),
-            rebuiltText, rebuiltGutter, rebuiltDecorations, rebuiltCaret,
-            textMs, gutterMs, decorationsMs, caretMs);
+            rebuiltText: false,
+            rebuiltGutter: false,
+            rebuiltDecorations: true,
+            rebuiltCaret: false,
+            textMs: 0,
+            gutterMs: 0,
+            decorationMs: 0,
+            caretMs: 0);
     }
 
     private void UpdateCaretVisual()
@@ -954,7 +892,6 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
             double newY = (_wrap.CumulOffset(anchorLine) + newWrap) * _font.LineHeight + anchorDelta;
             double maxY = Math.Max(0, _wrap.TotalVisualLines * _font.LineHeight + _viewport.Height / 2 - _viewport.Height);
             _offset.Y = Math.Clamp(newY, 0, maxY);
-            ApplyScrollTransformsAndClip();
             MarkDecorationsDirty();
         }
 
@@ -1232,330 +1169,6 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
         _perf.RecordOnRender(StopPerfTimer(perfEnabled, start));
     }
 
-    private void RenderDecorationsVisual(int firstLine, int lastLine)
-    {
-        using var dc = _decorationsVisual.RenderOpen();
-
-        dc.DrawRectangle(ThemeManager.EditorBg, null,
-            new Rect(0, 0, Math.Max(0, ActualWidth), Math.Max(0, ActualHeight)));
-
-        if (_caretLine >= firstLine && _caretLine <= lastLine)
-        {
-            double curLineY = GetVisualY(_caretLine, _caretCol) - _offset.Y;
-            dc.DrawRectangle(ThemeManager.CurrentLineBrush, null,
-                new Rect(0, curLineY, ActualWidth, _font.LineHeight));
-        }
-
-        if (_selection.HasSelection)
-        {
-            var (sl, sc, el, ec) = _selection.GetOrdered(_caretLine, _caretCol);
-            for (int i = Math.Max(firstLine, sl); i <= Math.Min(lastLine, el); i++)
-            {
-                if (IsLineHidden(i)) continue;
-                int selStart = i == sl ? sc : 0;
-                int selEnd = i == el ? ec : _buffer[i].Length;
-
-                if (!IsWordWrapActive && !HasFoldLayout)
-                {
-                    double y = i * _font.LineHeight - _offset.Y;
-                    double x1 = _gutterWidth + GutterPadding + selStart * _font.CharWidth - _offset.X;
-                    double x2 = _gutterWidth + GutterPadding + selEnd * _font.CharWidth - _offset.X;
-                    if (i > sl && i < el) x2 = Math.Max(x2, ActualWidth);
-                    if (i == sl && i != el) x2 = Math.Max(x2, ActualWidth);
-                    dc.DrawRectangle(ThemeManager.SelectionBrush, null,
-                        new Rect(Math.Max(x1, _gutterWidth + GutterPadding), y,
-                                 Math.Max(0, x2 - Math.Max(x1, _gutterWidth + GutterPadding)),
-                                 _font.LineHeight));
-                }
-                else
-                {
-                    RenderWrappedSelection(dc, i, selStart, selEnd, sl, sc, el);
-                }
-            }
-        }
-
-        var visibleFindMatches = _find.GetMatchesInRange(firstLine, lastLine);
-        if (visibleFindMatches.Count > 0)
-        {
-            var currentMatch = _find.GetCurrentMatch();
-            foreach (var match in visibleFindMatches)
-            {
-                var (mLine, mCol, mLen) = match;
-                if (IsLineHidden(mLine)) continue;
-                var brush = currentMatch == match
-                    ? ThemeManager.FindMatchCurrentBrush
-                    : ThemeManager.FindMatchBrush;
-
-                if (!IsWordWrapActive && !HasFoldLayout)
-                {
-                    double pxStart = mCol * _font.CharWidth;
-                    double pxEnd = (mCol + mLen) * _font.CharWidth;
-                    double mx = _gutterWidth + GutterPadding + pxStart - _offset.X;
-                    double my = mLine * _font.LineHeight - _offset.Y;
-                    double textLeft = _gutterWidth + GutterPadding;
-                    double clippedX = Math.Max(mx, textLeft);
-                    double clippedW = Math.Max(0, mx + (pxEnd - pxStart) - clippedX);
-                    if (clippedW > 0)
-                        dc.DrawRectangle(brush, null,
-                            new Rect(clippedX, my, clippedW, _font.LineHeight));
-                }
-                else
-                {
-                    int col = mCol;
-                    int remaining = mLen;
-                    int vCount = VisualLineCount(mLine);
-                    while (remaining > 0)
-                    {
-                        int visLine = LogicalToVisualLine(mLine, col);
-                        int wrapIndex = visLine - _wrap.CumulOffset(mLine);
-                        int wrapStart = WrapColStart(mLine, wrapIndex);
-                        int colInWrap = col - wrapStart;
-                        int wrapEnd = wrapIndex + 1 < vCount ? WrapColStart(mLine, wrapIndex + 1) : _buffer[mLine].Length;
-                        int charsOnThisLine = Math.Min(remaining, wrapEnd - col);
-                        double indentPx = WrapIndentPx(mLine, wrapIndex);
-                        double mx = _gutterWidth + GutterPadding + indentPx + colInWrap * _font.CharWidth;
-                        double my = visLine * _font.LineHeight - _offset.Y;
-                        dc.DrawRectangle(brush, null,
-                            new Rect(mx, my, charsOnThisLine * _font.CharWidth, _font.LineHeight));
-                        col += charsOnThisLine;
-                        remaining -= charsOnThisLine;
-                    }
-                }
-            }
-        }
-
-        if (IsKeyboardFocused && !_selection.HasSelection)
-        {
-            if (_bracketMatchDirty)
-            {
-                _bracketMatchCache = _caretLine < _buffer.Count && _buffer[_caretLine].Length > LongLineThreshold
-                    ? null
-                    : BracketMatcher.FindMatch(_buffer, _caretLine, _caretCol, LiteralSkip);
-                _bracketMatchDirty = false;
-            }
-            if (_bracketMatchCache is var (bl, bc, ml, mc))
-            {
-                double bracketTextLeft = _gutterWidth + GutterPadding;
-                if (bl >= firstLine && bl <= lastLine && !IsLineHidden(bl))
-                {
-                    var (bx, by) = GetPixelForPosition(bl, bc);
-                    double cbx = Math.Max(bx, bracketTextLeft);
-                    double cbw = Math.Max(0, bx + _font.CharWidth - cbx);
-                    if (cbw > 0)
-                        dc.DrawRectangle(ThemeManager.MatchingBracketBrush,
-                            ThemeManager.MatchingBracketPen,
-                            new Rect(cbx, by, cbw, _font.LineHeight));
-                }
-                if (ml >= firstLine && ml <= lastLine && !IsLineHidden(ml))
-                {
-                    var (mx, my) = GetPixelForPosition(ml, mc);
-                    double cmx = Math.Max(mx, bracketTextLeft);
-                    double cmw = Math.Max(0, mx + _font.CharWidth - cmx);
-                    if (cmw > 0)
-                        dc.DrawRectangle(ThemeManager.MatchingBracketBrush,
-                            ThemeManager.MatchingBracketPen,
-                            new Rect(cmx, my, cmw, _font.LineHeight));
-                }
-            }
-        }
-    }
-
-    private void RenderWrappedSelection(DrawingContext dc, int line, int selStart, int selEnd, int sl, int sc, int el)
-    {
-        int vCount = VisualLineCount(line);
-        int baseCumul = _wrap.CumulOffset(line);
-        int visFirst = Math.Max(0, (int)(_offset.Y / _font.LineHeight) - RenderBufferLines - baseCumul);
-        int visLast = Math.Min(vCount - 1,
-            (int)((_offset.Y + _viewport.Height) / _font.LineHeight) + RenderBufferLines - baseCumul);
-        for (int w = Math.Max(0, visFirst); w <= visLast; w++)
-        {
-            int wStart = WrapColStart(line, w);
-            int wEnd = w + 1 < vCount ? WrapColStart(line, w + 1) : _buffer[line].Length;
-            int sA = Math.Max(selStart, wStart);
-            int sB = Math.Min(selEnd, wEnd);
-            if (sA >= sB && !(line != el && w == vCount - 1 && selEnd >= wEnd)) continue;
-
-            double indentPx = WrapIndentPx(line, w);
-            double y = (_wrap.CumulOffset(line) + w) * _font.LineHeight - _offset.Y;
-            double x1 = _gutterWidth + GutterPadding + indentPx + (sA - wStart) * _font.CharWidth;
-            double x2 = sB > sA
-                ? _gutterWidth + GutterPadding + indentPx + (sB - wStart) * _font.CharWidth
-                : x1;
-
-            bool extendToEdge = (line > sl || sA > selStart || w > 0) && (line < el || sB < selEnd || w < vCount - 1);
-            if (line != el && w == vCount - 1) extendToEdge = true;
-            if (line == sl && line != el && w >= (LogicalToVisualLine(line, sc) - _wrap.CumulOffset(line))) extendToEdge = true;
-            if (extendToEdge && line != el) x2 = Math.Max(x2, ActualWidth);
-            if (line == sl && line != el && sB >= wEnd) x2 = Math.Max(x2, ActualWidth);
-
-            dc.DrawRectangle(ThemeManager.SelectionBrush, null,
-                new Rect(Math.Max(x1, _gutterWidth + GutterPadding), y,
-                         Math.Max(0, x2 - Math.Max(x1, _gutterWidth + GutterPadding)),
-                         _font.LineHeight));
-        }
-    }
-
-    private void RenderTextVisual(int firstLine, int lastLine)
-    {
-        int drawFirst = Math.Max(0, firstLine - RenderBufferLines);
-        int drawLast = Math.Min(_buffer.Count - 1, lastLine + RenderBufferLines);
-
-        using var dc = _textVisual.RenderOpen();
-
-        if (drawLast < drawFirst) return;
-        _textYBias = GetLineTopY(drawFirst);
-
-        // Compute X bias before rendering. When long lines are visible, bias
-        // shifts content-space X origin near the viewport to avoid float32
-        // precision loss in WPF's transform pipeline at very large pixel offsets.
-        bool hasLongLine = false;
-        for (int i = drawFirst; i <= drawLast; i++)
-            if (_buffer[i].Length > LongLineThreshold) { hasLongLine = true; break; }
-        _textXBias = hasLongLine ? _offset.X : 0;
-
-        if (_indentGuides)
-            RenderIndentGuides(dc, drawFirst, drawLast);
-
-        if (UseSequentialSyntaxStates)
-            EnsureLineStates(drawLast);
-        for (int i = drawFirst; i <= drawLast; i++)
-        {
-            if (IsLineHidden(i)) continue;
-            var line = _buffer[i];
-            if (line.Length == 0) continue;
-            double x = _gutterWidth + GutterPadding;
-
-            var inState = GetSyntaxInputState(i);
-            if (!_tokenCache.TryGetValue(i, out var cached)
-                || cached.content != line || cached.inState != inState)
-            {
-                // Skip expensive tokenization for extremely long lines — render as plain text
-                var tokens = line.Length > LongLineThreshold
-                    ? []
-                    : SyntaxManager.Tokenize(line, _grammar, inState, out _);
-                _tokenCache[i] = (line, inState, tokens);
-                cached = _tokenCache[i];
-            }
-
-            if (!IsWordWrapActive || VisualLineCount(i) <= 1)
-            {
-                double y = GetLineTopY(i) - _textYBias;
-                int segStart = 0;
-                int segEnd = line.Length;
-                if (line.Length > LongLineThreshold)
-                {
-                    // Clamp to visible horizontal range to avoid rendering millions of off-screen chars
-                    segStart = Math.Max(0, (int)(_offset.X / _font.CharWidth) - 2);
-                    segEnd = Math.Min(line.Length,
-                        (int)((_offset.X + _viewport.Width) / _font.CharWidth) + 2);
-                }
-                // Subtract _textXBias from X to keep content-space coords small
-                RenderLineTokens(dc, line, x + segStart * _font.CharWidth - _textXBias,
-                    y, segStart, segEnd, cached.tokens);
-            }
-            else
-            {
-                int vCount = VisualLineCount(i);
-                int baseCumul = _wrap.CumulOffset(i);
-                // Clamp wrap segment loop to viewport-visible range (critical for very long lines)
-                int visFirst = Math.Max(0, (int)(_offset.Y / _font.LineHeight) - RenderBufferLines - baseCumul);
-                int visLast = Math.Min(vCount - 1,
-                    (int)((_offset.Y + _viewport.Height) / _font.LineHeight) + RenderBufferLines - baseCumul);
-                for (int w = Math.Max(0, visFirst); w <= visLast; w++)
-                {
-                    int segStart = WrapColStart(i, w);
-                    int segEnd = w + 1 < vCount ? WrapColStart(i, w + 1) : line.Length;
-                    double y = (baseCumul + w) * _font.LineHeight - _textYBias;
-                    double wx = x + WrapIndentPx(i, w);
-                    RenderLineTokens(dc, line, wx, y, segStart, segEnd, cached.tokens);
-                }
-            }
-        }
-
-        _renderedFirstLine = drawFirst;
-        _renderedLastLine = drawLast;
-        // Track scroll position when long-line clamping is active
-        if (hasLongLine)
-        {
-            _renderedScrollX = _offset.X;
-            _renderedScrollY = _offset.Y;
-        }
-        else
-        {
-            _renderedScrollX = double.NaN;
-        }
-
-        if (_tokenCache.Count > (drawLast - drawFirst + 1) * 3)
-        {
-            int margin = drawLast - drawFirst + 1;
-            int pruneBelow = drawFirst - margin;
-            int pruneAbove = drawLast + margin;
-            _pruneKeys.Clear();
-            foreach (var key in _tokenCache.Keys)
-                if (key < pruneBelow || key > pruneAbove)
-                    _pruneKeys.Add(key);
-            foreach (var key in _pruneKeys)
-                _tokenCache.Remove(key);
-        }
-    }
-
-    private void RenderLineTokens(DrawingContext dc, string line, double x, double y,
-        int segStart, int segEnd, List<SyntaxToken> tokens)
-    {
-        if (tokens.Count == 0)
-        {
-            _font.DrawGlyphRun(dc, line, segStart, segEnd - segStart, x, y, ThemeManager.EditorFg);
-            return;
-        }
-
-        var editorBrush = ThemeManager.EditorFg;
-        int pos = segStart;
-        int runStart = segStart;
-        int runEnd = segStart;
-        Brush? runBrush = null;
-
-        void FlushRun()
-        {
-            if (runBrush == null || runEnd <= runStart) return;
-            _font.DrawGlyphRun(dc, line, runStart, runEnd - runStart,
-                x + (runStart - segStart) * _font.CharWidth, y, runBrush);
-        }
-
-        void AppendRun(int start, int end, Brush brush)
-        {
-            if (end <= start) return;
-            if (runBrush != null && ReferenceEquals(runBrush, brush) && start == runEnd)
-            {
-                runEnd = end;
-                return;
-            }
-
-            FlushRun();
-            runBrush = brush;
-            runStart = start;
-            runEnd = end;
-        }
-
-        foreach (var token in tokens)
-        {
-            int tEnd = token.Start + token.Length;
-            if (tEnd <= segStart) continue;
-            if (token.Start >= segEnd) break;
-            int drawStart = Math.Max(token.Start, segStart);
-            int drawEnd = Math.Min(tEnd, segEnd);
-
-            if (drawStart > pos)
-                AppendRun(pos, drawStart, editorBrush);
-            var brush = ThemeManager.GetScopeBrush(token.Scope);
-            AppendRun(drawStart, drawEnd, brush);
-            pos = drawEnd;
-        }
-        if (pos < segEnd)
-            AppendRun(pos, segEnd, editorBrush);
-
-        FlushRun();
-    }
-
     // ──────────────────────────────────────────────────────────────────
     //  Code folding
     // ──────────────────────────────────────────────────────────────────
@@ -1757,195 +1370,6 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
     private void InvalidateStructuralBlockCache()
     {
         _structuralBlockCache.Clear();
-    }
-
-    private void RenderIndentGuides(DrawingContext dc, int drawFirst, int drawLast)
-    {
-        if (_buffer.Count == 0) return;
-        // Skip indent guides when any visible line is extremely long —
-        // bracket scanning would be O(line_length) per character.
-        for (int i = drawFirst; i <= drawLast; i++)
-            if (_buffer[i].Length > LongLineThreshold) return;
-
-        double baseX = _gutterWidth + GutterPadding;
-        var pen = ThemeManager.IndentGuidePen;
-
-        // For each line in the draw range that opens a block, find its closer and draw a guide.
-        for (int i = drawFirst; i <= drawLast; i++)
-        {
-            var block = GetStructuralBlockInfo(i);
-            if (block == null) continue;
-            int closeLine = block.Value.CloseLine;
-            int indentCol = MeasureIndentColumns(_buffer[closeLine], TabSize);
-            if (indentCol == 0) continue;
-
-            int guideFirst = i + 1;
-            int guideLast = closeLine - 1;
-            if (guideLast < guideFirst) continue;
-
-            double x = baseX + indentCol * _font.CharWidth;
-            double yTop, yBot;
-            if (!IsWordWrapActive && !HasFoldLayout)
-            {
-                yTop = guideFirst * _font.LineHeight;
-                yBot = (guideLast + 1) * _font.LineHeight;
-            }
-            else
-            {
-                yTop = _wrap.CumulOffset(guideFirst) * _font.LineHeight;
-                yBot = (_wrap.CumulOffset(guideLast) + VisualLineCount(guideLast)) * _font.LineHeight;
-            }
-
-            yTop -= _textYBias;
-            yBot -= _textYBias;
-            if (yTop < yBot)
-                dc.DrawLine(pen, new Point(x, yTop), new Point(x, yBot));
-        }
-
-        // Find guides that start above the draw range but pass through it.
-        {
-            int searchLine = drawFirst;
-            int searchCol = 0;
-            while (true)
-            {
-                int? openerLine = BracketMatcher.FindEnclosingOpenBrace(_buffer, searchLine, searchCol, LiteralSkip);
-                if (openerLine == null) break;
-                int i = openerLine.Value;
-
-                var block = GetStructuralBlockInfo(i);
-                if (block == null) { searchLine = i; searchCol = 0; continue; }
-                int closeLine = block.Value.CloseLine;
-
-                // Set up next search from above this opener
-                searchLine = i;
-                searchCol = 0;
-
-                if (closeLine < drawFirst) continue;
-
-                int indentCol = MeasureIndentColumns(_buffer[closeLine], TabSize);
-                if (indentCol == 0) continue;
-
-                int guideFirst = i + 1;
-                int guideLast = closeLine - 1;
-                if (guideLast < guideFirst) continue;
-
-                double x = baseX + indentCol * _font.CharWidth;
-                double yTop, yBot;
-                if (!IsWordWrapActive && !HasFoldLayout)
-                {
-                    yTop = guideFirst * _font.LineHeight;
-                    yBot = (guideLast + 1) * _font.LineHeight;
-                }
-                else
-                {
-                    yTop = _wrap.CumulOffset(guideFirst) * _font.LineHeight;
-                    yBot = (_wrap.CumulOffset(guideLast) + VisualLineCount(guideLast)) * _font.LineHeight;
-                }
-
-                yTop -= _textYBias;
-                yBot -= _textYBias;
-                dc.DrawLine(pen, new Point(x, yTop), new Point(x, yBot));
-            }
-        }
-    }
-
-    private void RenderGutterVisual(int firstLine, int lastLine)
-    {
-        int drawFirst = Math.Max(0, firstLine - RenderBufferLines);
-        int drawLast = Math.Min(_buffer.Count - 1, lastLine + RenderBufferLines);
-
-        using var dc = _gutterVisual.RenderOpen();
-
-        if (drawLast < drawFirst) return;
-        _gutterYBias = GetLineTopY(drawFirst);
-
-        double bgTop, bgBottom;
-        if (IsWordWrapActive || HasFoldLayout)
-        {
-            bgTop = _wrap.CumulOffset(drawFirst) * _font.LineHeight;
-            int lastVisual = _wrap.CumulOffset(drawLast) + VisualLineCount(drawLast);
-            bgBottom = lastVisual * _font.LineHeight;
-        }
-        else
-        {
-            bgTop = drawFirst * _font.LineHeight;
-            bgBottom = (drawLast + 1) * _font.LineHeight;
-        }
-        bgTop -= _gutterYBias;
-        bgBottom -= _gutterYBias;
-
-        dc.DrawRectangle(ThemeManager.EditorBg, null,
-            new Rect(0, bgTop, _gutterWidth, bgBottom - bgTop));
-        dc.DrawLine(_gutterSepPen,
-            new Point(_gutterWidth, bgTop), new Point(_gutterWidth, bgBottom));
-
-        double foldCenterX = _gutterWidth - FoldGutterWidth / 2 - 2;
-        for (int i = drawFirst; i <= drawLast; i++)
-        {
-            if (IsLineHidden(i)) continue;
-            double y = GetLineTopY(i) - _gutterYBias;
-            var brush = i == _caretLine
-                ? ThemeManager.ActiveLineNumberFg : ThemeManager.GutterFg;
-            int lineNum = i + 1;
-            if (!_lineNumStrings.TryGetValue(lineNum, out var numStr))
-            {
-                numStr = lineNum.ToString();
-                _lineNumStrings[lineNum] = numStr;
-            }
-            double numWidth = numStr.Length * _font.CharWidth;
-            _font.DrawGlyphRun(dc, numStr, 0, numStr.Length,
-                _gutterWidth - FoldGutterWidth - numWidth - GutterPadding, y, brush);
-
-            // Draw fold markers for block openers
-            if (IsStructuralBlockOpen(i))
-            {
-                bool isFolded = _foldedLines.Contains(i);
-                bool isHovered = i == _hoverFoldLine;
-                double cy = y + _font.LineHeight / 2;
-                double sz = Math.Min(8, _font.LineHeight * 0.45);
-                double btnSize = _font.LineHeight * 0.85;
-                double btnX = foldCenterX - btnSize / 2;
-                double btnY = y + (_font.LineHeight - btnSize) / 2;
-
-                // Hover background (matches scroll bar arrow button style)
-                if (isHovered)
-                {
-                    dc.DrawRoundedRectangle(ThemeManager.FoldHoverBrush, null,
-                        new Rect(btnX, btnY, btnSize, btnSize), 3, 3);
-                }
-
-                var fg = isHovered ? ThemeManager.EditorFg : ThemeManager.GutterFg;
-                if (isFolded)
-                {
-                    // ▸ right-pointing triangle
-                    var tri = new StreamGeometry();
-                    using (var ctx = tri.Open())
-                    {
-                        ctx.BeginFigure(new Point(foldCenterX - sz * 0.4, cy - sz * 0.55), true, true);
-                        ctx.LineTo(new Point(foldCenterX + sz * 0.5, cy), true, false);
-                        ctx.LineTo(new Point(foldCenterX - sz * 0.4, cy + sz * 0.55), true, false);
-                    }
-                    tri.Freeze();
-                    dc.DrawGeometry(fg, null, tri);
-                }
-                else
-                {
-                    // ▾ down-pointing triangle
-                    var tri = new StreamGeometry();
-                    using (var ctx = tri.Open())
-                    {
-                        ctx.BeginFigure(new Point(foldCenterX - sz * 0.55, cy - sz * 0.35), true, true);
-                        ctx.LineTo(new Point(foldCenterX + sz * 0.55, cy - sz * 0.35), true, false);
-                        ctx.LineTo(new Point(foldCenterX, cy + sz * 0.45), true, false);
-                    }
-                    tri.Freeze();
-                    dc.DrawGeometry(fg, null, tri);
-                }
-            }
-        }
-
-        _gutterRenderedFirstLine = drawFirst;
-        _gutterRenderedLastLine = drawLast;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -3001,7 +2425,6 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
             return;
         }
 
-        ApplyScrollTransformsAndClip();
         RequestEditorFrame();
     }
 
@@ -3023,7 +2446,6 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
             return;
         }
 
-        ApplyScrollTransformsAndClip();
         RequestEditorFrame();
     }
 
@@ -3072,7 +2494,6 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
             MarkDecorationsDirty();
             SetHorizontalOffset(_offset.X);
             SetVerticalOffset(_offset.Y);
-            ApplyScrollTransformsAndClip();
             ScrollOwner?.InvalidateScrollInfo();
             RequestEditorFrame();
         }

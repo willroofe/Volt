@@ -31,7 +31,7 @@ namespace Volt;
 
 public partial class EditorControl
 {
-    private bool _wpfLayersClearedForDirect2D;
+    private bool _overlayLayersClearedForDirect2D;
     private int _direct2DTargetVersion = -1;
 
     private bool TryRenderDirect2DFrame(int firstLine, int lastLine, bool longLineScrolled, bool perfEnabled, long frameStart)
@@ -43,7 +43,7 @@ public partial class EditorControl
         int pixelHeight = Math.Max(1, (int)Math.Ceiling(Math.Max(1, ActualHeight) * _font.Dpi));
         if (!renderer.EnsureTarget(pixelWidth, pixelHeight, _font.Dpi, out var targetReason))
         {
-            FallbackToWpfRenderer(targetReason ?? "Direct2D target creation failed");
+            MarkRendererUnsupported(targetReason ?? "Direct2D target creation failed");
             return false;
         }
         if (renderer.TargetVersion != _direct2DTargetVersion)
@@ -55,7 +55,7 @@ public partial class EditorControl
 
         LogRendererStateIfNeeded(pixelWidth, pixelHeight);
         EnsureDirect2DVisual();
-        ClearWpfLayerVisualsForDirect2D();
+        ClearOverlayLayerVisualsForDirect2D();
 
         bool rebuiltText = false;
         bool rebuiltGutter = false;
@@ -102,7 +102,7 @@ public partial class EditorControl
         }
         catch (Exception ex) when (renderer.MarkUnavailable(ex.Message))
         {
-            FallbackToWpfRenderer(ex.Message);
+            MarkRendererUnsupported(ex.Message);
             return false;
         }
         decorationMs = StopPerfTimer(perfEnabled, decorationsStart);
@@ -114,11 +114,9 @@ public partial class EditorControl
         }
         catch (Exception ex) when (renderer.MarkUnavailable(ex.Message))
         {
-            FallbackToWpfRenderer(ex.Message);
+            MarkRendererUnsupported(ex.Message);
             return false;
         }
-
-        _decorationsVisualDirty = false;
 
         if (_caretVisualDirty)
         {
@@ -155,18 +153,10 @@ public partial class EditorControl
         return true;
     }
 
-    private void InitializeRequestedRenderer()
+    private void InitializePreferredRenderer()
     {
-        _activeRenderer = _wpfRenderer;
-        _activeRenderMode = EditorRenderMode.Wpf;
+        _activeRenderMode = EditorRenderMode.Unsupported;
         _direct2DTargetVersion = -1;
-
-        if (_requestedRenderMode != EditorRenderMode.Direct2D)
-        {
-            ClearGpuVisual();
-            LogRendererStateIfNeeded();
-            return;
-        }
 
         nint hwnd = (PresentationSource.FromVisual(this) as HwndSource)?.Handle ?? 0;
         if (hwnd == 0 && Window.GetWindow(this) is { } window)
@@ -174,7 +164,7 @@ public partial class EditorControl
 
         if (hwnd == 0)
         {
-            FallbackToWpfRenderer("No HWND available for Direct3D interop");
+            MarkRendererUnsupported("No HWND available for Direct3D interop");
             return;
         }
 
@@ -182,36 +172,74 @@ public partial class EditorControl
         if (!renderer.TryInitialize(hwnd, _font.Dpi, out var reason))
         {
             renderer.Dispose();
-            FallbackToWpfRenderer(reason ?? "Direct2D initialization failed");
+            MarkRendererUnsupported(reason ?? "Direct2D initialization failed");
             return;
         }
 
         _direct2DRenderer = renderer;
-        _activeRenderer = renderer;
         _activeRenderMode = EditorRenderMode.Direct2D;
-        _rendererFallbackReason = null;
-        _wpfLayersClearedForDirect2D = false;
+        _rendererUnsupportedReason = null;
+        _overlayLayersClearedForDirect2D = false;
         MarkTextAndGutterDirty();
         LogRendererStateIfNeeded();
     }
 
-    private void FallbackToWpfRenderer(string reason)
+    private void MarkRendererUnsupported(string reason)
     {
-        _rendererFallbackReason = reason;
-        _activeRenderer = _wpfRenderer;
-        _activeRenderMode = EditorRenderMode.Wpf;
+        _rendererUnsupportedReason = reason;
+        _activeRenderMode = EditorRenderMode.Unsupported;
         _direct2DRenderer?.Dispose();
         _direct2DRenderer = null;
-        _wpfLayersClearedForDirect2D = false;
-        ClearGpuVisual();
+        _overlayLayersClearedForDirect2D = false;
+        ClearEditorLayerVisuals();
         MarkTextAndGutterDirty();
         _perf.LogRendererState(
-            _requestedRenderMode,
+            _preferredRenderMode,
             _activeRenderMode,
             Math.Max(1, (int)Math.Ceiling(Math.Max(1, ActualWidth) * Math.Max(1, _font.Dpi))),
             Math.Max(1, (int)Math.Ceiling(Math.Max(1, ActualHeight) * Math.Max(1, _font.Dpi))),
             _font.Dpi,
             reason);
+    }
+
+    private void RenderUnsupportedRendererNotice()
+    {
+        ClearGpuVisual();
+        using (var dc = _textVisual.RenderOpen()) { }
+        using (var dc = _gutterVisual.RenderOpen()) { }
+        using (var dc = _caretVisual.RenderOpen()) { }
+
+        using var notice = _decorationsVisual.RenderOpen();
+        notice.DrawRectangle(ThemeManager.EditorBg, null, new System.Windows.Rect(0, 0, Math.Max(0, ActualWidth), Math.Max(0, ActualHeight)));
+
+        double x = Math.Max(24, _gutterWidth + GutterPadding);
+        double y = 32;
+        DrawUnsupportedNoticeLine(notice, "GPU rendering is required.", x, y, ThemeManager.EditorFg);
+        y += _font.LineHeight * 1.5;
+        DrawUnsupportedNoticeLine(notice, "Volt requires Direct2D and Direct3D support.", x, y, ThemeManager.GutterFg);
+        y += _font.LineHeight;
+        DrawUnsupportedNoticeLine(notice, "This system is not supported.", x, y, ThemeManager.GutterFg);
+
+        if (!string.IsNullOrWhiteSpace(_rendererUnsupportedReason))
+        {
+            y += _font.LineHeight * 1.5;
+            DrawUnsupportedNoticeLine(notice, "Reason:", x, y, ThemeManager.GutterFg);
+            y += _font.LineHeight;
+            DrawUnsupportedNoticeLine(notice, _rendererUnsupportedReason, x, y, ThemeManager.GutterFg);
+        }
+
+        _textVisualDirty = false;
+        _gutterVisualDirty = false;
+        _caretVisualDirty = false;
+    }
+
+    private void DrawUnsupportedNoticeLine(DrawingContext dc, string text, double x, double y, Brush brush)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        int maxChars = Math.Max(1, (int)((Math.Max(0, ActualWidth - x - 24)) / Math.Max(1, _font.CharWidth)));
+        if (text.Length > maxChars)
+            text = text[..Math.Max(1, maxChars)];
+        _font.DrawGlyphRun(dc, text, 0, text.Length, x, y, brush);
     }
 
     private void LogRendererStateIfNeeded(int pixelWidth = -1, int pixelHeight = -1)
@@ -233,7 +261,7 @@ public partial class EditorControl
         _rendererLoggedPixelWidth = pixelWidth;
         _rendererLoggedPixelHeight = pixelHeight;
         _rendererLoggedDpi = _font.Dpi;
-        _perf.LogRendererState(_requestedRenderMode, _activeRenderMode, pixelWidth, pixelHeight, _font.Dpi, _rendererFallbackReason);
+        _perf.LogRendererState(_preferredRenderMode, _activeRenderMode, pixelWidth, pixelHeight, _font.Dpi, _rendererUnsupportedReason);
     }
 
     private void EnsureDirect2DVisual()
@@ -248,13 +276,22 @@ public partial class EditorControl
         using var dc = _gpuVisual.RenderOpen();
     }
 
-    private void ClearWpfLayerVisualsForDirect2D()
+    private void ClearEditorLayerVisuals()
     {
-        if (_wpfLayersClearedForDirect2D) return;
+        ClearGpuVisual();
         using (var dc = _decorationsVisual.RenderOpen()) { }
         using (var dc = _textVisual.RenderOpen()) { }
         using (var dc = _gutterVisual.RenderOpen()) { }
-        _wpfLayersClearedForDirect2D = true;
+        using (var dc = _caretVisual.RenderOpen()) { }
+    }
+
+    private void ClearOverlayLayerVisualsForDirect2D()
+    {
+        if (_overlayLayersClearedForDirect2D) return;
+        using (var dc = _decorationsVisual.RenderOpen()) { }
+        using (var dc = _textVisual.RenderOpen()) { }
+        using (var dc = _gutterVisual.RenderOpen()) { }
+        _overlayLayersClearedForDirect2D = true;
     }
 
     private int RebuildDirect2DTextLayer(Direct2DEditorRenderer renderer, int firstLine, int lastLine)
@@ -745,7 +782,7 @@ public partial class EditorControl
         return rects;
     }
 
-    private sealed class Direct2DEditorRenderer : IEditorRenderer
+    private sealed class Direct2DEditorRenderer : IDisposable
     {
         private readonly D3DImage _image = new();
         private readonly Dictionary<uint, ID2D1SolidColorBrush> _brushes = new();
@@ -772,9 +809,8 @@ public partial class EditorControl
         private double _dpi;
         private Vortice.Direct2D1.TextAntialiasMode _textAntialiasMode = Vortice.Direct2D1.TextAntialiasMode.Grayscale;
 
-        public EditorRenderMode Mode => EditorRenderMode.Direct2D;
         public bool IsAvailable { get; private set; }
-        public string? FallbackReason { get; private set; }
+        public string? FailureReason { get; private set; }
         public ImageSource ImageSource => _image;
         public int TargetVersion { get; private set; }
 
@@ -835,7 +871,7 @@ public partial class EditorControl
             catch (Exception ex)
             {
                 reason = ex.Message;
-                FallbackReason = reason;
+                FailureReason = reason;
                 IsAvailable = false;
                 Dispose();
                 return false;
@@ -847,7 +883,7 @@ public partial class EditorControl
             reason = null;
             if (!IsAvailable || _d2dContext == null || _d3d11Device == null || _d3d9Device == null)
             {
-                reason = FallbackReason ?? "Direct2D renderer is unavailable";
+                reason = FailureReason ?? "Direct2D renderer is unavailable";
                 return false;
             }
 
@@ -911,7 +947,7 @@ public partial class EditorControl
             catch (Exception ex)
             {
                 reason = ex.Message;
-                FallbackReason = reason;
+                FailureReason = reason;
                 IsAvailable = false;
                 return false;
             }
@@ -1087,7 +1123,7 @@ public partial class EditorControl
 
         public bool MarkUnavailable(string reason)
         {
-            FallbackReason = reason;
+            FailureReason = reason;
             IsAvailable = false;
             return true;
         }

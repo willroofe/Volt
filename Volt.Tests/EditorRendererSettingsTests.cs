@@ -1,3 +1,4 @@
+using System;
 using Volt;
 using Xunit;
 
@@ -5,24 +6,29 @@ namespace Volt.Tests;
 
 public class EditorRendererSettingsTests
 {
-    [Theory]
-    [InlineData(null, "Wpf")]
-    [InlineData("", "Wpf")]
-    [InlineData("0", "Wpf")]
-    [InlineData("false", "Wpf")]
-    [InlineData("1", "Direct2D")]
-    [InlineData("true", "Direct2D")]
-    [InlineData("YES", "Direct2D")]
-    public void RequestedMode_ParsesGpuFlag(string? value, string expected)
+    [Fact]
+    public void PreferredMode_DefaultsToDirect2D()
     {
-        Assert.Equal(expected, EditorRendererSettings.RequestedMode(value).ToString());
+        Assert.Equal("Direct2D", EditorRendererSettings.PreferredMode().ToString());
     }
 
-    [Fact]
-    public void RequestedMode_DefaultsToWpf_WhenVariableMissing()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("0")]
+    [InlineData("false")]
+    [InlineData("1")]
+    public void PreferredMode_IgnoresLegacyGpuEnvironmentFlag(string? value)
     {
-        var env = new Dictionary<string, string?>();
+        string? previous = Environment.GetEnvironmentVariable("VOLT_EDITOR_GPU");
+        try
+        {
+            Environment.SetEnvironmentVariable("VOLT_EDITOR_GPU", value);
 
-        Assert.Equal("Wpf", EditorRendererSettings.RequestedMode(env).ToString());
+            Assert.Equal("Direct2D", EditorRendererSettings.PreferredMode().ToString());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("VOLT_EDITOR_GPU", previous);
+        }
     }
 }
