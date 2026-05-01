@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
@@ -180,13 +181,7 @@ public class FontManager
                               double x, double y, Brush brush)
     {
         if (length <= 0) return;
-        // Must allocate per call — GlyphRun retains a reference to the array
-        var glyphIndices = new ushort[length];
-        for (int i = 0; i < length; i++)
-        {
-            char ch = text[startIndex + i];
-            glyphIndices[i] = _charToGlyphMap[ch];
-        }
+        var glyphIndices = new GlyphIndexList(text, startIndex, length, _charToGlyphMap);
         if (_uniformAdvanceWidths.Length < length)
         {
             _uniformAdvanceWidths = new double[Math.Max(length, 256)];
@@ -236,4 +231,77 @@ public class FontManager
             f.Source.Equals("Cascadia Code", StringComparison.OrdinalIgnoreCase))
             ? "Cascadia Code" : "Consolas";
     }
+}
+
+internal sealed class GlyphIndexList : IList<ushort>
+{
+    private readonly string _text;
+    private readonly int _startIndex;
+    private readonly int _count;
+    private readonly ushort[] _charToGlyphMap;
+
+    public GlyphIndexList(string text, int startIndex, int count, ushort[] charToGlyphMap)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(charToGlyphMap);
+        ArgumentOutOfRangeException.ThrowIfNegative(startIndex);
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        if (startIndex > text.Length || count > text.Length - startIndex)
+            throw new ArgumentOutOfRangeException(nameof(count));
+
+        _text = text;
+        _startIndex = startIndex;
+        _count = count;
+        _charToGlyphMap = charToGlyphMap;
+    }
+
+    public int Count => _count;
+    public bool IsReadOnly => true;
+
+    public ushort this[int index]
+    {
+        get
+        {
+            if ((uint)index >= (uint)_count)
+                throw new ArgumentOutOfRangeException(nameof(index));
+            return _charToGlyphMap[_text[_startIndex + index]];
+        }
+        set => throw new NotSupportedException();
+    }
+
+    public int IndexOf(ushort item)
+    {
+        for (int i = 0; i < _count; i++)
+            if (this[i] == item)
+                return i;
+        return -1;
+    }
+
+    public bool Contains(ushort item) => IndexOf(item) >= 0;
+
+    public void CopyTo(ushort[] array, int arrayIndex)
+    {
+        ArgumentNullException.ThrowIfNull(array);
+        if (arrayIndex < 0 || arrayIndex > array.Length)
+            throw new ArgumentOutOfRangeException(nameof(arrayIndex));
+        if (array.Length - arrayIndex < _count)
+            throw new ArgumentException("Destination array is too small.", nameof(array));
+
+        for (int i = 0; i < _count; i++)
+            array[arrayIndex + i] = this[i];
+    }
+
+    public IEnumerator<ushort> GetEnumerator()
+    {
+        for (int i = 0; i < _count; i++)
+            yield return this[i];
+    }
+
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+    public void Add(ushort item) => throw new NotSupportedException();
+    public void Clear() => throw new NotSupportedException();
+    public void Insert(int index, ushort item) => throw new NotSupportedException();
+    public bool Remove(ushort item) => throw new NotSupportedException();
+    public void RemoveAt(int index) => throw new NotSupportedException();
 }
