@@ -355,7 +355,7 @@
 
         <!-- Status bar -->
         <Border DockPanel.Dock="Bottom" Background="{DynamicResource ThemeChromeBrush}" Height="24">
-            <DockPanel>
+            <DockPanel x:Name="StatusBarContent">
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
                     <Rectangle Width="1" Fill="{DynamicResource ThemeBorderBrush}"/>
                     <TextBlock x:Name="CaretPosText" Text="Ln 1, Col 1" Margin="8,0"

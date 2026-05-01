@@ -55,7 +55,7 @@ public partial class FindBar : UserControl
         set => _seedWithSelection = value;
     }
 
-    public void SetEditor(EditorControl editor)
+    public void SetEditor(EditorControl? editor)
     {
         if (_editor != null)
         {

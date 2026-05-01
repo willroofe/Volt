@@ -108,16 +108,13 @@ public partial class MainWindow
         _tabHeaderFactory.CanTabEditorSplitOnLeaf = CanTabEditorSplitOnLeaf;
         _tabHeaderFactory.ResolveEditorTabStrip = ResolveEditorTabStripForTab;
 
-        // Create a placeholder tab only if there's no session to restore.
-        // Full session restore is deferred to ContentRendered.
-        if (!HasSessionToRestore())
-        {
-            var initialTab = CreateTab();
-            ActivateTab(initialTab);
-        }
+        // Full session restore is deferred to ContentRendered. If there is no
+        // file/session to restore, the editor area intentionally starts blank.
 
         _keyBindingManager.Load(_settings.KeyBindings);
         ApplySettings();
+        UpdateFileType();
+        UpdateCaretPos();
         UpdateMenuGestureText();
         UpdateTabOverflowBrushes();
         RestoreWindowPosition();
@@ -226,13 +223,28 @@ public partial class MainWindow
         return true;
     }
 
+    private void DetachActiveTabHooks()
+    {
+        if (_activeTab == null) return;
+        _activeTab.Editor.DirtyChanged -= OnActiveDirtyChanged;
+        _activeTab.Editor.CaretMoved -= OnActiveCaretMoved;
+    }
+
+    private void ClearActiveTab()
+    {
+        DetachActiveTabHooks();
+        _activeTab = null;
+        FindBarControl.Close();
+        FindBarControl.SetEditor(null);
+        CmdPalette.SetCommands([]);
+        UpdateTitle();
+        UpdateFileType();
+        UpdateCaretPos();
+    }
+
     private void UpdateActiveTabHooks(TabInfo tab)
     {
-        if (_activeTab != null)
-        {
-            _activeTab.Editor.DirtyChanged -= OnActiveDirtyChanged;
-            _activeTab.Editor.CaretMoved -= OnActiveCaretMoved;
-        }
+        DetachActiveTabHooks();
 
         _activeTab = tab;
 
@@ -582,9 +594,6 @@ public partial class MainWindow
         _settings.Editor.Explorer.ExpandedPaths.Clear();
         _settings.Save();
 
-        // Create a fresh empty tab
-        var tab = CreateTab();
-        ActivateTab(tab);
         ScheduleRestoreTerminalGlobal(_settings.Session.Terminal);
     }
 
@@ -780,21 +789,6 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Checks whether any session data exists that RestoreSession will act on.</summary>
-    private bool HasSessionToRestore()
-    {
-        if (_settings.LastOpenWorkspacePath is string wsPath && File.Exists(wsPath))
-            return true;
-        if (_settings.UnsavedWorkspaceFolders is { Count: > 0 })
-            return true;
-        var folderPath = _settings.Editor.Explorer.OpenFolderPath;
-        if (folderPath != null && Directory.Exists(folderPath))
-            return true;
-        if (_settings.Session.Tabs.Count > 0)
-            return true;
-        return false;
-    }
-
     /// <summary>
     /// Opens a file in a tab asynchronously — file I/O and content parsing run on a
     /// background thread so the UI stays responsive for large files.
@@ -880,11 +874,6 @@ public partial class MainWindow
                 if (_settings.UnsavedWorkspaceSession is { Tabs.Count: > 0 })
                 {
                     RestoreWorkspaceSession(_workspaceManager.CurrentWorkspace);
-                }
-                else
-                {
-                    CreateTab();
-                    ActivateTab(AllTabsOrdered()[0]);
                 }
                 return;
             }
@@ -1022,8 +1011,7 @@ public partial class MainWindow
     {
         if (!_settings.FolderSessions.TryGetValue(folderPath, out var session) || session.Tabs.Count == 0)
         {
-            var tab = CreateTab();
-            ActivateTab(tab);
+            ClearActiveTab();
             ScheduleRestoreTerminalFolder(session?.Terminal);
             return;
         }
@@ -1037,8 +1025,7 @@ public partial class MainWindow
     {
         if (restored.Tabs.Count == 0)
         {
-            var tab = CreateTab();
-            ActivateTab(tab);
+            ClearActiveTab();
             return;
         }
 
@@ -1105,8 +1092,7 @@ public partial class MainWindow
 
         if (AllTabsOrdered().Count == 0)
         {
-            var tab = CreateTab();
-            ActivateTab(tab);
+            ClearActiveTab();
         }
         else
         {
@@ -1240,7 +1226,13 @@ public partial class MainWindow
 
     private void UpdateCaretPos()
     {
-        if (Editor is not { } editor) return;
+        if (Editor is not { } editor)
+        {
+            StatusBarContent.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        StatusBarContent.Visibility = Visibility.Visible;
         CaretPosText.Text = $"Ln {editor.CaretLine + 1}, Col {editor.CaretCol + 1}";
         CharCountText.Text = $"{editor.CharCount:N0} {(editor.CharCount == 1 ? "Character" : "Characters")}";
     }
@@ -1258,8 +1250,13 @@ public partial class MainWindow
 
     private void UpdateFileType()
     {
-        if (Editor is not { } editor) return;
+        if (Editor is not { } editor)
+        {
+            StatusBarContent.Visibility = Visibility.Collapsed;
+            return;
+        }
 
+        StatusBarContent.Visibility = Visibility.Visible;
         if (_activeTab!.LanguageOverride != null)
         {
             // Empty string = explicit "Plain Text" override; non-empty = language name
@@ -1289,6 +1286,7 @@ public partial class MainWindow
 
     private void OnFileTypeClick(object sender, MouseButtonEventArgs e)
     {
+        if (_activeTab == null) return;
         EnsurePaletteCommands();
         CmdPalette.OpenWithCommand("Change Language");
     }
@@ -1745,11 +1743,16 @@ public partial class MainWindow
 
     private void OnSettings(object sender, RoutedEventArgs e)
     {
-        if (Editor is not { } editor) return;
+        var editor = Editor;
         var snapshot = new SettingsSnapshot(
-            editor.TabSize, _settings.Editor.Caret.BlockCaret, _settings.Editor.Caret.BlinkMs,
-            editor.FontFamilyName, editor.EditorFontSize, editor.EditorFontWeight,
-            editor.LineHeightMultiplier, _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition,
+            editor?.TabSize ?? _settings.Editor.TabSize,
+            _settings.Editor.Caret.BlockCaret,
+            _settings.Editor.Caret.BlinkMs,
+            editor?.FontFamilyName ?? _settings.Editor.Font.Family ?? FontManager.DefaultFontFamily(),
+            editor?.EditorFontSize ?? _settings.Editor.Font.Size,
+            editor?.EditorFontWeight ?? _settings.Editor.Font.Weight,
+            editor?.LineHeightMultiplier ?? _settings.Editor.Font.LineHeight,
+            _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition,
             _settings.Editor.Find.SeedWithSelection, _settings.Editor.FixedWidthTabs,
             _settings.Editor.WordWrap, _settings.Editor.WordWrapAtWords, _settings.Editor.WordWrapIndent,
             _settings.Editor.IndentGuides, _settings.Application.CommandPalettePosition,
@@ -2109,10 +2112,7 @@ public partial class MainWindow
         _settings.Save();
 
         if (AllTabsOrdered().Count == 0)
-        {
-            CreateTab();
-            ActivateTab(AllTabsOrdered()[0]);
-        }
+            ClearActiveTab();
     }
 
     // ── Workspace helpers ────────────────────────────────────────────────────
@@ -2169,8 +2169,6 @@ public partial class MainWindow
 
         ClearClosedTabHistory();
         CloseAllTabs();
-        CreateTab();
-        ActivateTab(AllTabsOrdered()[0]);
         ScheduleRestoreTerminalGlobal(_settings.Session?.Terminal);
     }
 
@@ -2274,8 +2272,7 @@ public partial class MainWindow
     {
         if (workspace.Session.Tabs.Count == 0)
         {
-            var tab = CreateTab();
-            ActivateTab(tab);
+            ClearActiveTab();
             ScheduleRestoreTerminalWorkspace(workspace.Session.Terminal);
             return;
         }
@@ -2311,8 +2308,8 @@ public partial class MainWindow
 
         if (AllTabsOrdered().Count == 0)
         {
-            var tab = CreateTab();
-            ActivateTab(tab);
+            ClearActiveTab();
+            ScheduleRestoreTerminalWorkspace(workspace.Session.Terminal);
             return;
         }
 

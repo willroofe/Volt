@@ -62,6 +62,9 @@ public partial class MainWindow
         foreach (var c in build.LeafChrome.Values)
         {
             c.NewTabButton.Click -= OnLeafChromeNewTabClick;
+            c.WelcomeNewTabButton.Click -= OnLeafChromeNewTabClick;
+            c.WelcomeOpenFileButton.Click -= OnWelcomeOpenFileClick;
+            c.WelcomeOpenFolderButton.Click -= OnWelcomeOpenFolderClick;
             c.TabScrollViewer.PreviewMouseWheel -= OnLeafChromeTabScrollPreviewMouseWheel;
             c.TabScrollViewer.ScrollChanged -= OnLeafChromeTabScrollChanged;
         }
@@ -70,7 +73,11 @@ public partial class MainWindow
     private void WireLeafChrome(string leafId, EditorPaneChrome c)
     {
         c.NewTabButton.Tag = leafId;
+        c.WelcomeNewTabButton.Tag = leafId;
         c.NewTabButton.Click += OnLeafChromeNewTabClick;
+        c.WelcomeNewTabButton.Click += OnLeafChromeNewTabClick;
+        c.WelcomeOpenFileButton.Click += OnWelcomeOpenFileClick;
+        c.WelcomeOpenFolderButton.Click += OnWelcomeOpenFolderClick;
         c.TabScrollViewer.PreviewMouseWheel += OnLeafChromeTabScrollPreviewMouseWheel;
         c.TabScrollViewer.ScrollChanged += OnLeafChromeTabScrollChanged;
     }
@@ -81,6 +88,10 @@ public partial class MainWindow
             _focusedLeafId = id;
         OnNewTab(sender, e);
     }
+
+    private void OnWelcomeOpenFileClick(object sender, RoutedEventArgs e) => OnOpen(sender, e);
+
+    private void OnWelcomeOpenFolderClick(object sender, RoutedEventArgs e) => OnOpenFolder(sender, e);
 
     private void OnLeafChromeTabScrollPreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
@@ -136,6 +147,7 @@ public partial class MainWindow
             if (!_layoutBuild.LeafChrome.TryGetValue(leaf.Id, out var chrome))
                 continue;
             AttachScrollHostToEditorHost(chrome.EditorHost, leaf.ActiveTab?.ScrollHost);
+            chrome.EmptyState.Visibility = leaf.ActiveTab == null ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 
@@ -347,8 +359,7 @@ public partial class MainWindow
 
         if (tab == _activeTab)
         {
-            tab.Editor.DirtyChanged -= OnActiveDirtyChanged;
-            tab.Editor.CaretMoved -= OnActiveCaretMoved;
+            DetachActiveTabHooks();
             _activeTab = null;
         }
 
@@ -369,8 +380,7 @@ public partial class MainWindow
 
         if (EditorLayoutTree.AllTabsOrdered(_editorLayoutRoot).Count == 0)
         {
-            var newTab = CreateTab();
-            ActivateTab(newTab);
+            ClearActiveTab();
         }
         else if (_activeTab == null)
         {
@@ -537,6 +547,8 @@ public partial class MainWindow
 
     private void CloseAllTabsCore()
     {
+        ClearActiveTab();
+
         foreach (var tab in AllTabsOrdered().ToList())
         {
             tab.StopWatching();
@@ -545,7 +557,6 @@ public partial class MainWindow
 
         _editorLayoutRoot = new EditorLeafNode();
         _focusedLeafId = ((EditorLeafNode)_editorLayoutRoot).Id;
-        _activeTab = null;
         RebuildEditorLayoutUi();
         RefreshEditorTabSplitDragHost();
     }

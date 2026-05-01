@@ -3,6 +3,46 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:Volt"
              x:Name="RootChrome">
+    <UserControl.Resources>
+        <Style x:Key="WelcomeActionButtonStyle" TargetType="Button">
+            <Setter Property="MinWidth" Value="176"/>
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="Margin" Value="4"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTextFg}"/>
+            <Setter Property="Background" Value="{DynamicResource ThemeMenuPopupBg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ThemeTabBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background"
+                                        Value="{DynamicResource ThemeButtonHover}"/>
+                                <Setter Property="BorderBrush" Value="{DynamicResource ThemeTextFgMuted}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter Property="BorderBrush" Value="{DynamicResource ThemeTextFg}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
     <DockPanel x:Name="OuterDock">
         <Border x:Name="TabBarBorder" DockPanel.Dock="Top" Background="{DynamicResource ThemeTabBarBg}"
                 BorderBrush="{DynamicResource ThemeTabBorder}" BorderThickness="0,0,0,1">
@@ -61,9 +101,107 @@
                 </Grid>
             </DockPanel>
         </Border>
-        <Grid x:Name="EditorHostPanel">
+        <Grid x:Name="EditorHostPanel" Background="{DynamicResource ThemeContentBg}">
             <Border x:Name="EditorHost"/>
-            <Border x:Name="EditorSplitDropHighlight" Visibility="Collapsed" IsHitTestVisible="False"/>
+
+            <Grid x:Name="EmptyState" Visibility="Collapsed" Panel.ZIndex="1">
+                <Grid HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      MaxWidth="760"
+                      Margin="44,0,44,64">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="Open a file, open a folder, or start a new untitled tab."
+                                   FontFamily="Segoe UI"
+                                   FontSize="13"
+                                   Foreground="{DynamicResource ThemeTextFg}"
+                                   Opacity="0.76"
+                                   HorizontalAlignment="Center"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   MaxWidth="520"
+                                   Margin="0,0,0,24"/>
+
+                        <WrapPanel HorizontalAlignment="Center">
+                            <Button x:Name="WelcomeOpenFileButton"
+                                    Style="{StaticResource WelcomeActionButtonStyle}"
+                                    ToolTip="Open File">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="{x:Static local:Codicons.FileText}"
+                                               FontFamily="{x:Static local:Codicons.Font}"
+                                               FontSize="16"
+                                               Foreground="{DynamicResource ThemeTextFg}"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,10,0"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="Open File"
+                                               FontFamily="Segoe UI"
+                                               FontSize="13"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+                            </Button>
+
+                            <Button x:Name="WelcomeOpenFolderButton"
+                                    Style="{StaticResource WelcomeActionButtonStyle}"
+                                    ToolTip="Open Folder">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="{x:Static local:Codicons.FolderOpened}"
+                                               FontFamily="{x:Static local:Codicons.Font}"
+                                               FontSize="16"
+                                               Foreground="{DynamicResource ThemeTextFg}"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,10,0"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="Open Folder"
+                                               FontFamily="Segoe UI"
+                                               FontSize="13"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+                            </Button>
+
+                            <Button x:Name="WelcomeNewTabButton"
+                                    Style="{StaticResource WelcomeActionButtonStyle}"
+                                    ToolTip="New Tab">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="{x:Static local:Codicons.NewFile}"
+                                               FontFamily="{x:Static local:Codicons.Font}"
+                                               FontSize="16"
+                                               Foreground="{DynamicResource ThemeTextFg}"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,10,0"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="New Tab"
+                                               FontFamily="Segoe UI"
+                                               FontSize="13"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+                            </Button>
+                        </WrapPanel>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+
+            <Border x:Name="EditorSplitDropHighlight"
+                    Visibility="Collapsed"
+                    IsHitTestVisible="False"
+                    Panel.ZIndex="2"/>
         </Grid>
     </DockPanel>
 </UserControl>
