@@ -88,25 +88,18 @@ public class FontManager
         if (_monoTypeface != null! && familyName == _monoTypeface.FontFamily.Source
             && Math.Abs(size - _fontSize) < 0.001 && weight == _fontWeight
             && (dpiOverride == null || Math.Abs(Dpi - dpiOverride.Value) < 0.0001)) return;
-        BeforeFontChanged?.Invoke();
-        _fontWeight = weight;
-        _monoTypeface = new Typeface(new FontFamily(familyName), FontStyles.Normal, weight, FontStretches.Normal);
-        _fontSize = size;
-        Dpi = dpiOverride ?? VisualTreeHelper.GetDpi(new DrawingVisual()).PixelsPerDip;
 
-        GlyphTypeface? gt = null;
-        if (!_monoTypeface.TryGetGlyphTypeface(out gt))
-        {
-            foreach (var face in new FontFamily(familyName).GetTypefaces())
-                if (face.TryGetGlyphTypeface(out gt)) break;
-        }
-        // Fall back to Consolas if the requested font has no glyph typeface
-        if (gt == null)
-        {
-            var fallback = new Typeface(new FontFamily("Consolas"), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
-            fallback.TryGetGlyphTypeface(out gt);
-        }
-        if (gt != null) _glyphTypeface = gt;
+        var (resolvedTypeface, resolvedGlyphTypeface) = ResolveTypeface(familyName, weight);
+        var resolvedWeight = resolvedTypeface.Weight;
+        double dpi = dpiOverride ?? VisualTreeHelper.GetDpi(new DrawingVisual()).PixelsPerDip;
+
+        BeforeFontChanged?.Invoke();
+        _fontWeight = resolvedWeight;
+        _monoTypeface = resolvedTypeface;
+        _glyphTypeface = resolvedGlyphTypeface;
+        _fontSize = size;
+        Dpi = dpi;
+
         BuildCharToGlyphMap();
 
         var sample = new FormattedText("X", CultureInfo.InvariantCulture,
@@ -117,6 +110,51 @@ public class FontManager
         _uniformAdvanceWidths = Array.Empty<double>();
 
         FontChanged?.Invoke();
+    }
+
+    private static (Typeface Typeface, GlyphTypeface GlyphTypeface) ResolveTypeface(string familyName, FontWeight weight)
+    {
+        if (TryResolveTypeface(familyName, weight, out var typeface, out var glyphTypeface))
+            return (typeface, glyphTypeface);
+
+        if (TryResolveTypeface("Consolas", weight, out typeface, out glyphTypeface))
+            return (typeface, glyphTypeface);
+
+        if (TryResolveTypeface("Consolas", FontWeights.Normal, out typeface, out glyphTypeface))
+            return (typeface, glyphTypeface);
+
+        throw new InvalidOperationException("No usable glyph typeface was found for editor rendering.");
+    }
+
+    private static bool TryResolveTypeface(string familyName, FontWeight weight,
+        out Typeface typeface, out GlyphTypeface glyphTypeface)
+    {
+        typeface = new Typeface(new FontFamily(familyName), FontStyles.Normal, weight, FontStretches.Normal);
+        if (typeface.TryGetGlyphTypeface(out var requestedGlyphTypeface) && requestedGlyphTypeface != null)
+        {
+            glyphTypeface = requestedGlyphTypeface;
+            return true;
+        }
+
+        try
+        {
+            foreach (var face in new FontFamily(familyName).GetTypefaces())
+            {
+                if (face.TryGetGlyphTypeface(out var faceGlyphTypeface) && faceGlyphTypeface != null)
+                {
+                    typeface = face;
+                    glyphTypeface = faceGlyphTypeface;
+                    return true;
+                }
+            }
+        }
+        catch
+        {
+            // Fall back to Consolas in ResolveTypeface.
+        }
+
+        glyphTypeface = null!;
+        return false;
     }
 
     private void BuildCharToGlyphMap()
