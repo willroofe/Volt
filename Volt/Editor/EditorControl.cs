@@ -48,7 +48,18 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
 
     // ── Settings ───────────────────────────────────────────────────────
     public int TabSize { get; set; } = 4;
-    public bool BlockCaret { get; set; }
+    private bool _blockCaret;
+    public bool BlockCaret
+    {
+        get => _blockCaret;
+        set
+        {
+            if (_blockCaret == value) return;
+            _blockCaret = value;
+            MarkDecorationsDirty();
+            RequestEditorFrame();
+        }
+    }
     private bool _indentGuides = true;
     public bool IndentGuides
     {
@@ -295,7 +306,7 @@ public partial class EditorControl : FrameworkElement, IScrollInfo
     public event EventHandler? CaretMoved;
     public event EventHandler<FindSnapshot>? FindStateChanged;
 
-    public new void InvalidateVisual()
+    public void InvalidateEditorVisual()
     {
         MarkTextAndGutterDirty();
         base.InvalidateVisual();

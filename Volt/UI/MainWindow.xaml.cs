@@ -1117,7 +1117,7 @@ public partial class MainWindow
                     tab.Editor.SetCaretPosition(restoredTab.CaretLine, restoredTab.CaretCol);
                     tab.Editor.SetVerticalOffset(restoredTab.ScrollVertical);
                     tab.Editor.SetHorizontalOffset(restoredTab.ScrollHorizontal);
-                    tab.Editor.InvalidateVisual();
+                    tab.Editor.InvalidateEditorVisual();
                 }
             };
             tab.Editor.Loaded += onLoaded;
@@ -1153,7 +1153,7 @@ public partial class MainWindow
         tab.Editor.SetCaretPosition(rt.CaretLine, rt.CaretCol);
         tab.Editor.SetVerticalOffset(rt.ScrollVertical);
         tab.Editor.SetHorizontalOffset(rt.ScrollHorizontal);
-        tab.Editor.InvalidateVisual();
+        tab.Editor.InvalidateEditorVisual();
     }
 
     private void RestoreWindowPosition()

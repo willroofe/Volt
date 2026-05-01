@@ -164,9 +164,9 @@ internal static class CommandPaletteCommands
                 var original = activeEditor.TabSize;
                 return AppSettings.TabSizeOptions.Select(size => new PaletteOption(
                     size.ToString(),
-                    ApplyPreview: () => { foreach (var t in tabs) { t.Editor.TabSize = size; t.Editor.InvalidateVisual(); } },
+                    ApplyPreview: () => { foreach (var t in tabs) { t.Editor.TabSize = size; t.Editor.InvalidateEditorVisual(); } },
                     Commit: () => { settings.Editor.TabSize = size; saveSettings(); },
-                    Revert: () => { foreach (var t in tabs) { t.Editor.TabSize = original; t.Editor.InvalidateVisual(); } }
+                    Revert: () => { foreach (var t in tabs) { t.Editor.TabSize = original; t.Editor.InvalidateEditorVisual(); } }
                 )).ToList();
             }),
 
@@ -176,7 +176,7 @@ internal static class CommandPaletteCommands
                 foreach (var t in tabs)
                 {
                     t.Editor.BlockCaret = settings.Editor.Caret.BlockCaret;
-                    t.Editor.InvalidateVisual();
+                    t.Editor.InvalidateEditorVisual();
                 }
                 saveSettings();
                 syncTerm();
