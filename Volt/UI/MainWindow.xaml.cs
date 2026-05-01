@@ -814,12 +814,16 @@ public partial class MainWindow
 
         if (!CheckFileCanOpen(fullPath)) return null;
 
-        // Reuse current tab if untitled and clean
         TabInfo tab;
         if (reuseUntitled && _activeTab != null && _activeTab.FilePath == null && !_activeTab.Editor.IsDirty)
+        {
             tab = _activeTab;
+        }
         else
+        {
             tab = CreateTab();
+        }
+        bool createdTabForLoad = tab.FilePath == null && !ReferenceEquals(tab, _activeTab);
 
         tab.FilePath = path;
         tab.IsLoading = true;
@@ -827,7 +831,16 @@ public partial class MainWindow
         ShowTabSpinner(tab);
         if (activate) ActivateTab(tab);
 
-        var result = await LoadFileDataAsync(path, tab.Editor.TabSize);
+        FileLoadResult result;
+        try
+        {
+            result = await LoadFileDataAsync(path, tab.Editor.TabSize);
+        }
+        catch (Exception ex) when (IsOpenFileException(ex))
+        {
+            HandleFailedFileLoad(tab, createdTabForLoad, ex);
+            return null;
+        }
 
         // Tab may have been closed while we were loading
         if (!TabExistsInAnyPane(tab)) return null;
@@ -835,6 +848,31 @@ public partial class MainWindow
         ApplyFileLoadResult(tab, result);
         return tab;
     }
+
+    private void HandleFailedFileLoad(TabInfo tab, bool removeTab, Exception ex)
+    {
+        if (TabExistsInAnyPane(tab))
+        {
+            if (removeTab)
+            {
+                RemoveTab(tab, recordClosedTabHistory: false);
+            }
+            else
+            {
+                tab.IsLoading = false;
+                HideTabSpinner(tab);
+                tab.FilePath = null;
+                UpdateTabHeader(tab);
+                if (tab == _activeTab)
+                    UpdateFileType();
+            }
+        }
+
+        ThemedMessageBox.Show(this, $"Could not open the file:\n\n{ex.Message}", "Open Failed");
+    }
+
+    private static bool IsOpenFileException(Exception ex) =>
+        ex is IOException or UnauthorizedAccessException or System.Security.SecurityException;
 
     /// <summary>
     /// Opens a file in a tab synchronously. Used by session restore where async
@@ -1305,11 +1343,7 @@ public partial class MainWindow
                 "Binary File");
             return false;
         }
-        catch (IOException)
-        {
-            return true;
-        }
-        catch (UnauthorizedAccessException ex)
+        catch (Exception ex) when (IsOpenFileException(ex))
         {
             ThemedMessageBox.Show(this, $"Could not open the file:\n\n{ex.Message}", "Open Failed");
             return false;
