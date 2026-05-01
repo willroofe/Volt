@@ -67,24 +67,32 @@ public partial class EditorControl
         double decorationMs = 0;
         double caretMs = 0;
 
-        if (TextViewportNeedsRefresh(firstLine, lastLine, longLineScrolled))
+        try
         {
-            long textStart = StartPerfTimer(perfEnabled);
-            glyphRuns += RebuildDirect2DTextLayer(renderer, firstLine, lastLine);
-            textMs = StopPerfTimer(perfEnabled, textStart);
-            _textVisualDirty = false;
-            rebuiltText = true;
-            staticLayerRebuilds++;
-        }
+            if (TextViewportNeedsRefresh(firstLine, lastLine, longLineScrolled))
+            {
+                long textStart = StartPerfTimer(perfEnabled);
+                glyphRuns += RebuildDirect2DTextLayer(renderer, firstLine, lastLine);
+                textMs = StopPerfTimer(perfEnabled, textStart);
+                _textVisualDirty = false;
+                rebuiltText = true;
+                staticLayerRebuilds++;
+            }
 
-        if (GutterViewportNeedsRefresh(firstLine, lastLine))
+            if (GutterViewportNeedsRefresh(firstLine, lastLine))
+            {
+                long gutterStart = StartPerfTimer(perfEnabled);
+                glyphRuns += RebuildDirect2DGutterLayer(renderer, firstLine, lastLine);
+                gutterMs = StopPerfTimer(perfEnabled, gutterStart);
+                _gutterVisualDirty = false;
+                rebuiltGutter = true;
+                staticLayerRebuilds++;
+            }
+        }
+        catch (Exception ex) when (renderer.MarkUnavailable(ex.Message))
         {
-            long gutterStart = StartPerfTimer(perfEnabled);
-            glyphRuns += RebuildDirect2DGutterLayer(renderer, firstLine, lastLine);
-            gutterMs = StopPerfTimer(perfEnabled, gutterStart);
-            _gutterVisualDirty = false;
-            rebuiltGutter = true;
-            staticLayerRebuilds++;
+            MarkRendererUnsupported(ex.Message);
+            return false;
         }
 
         long decorationsStart = StartPerfTimer(perfEnabled);
@@ -999,30 +1007,57 @@ public partial class EditorControl
 
         public void ReplaceTextLayer(Action render)
         {
-            _textLayer?.Dispose();
-            _textLayer = BuildCommandList(render);
+            DisposableResourceSwap.Replace(ref _textLayer, () => BuildCommandList(render));
         }
 
         public void ReplaceGutterLayer(Action render)
         {
-            _gutterLayer?.Dispose();
-            _gutterLayer = BuildCommandList(render);
+            DisposableResourceSwap.Replace(ref _gutterLayer, () => BuildCommandList(render));
         }
 
         private ID2D1CommandList BuildCommandList(Action render)
         {
             if (_d2dContext == null) throw new InvalidOperationException("Direct2D context is unavailable.");
             var previousTarget = _d2dContext.Target;
-            var layer = _d2dContext.CreateCommandList();
-            _d2dContext.Target = layer;
-            _d2dContext.Transform = Matrix3x2.Identity;
-            ApplyTextRenderingState();
-            _d2dContext.BeginDraw();
-            render();
-            _d2dContext.EndDraw().CheckError();
-            layer.Close().CheckError();
-            _d2dContext.Target = previousTarget;
-            return layer;
+            ID2D1CommandList? layer = null;
+            bool drawing = false;
+            bool succeeded = false;
+
+            try
+            {
+                layer = _d2dContext.CreateCommandList();
+                _d2dContext.Target = layer;
+                _d2dContext.Transform = Matrix3x2.Identity;
+                ApplyTextRenderingState();
+                _d2dContext.BeginDraw();
+                drawing = true;
+                render();
+
+                var result = _d2dContext.EndDraw();
+                drawing = false;
+                result.CheckError();
+                layer.Close().CheckError();
+                succeeded = true;
+                return layer;
+            }
+            finally
+            {
+                if (drawing)
+                {
+                    try
+                    {
+                        _d2dContext.EndDraw();
+                    }
+                    catch
+                    {
+                        // The renderer will be marked unavailable by the caller.
+                    }
+                }
+
+                _d2dContext.Target = previousTarget;
+                if (!succeeded)
+                    layer?.Dispose();
+            }
         }
 
         public void BeginPresent(Brush background)
