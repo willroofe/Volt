@@ -66,6 +66,12 @@ public partial class MainWindow
         tab.TailVerifyBytes = result.TailBytes;
         tab.StartWatching();
         UpdateTabHeader(tab);
+
+        if (ReferenceEquals(tab, _activeTab))
+        {
+            UpdateFileType();
+            UpdateCaretPos();
+        }
     }
 
     private ThemeManager ThemeManager => App.Current.ThemeManager;
@@ -1114,6 +1120,8 @@ public partial class MainWindow
                     tab.Editor.SetVerticalOffset(restoredTab.ScrollVertical);
                     tab.Editor.SetHorizontalOffset(restoredTab.ScrollHorizontal);
                     tab.Editor.InvalidateEditorVisual();
+                    if (ReferenceEquals(tab, _activeTab))
+                        UpdateCaretPos();
                 }
             };
             tab.Editor.Loaded += onLoaded;
@@ -1150,6 +1158,8 @@ public partial class MainWindow
         tab.Editor.SetVerticalOffset(rt.ScrollVertical);
         tab.Editor.SetHorizontalOffset(rt.ScrollHorizontal);
         tab.Editor.InvalidateEditorVisual();
+        if (ReferenceEquals(tab, _activeTab))
+            UpdateCaretPos();
     }
 
     private void RestoreWindowPosition()
@@ -2342,6 +2352,8 @@ public partial class MainWindow
         tab.Editor.SetCaretPosition(st.CaretLine, st.CaretCol);
         tab.ScrollHost?.ScrollToVerticalOffset(st.ScrollY);
         tab.ScrollHost?.ScrollToHorizontalOffset(st.ScrollX);
+        if (ReferenceEquals(tab, _activeTab))
+            UpdateCaretPos();
     }
 
     // ── Workspace context menu handlers ──────────────────────────────────────
