@@ -216,23 +216,6 @@ internal static class FileHelper
         return lf > crlf ? "\n" : "\r\n";
     }
 
-    public static bool LooksLikeBinary(string path, Encoding encoding)
-    {
-        if (encoding is UnicodeEncoding or UTF32Encoding)
-            return false;
-
-        Span<byte> buffer = stackalloc byte[8192];
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
-            FileShare.ReadWrite | FileShare.Delete);
-        int read = stream.Read(buffer);
-        for (int i = 0; i < read; i++)
-        {
-            if (buffer[i] == 0)
-                return true;
-        }
-        return false;
-    }
-
     /// <summary>Opens Windows File Explorer at the folder, or with the file selected.</summary>
     public static void RevealInFileExplorer(string path)
     {

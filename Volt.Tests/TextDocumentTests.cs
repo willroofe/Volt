@@ -134,19 +134,4 @@ public class TextDocumentTests
         }
     }
 
-    [Fact]
-    public void LooksLikeBinary_FlagsNullBytesInUtf8File()
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"volt-bin-{Guid.NewGuid():N}.bin");
-        try
-        {
-            File.WriteAllBytes(path, [0x61, 0x00, 0x62]);
-
-            Assert.True(FileHelper.LooksLikeBinary(path, new UTF8Encoding(false)));
-        }
-        finally
-        {
-            try { File.Delete(path); } catch { }
-        }
-    }
 }

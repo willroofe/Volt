@@ -663,8 +663,6 @@ public partial class MainWindow
             _closedTabPaths.RemoveAt(_closedTabPaths.Count - 1);
             if (!File.Exists(path))
                 continue;
-            if (!CheckFileCanOpen(path))
-                continue;
             var tab = await OpenFileInTabAsync(path, reuseUntitled: true, activate: true);
             if (tab != null)
             {
@@ -811,8 +809,6 @@ public partial class MainWindow
             ThemedMessageBox.Show(this, $"The file no longer exists:\n{fullPath}", "File Not Found");
             return null;
         }
-
-        if (!CheckFileCanOpen(fullPath)) return null;
 
         TabInfo tab;
         if (reuseUntitled && _activeTab != null && _activeTab.FilePath == null && !_activeTab.Editor.IsDirty)
@@ -1330,25 +1326,6 @@ public partial class MainWindow
     }
 
     private void UpdateTitle() => Title = "Volt";
-
-    private bool CheckFileCanOpen(string path)
-    {
-        if (!File.Exists(path)) return true;
-        try
-        {
-            var encoding = FileHelper.DetectEncoding(path);
-            if (!FileHelper.LooksLikeBinary(path, encoding)) return true;
-            ThemedMessageBox.Show(this,
-                "Volt can open very large text files, but this file appears to contain binary data.",
-                "Binary File");
-            return false;
-        }
-        catch (Exception ex) when (IsOpenFileException(ex))
-        {
-            ThemedMessageBox.Show(this, $"Could not open the file:\n\n{ex.Message}", "Open Failed");
-            return false;
-        }
-    }
 
     private bool PromptSaveTab(TabInfo tab)
     {
