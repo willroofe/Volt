@@ -63,6 +63,17 @@ public class TextBufferFileStorageTests : IDisposable
     }
 
     [Fact]
+    public void PrepareContentFromFile_ObservesCancellationBeforeIndexing()
+    {
+        string path = Write("cancel.txt", "alpha\nbeta\ngamma");
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() =>
+            TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), tabSize: 4, cts.Token));
+    }
+
+    [Fact]
     public void FileBackedBuffer_ReadsAcrossSparseCheckpoints()
     {
         string text = string.Join("\n", Enumerable.Range(0, LargeFileLineIndex.CheckpointInterval + 25)

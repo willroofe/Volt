@@ -353,6 +353,7 @@ public partial class MainWindow
         }
 
         tab.FileChangedExternally -= OnFileChangedExternally;
+        CancelTabLoad(tab);
         tab.StopWatching();
 
         bool wasLarge = tab.Editor.ReleaseResources();
@@ -539,6 +540,7 @@ public partial class MainWindow
     {
         foreach (var tab in AllTabsOrdered().ToList())
         {
+            CancelTabLoad(tab);
             tab.StopWatching();
             tab.Editor.ReleaseResources();
         }

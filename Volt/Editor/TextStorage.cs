@@ -493,11 +493,13 @@ internal sealed class LargeFileLineIndex
     public int MaxLineLength { get; }
     public string LineEnding { get; }
 
-    public static LargeFileLineIndex Build(string path, Encoding encoding)
+    public static LargeFileLineIndex Build(string path, Encoding encoding,
+        CancellationToken cancellationToken = default)
     {
         if (!FileTextSource.SupportsEncoding(encoding))
             throw new NotSupportedException("File-backed indexing currently supports UTF-8 text.");
 
+        cancellationToken.ThrowIfCancellationRequested();
         int bomLength = DetectUtf8BomLength(path);
         var checkpoints = new List<long> { bomLength };
         var checkpointCharCounts = new List<long> { 0 };
@@ -519,6 +521,7 @@ internal sealed class LargeFileLineIndex
         int read;
         while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             for (int i = 0; i < read; i++)
             {
                 byte b = buffer[i];
@@ -552,6 +555,7 @@ internal sealed class LargeFileLineIndex
             absoluteOffset += read;
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         charCountWithoutLineEndings += currentLineLength;
         maxLineLength = (int)Math.Max(maxLineLength, Math.Min(currentLineLength, int.MaxValue));
 
