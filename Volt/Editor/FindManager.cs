@@ -554,6 +554,36 @@ public class FindManager
                 return;
             }
 
+            if (TryCountFastLiteralMatches(session, progress =>
+                {
+                    long nowTicks = Environment.TickCount64;
+                    if (progress.BytesRead < progress.TotalBytes && nowTicks - lastRaisedTicks < 80)
+                        return;
+
+                    lastRaisedTicks = nowTicks;
+                    int searchedLines = EstimateSearchedLines(session.SearchLineCount, progress.BytesRead, progress.TotalBytes);
+                    lock (session.Gate)
+                    {
+                        session.KnownMatchCount = progress.MatchCount;
+                        session.SearchedLineCount = searchedLines;
+                        UpdateCurrentOrdinalNoLock(session);
+                    }
+                    RaiseChanged();
+                },
+                out long fastCount))
+            {
+                lock (session.Gate)
+                {
+                    session.KnownMatchCount = fastCount;
+                    session.SearchedLineCount = session.SearchLineCount;
+                    session.IsSearching = false;
+                    session.IsComplete = true;
+                    UpdateCurrentOrdinalNoLock(session);
+                }
+                RaiseChanged();
+                return;
+            }
+
             foreach (var (lineNumber, text) in EnumerateSnapshotLines(
                          session.Snapshot,
                          session.SearchStartLine,
@@ -1092,6 +1122,50 @@ public class FindManager
         }
 
         return last;
+    }
+
+    private static bool TryCountFastLiteralMatches(
+        FindSession session,
+        Action<FastLiteralMatchProgress>? progress,
+        out long count)
+    {
+        count = 0;
+        FindQuery query = session.Query;
+        if (query.UseRegex
+            || query.WholeWord
+            || query.SelectionBounds != null
+            || !query.MatchCase
+            || query.Text.Length == 0)
+        {
+            return false;
+        }
+
+        if (session.SearchStartLine != 0 || session.SearchLineCount != session.Snapshot.Count)
+            return false;
+
+        if (session.Snapshot.Pieces.Count != 1)
+            return false;
+
+        TextBuffer.LinePiece piece = session.Snapshot.Pieces[0];
+        if (piece.StartLine != 0 || piece.LineCount != piece.Source.LineCount)
+            return false;
+
+        if (piece.Source is not IFastLiteralMatchCounter counter)
+            return false;
+
+        return counter.TryCountLiteralMatches(query.Text, query.MatchCase, session.Cancellation.Token, progress, out count);
+    }
+
+    private static int EstimateSearchedLines(int searchLineCount, long bytesRead, long totalBytes)
+    {
+        if (searchLineCount <= 0)
+            return 0;
+
+        if (totalBytes <= 0)
+            return searchLineCount;
+
+        double ratio = Math.Clamp(bytesRead / (double)totalBytes, 0, 1);
+        return Math.Clamp((int)Math.Round(searchLineCount * ratio), 0, searchLineCount);
     }
 
     private static long CountSnapshotRange(
