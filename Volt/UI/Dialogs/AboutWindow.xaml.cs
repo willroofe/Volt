@@ -70,12 +70,14 @@ public partial class AboutWindow : Window
                 return;
             }
 
-            var result = ThemedMessageBox.Show(this,
-                $"Version {update.TargetFullRelease.Version} is available. Install and restart?",
-                "Update Available",
-                MessageBoxButton.YesNo);
+            string version = update.TargetFullRelease.Version.ToString();
+            bool shouldInstall = UpdateAvailableDialog.Show(
+                this,
+                version,
+                update.TargetFullRelease.NotesMarkdown,
+                AppUpdateManager.GetReleasePageUrl(version));
 
-            if (result != MessageBoxResult.Yes)
+            if (!shouldInstall)
             {
                 HideUpdateStatus();
                 UpdateButton.IsEnabled = true;
