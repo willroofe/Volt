@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -46,28 +46,62 @@ public partial class MainWindow
 
     internal EditorControl? Editor => _activeTab?.Editor;
 
-    private record FileLoadResult(Encoding Encoding, TextBuffer.PreparedContent Prepared, long FileSize, byte[]? TailBytes);
+    private record FileLoadResult(
+        Encoding Encoding,
+        TextBuffer.PreparedContent Prepared,
+        long FileSize,
+        byte[]? TailBytes,
+        DateTime LastWriteTimeUtc);
+
+    private record FileSaveResult(
+        TextBuffer.PreparedContent Prepared,
+        long FileSize,
+        byte[]? TailBytes,
+        DateTime LastWriteTimeUtc);
 
     private static Task<FileLoadResult> LoadFileDataAsync(string path, int tabSize) => Task.Run(() =>
     {
         var enc = FileHelper.DetectEncoding(path);
-        var text = FileHelper.ReadAllText(path, enc);
-        var prep = TextBuffer.PrepareContent(text, tabSize);
-        var size = new FileInfo(path).Length;
+        var prep = TextBuffer.PrepareContentFromFile(path, enc, tabSize);
+        var info = new FileInfo(path);
+        var size = info.Length;
         var tail = FileHelper.ReadTailVerifyBytes(path, size);
-        return new FileLoadResult(enc, prep, size, tail);
+        return new FileLoadResult(enc, prep, size, tail, info.LastWriteTimeUtc);
     });
+
+    private static Task<FileSaveResult> SaveFileDataAsync(
+        string path,
+        Encoding encoding,
+        EditorControl.SaveSnapshot snapshot) =>
+        Task.Run(() => SaveFileData(path, encoding, snapshot));
+
+    private static FileSaveResult SaveFileData(
+        string path,
+        Encoding encoding,
+        EditorControl.SaveSnapshot snapshot)
+    {
+        TextBuffer.PreparedContent prepared = TextBuffer.SaveSnapshotToFile(
+            path, encoding, snapshot.TabSize, snapshot.Lines, snapshot.LineEnding);
+        var info = new FileInfo(path);
+        byte[]? tail = FileHelper.ReadTailVerifyBytes(path, info.Length);
+        return new FileSaveResult(prepared, info.Length, tail, info.LastWriteTimeUtc);
+    }
 
     private void ApplyFileLoadResult(TabInfo tab, FileLoadResult result)
     {
-        tab.IsLoading = false;
-        HideTabSpinner(tab);
         tab.FileEncoding = result.Encoding;
         tab.Editor.SetPreparedContent(result.Prepared);
         tab.LastKnownFileSize = result.FileSize;
         tab.TailVerifyBytes = result.TailBytes;
+        tab.LastKnownWriteTimeUtc = result.LastWriteTimeUtc;
         tab.StartWatching();
+        EndTabLoad(tab);
         UpdateTabHeader(tab);
+        if (tab == _activeTab)
+        {
+            UpdateFileType();
+            UpdateCaretPos();
+        }
     }
 
     private ThemeManager ThemeManager => App.Current.ThemeManager;
@@ -251,9 +285,11 @@ public partial class MainWindow
         UpdateCaretPos();
     }
 
-    private void CloseTab(TabInfo tab)
+    private async void CloseTab(TabInfo tab)
     {
-        if (tab.Editor.IsDirty && !PromptSaveTab(tab)) return;
+        if (tab.IsBusy) return;
+        if (tab.Editor.IsDirty && !await PromptSaveTabAsync(tab)) return;
+        if (!TabExistsInAnyPane(tab)) return;
         RemoveTab(tab);
     }
 
@@ -289,9 +325,50 @@ public partial class MainWindow
 
     private const string SpinnerTag = "LoadingSpinner";
 
-    private static void ShowTabSpinner(TabInfo tab)
+    private static void BeginTabLoad(TabInfo tab)
+    {
+        tab.IsLoading = true;
+        ApplyTabBusyState(tab, "Loading", "Loading file...");
+    }
+
+    private static void EndTabLoad(TabInfo tab)
+    {
+        tab.IsLoading = false;
+        ApplyTabBusyState(tab);
+    }
+
+    private static void BeginTabSave(TabInfo tab)
+    {
+        tab.IsSaving = true;
+        ApplyTabBusyState(tab, "Saving", "Saving file...");
+    }
+
+    private static void EndTabSave(TabInfo tab)
+    {
+        tab.IsSaving = false;
+        ApplyTabBusyState(tab);
+    }
+
+    private static void ApplyTabBusyState(TabInfo tab, string? tabLabel = null, string? editorMessage = null)
+    {
+        if (tab.IsBusy)
+        {
+            ShowTabSpinner(tab, tabLabel ?? (tab.IsSaving ? "Saving" : "Loading"));
+            tab.Editor.SetBusy(true, editorMessage ?? (tab.IsSaving ? "Saving file..." : "Loading file..."));
+            tab.ScrollHost.IsHitTestVisible = false;
+        }
+        else
+        {
+            HideTabSpinner(tab);
+            tab.Editor.SetBusy(false);
+            tab.ScrollHost.IsHitTestVisible = true;
+        }
+    }
+
+    private static void ShowTabSpinner(TabInfo tab, string label)
     {
         if (tab.HeaderElement?.Child is not DockPanel panel) return;
+        HideTabSpinner(tab);
 
         var glyph = new TextBlock
         {
@@ -302,26 +379,26 @@ public partial class MainWindow
             VerticalAlignment = VerticalAlignment.Center,
             RenderTransformOrigin = new Point(0.5, 0.5),
             RenderTransform = new RotateTransform(),
-            Opacity = 0.7
+            Opacity = 0.95
         };
         glyph.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFgMuted);
 
-        // Wrap in a fixed-size container with clipping to prevent rotation artifacts
         var container = new Border
         {
             Width = 14,
-            Height = 14,
+            Height = 18,
             ClipToBounds = true,
             Margin = new Thickness(4, 0, 2, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Child = glyph,
-            Tag = SpinnerTag
+            Tag = SpinnerTag,
+            ToolTip = label
         };
 
         DockPanel.SetDock(container, Dock.Right);
         // Insert after close button (index 0) but before the TextBlock (fill),
         // so it appears between the filename and the close button.
-        panel.Children.Insert(1, container);
+        panel.Children.Insert(Math.Min(1, panel.Children.Count), container);
 
         var anim = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(1))
         {
@@ -338,7 +415,6 @@ public partial class MainWindow
             if (panel.Children[i] is FrameworkElement { Tag: SpinnerTag })
             {
                 panel.Children.RemoveAt(i);
-                break;
             }
         }
     }
@@ -654,8 +730,6 @@ public partial class MainWindow
             _closedTabPaths.RemoveAt(_closedTabPaths.Count - 1);
             if (!File.Exists(path))
                 continue;
-            if (!CheckFileSize(path))
-                continue;
             var tab = await OpenFileInTabAsync(path, reuseUntitled: true, activate: true);
             if (tab != null)
             {
@@ -705,8 +779,6 @@ public partial class MainWindow
             return null;
         }
 
-        if (!CheckFileSize(path)) return null;
-
         // Reuse current tab if untitled and clean
         TabInfo tab;
         if (reuseUntitled && _activeTab != null && _activeTab.FilePath == null && !_activeTab.Editor.IsDirty)
@@ -715,12 +787,26 @@ public partial class MainWindow
             tab = CreateTab();
 
         tab.FilePath = path;
-        tab.IsLoading = true;
+        BeginTabLoad(tab);
         UpdateTabHeader(tab);
-        ShowTabSpinner(tab);
         if (activate) ActivateTab(tab);
 
-        var result = await LoadFileDataAsync(path, tab.Editor.TabSize);
+        FileLoadResult result;
+        try
+        {
+            result = await LoadFileDataAsync(path, tab.Editor.TabSize);
+        }
+        catch (Exception ex)
+        {
+            if (TabExistsInAnyPane(tab))
+            {
+                EndTabLoad(tab);
+                UpdateTabHeader(tab);
+                ThemedMessageBox.Show(this, $"Could not open '{Path.GetFileName(path)}':\n\n{ex.Message}",
+                    "Open Failed");
+            }
+            return null;
+        }
 
         // Tab may have been closed while we were loading
         if (!TabExistsInAnyPane(tab)) return null;
@@ -956,8 +1042,7 @@ public partial class MainWindow
                 else
                 {
                     // File needs reading from disk — defer to async
-                    tab.IsLoading = true;
-                    ShowTabSpinner(tab);
+                    BeginTabLoad(tab);
                     asyncLoads.Add((tab, rt));
                 }
             }
@@ -1007,7 +1092,23 @@ public partial class MainWindow
 
     private async Task LoadTabContentAsync(TabInfo tab, RestoredTab rt)
     {
-        var result = await LoadFileDataAsync(rt.FilePath!, tab.Editor.TabSize);
+        FileLoadResult result;
+        try
+        {
+            result = await LoadFileDataAsync(rt.FilePath!, tab.Editor.TabSize);
+        }
+        catch (Exception ex)
+        {
+            if (TabExistsInAnyPane(tab))
+            {
+                EndTabLoad(tab);
+                UpdateTabHeader(tab);
+                ThemedMessageBox.Show(this, $"Could not restore '{tab.DisplayName}':\n\n{ex.Message}",
+                    "Open Failed");
+            }
+            return;
+        }
+
         if (!TabExistsInAnyPane(tab)) return;
 
         ApplyFileLoadResult(tab, result);
@@ -1055,6 +1156,14 @@ public partial class MainWindow
 
     private void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        var busyTab = AllTabsOrdered().FirstOrDefault(tab => tab.IsBusy);
+        if (busyTab != null)
+        {
+            ActivateTab(busyTab);
+            e.Cancel = true;
+            return;
+        }
+
         // Save workspace session if a workspace is open
         if (_workspaceManager.CurrentWorkspace != null)
         {
@@ -1128,6 +1237,19 @@ public partial class MainWindow
     private void UpdateCaretPos()
     {
         if (Editor is not { } editor) return;
+        if (_activeTab?.IsLoading == true)
+        {
+            CaretPosText.Text = "Loading...";
+            CharCountText.Text = "";
+            return;
+        }
+        if (_activeTab?.IsSaving == true)
+        {
+            CaretPosText.Text = "Saving...";
+            CharCountText.Text = "";
+            return;
+        }
+
         CaretPosText.Text = $"Ln {editor.CaretLine + 1}, Col {editor.CaretCol + 1}";
         CharCountText.Text = $"{editor.CharCount:N0} {(editor.CharCount == 1 ? "Character" : "Characters")}";
     }
@@ -1182,19 +1304,6 @@ public partial class MainWindow
 
     private void UpdateTitle() => Title = "Volt";
 
-    private const long MaxFileSizeBytes = 500L * 1024 * 1024;
-
-    private bool CheckFileSize(string path)
-    {
-        var info = new FileInfo(path);
-        if (!info.Exists || info.Length <= MaxFileSizeBytes) return true;
-        double sizeMb = info.Length / (1024.0 * 1024.0);
-        ThemedMessageBox.Show(this,
-            $"The file is {sizeMb:F0} MB which exceeds the 500 MB limit.",
-            "File Too Large");
-        return false;
-    }
-
     private bool PromptSaveTab(TabInfo tab)
     {
         if (!tab.Editor.IsDirty) return true;
@@ -1203,22 +1312,72 @@ public partial class MainWindow
             $"Do you want to save changes to {name}?",
             "Volt", MessageBoxButton.YesNoCancel);
         if (result == MessageBoxResult.Cancel) return false;
-        if (result == MessageBoxResult.Yes) SaveTab(tab);
-        return !tab.Editor.IsDirty || result == MessageBoxResult.No;
+        if (result == MessageBoxResult.Yes) return SaveTabSynchronously(tab);
+        return true;
     }
 
-    private void SaveTab(TabInfo tab)
+    private async Task<bool> PromptSaveTabAsync(TabInfo tab)
     {
+        if (!tab.Editor.IsDirty) return true;
+        var name = tab.FilePath != null ? Path.GetFileName(tab.FilePath) : "Untitled";
+        var result = ThemedMessageBox.Show(this,
+            $"Do you want to save changes to {name}?",
+            "Volt", MessageBoxButton.YesNoCancel);
+        if (result == MessageBoxResult.Cancel) return false;
+        if (result == MessageBoxResult.Yes) return await SaveTabAsync(tab);
+        return true;
+    }
+
+    private async Task<bool> SaveTabAsync(TabInfo tab)
+    {
+        if (tab.IsBusy) return false;
         if (tab.FilePath == null)
         {
-            SaveTabAs(tab);
-            return;
+            return await SaveTabAsAsync(tab);
         }
-        if (!WriteAndFinishSave(tab)) return;
+        if (!await WriteAndFinishSaveAsync(tab)) return false;
         if (tab == _activeTab) UpdateTitle();
+        return true;
     }
 
-    private void SaveTabAs(TabInfo tab)
+    private bool SaveTabSynchronously(TabInfo tab)
+    {
+        if (tab.IsBusy) return false;
+        if (tab.FilePath == null)
+            return SaveTabAsSynchronously(tab);
+
+        if (!WriteAndFinishSaveSynchronously(tab)) return false;
+        if (tab == _activeTab) UpdateTitle();
+        return true;
+    }
+
+    private async Task<bool> SaveTabAsAsync(TabInfo tab)
+    {
+        if (tab.IsBusy) return false;
+        if (!ConfigureSaveAsTarget(tab)) return false;
+        if (!await WriteAndFinishSaveAsync(tab)) return false;
+        if (tab == _activeTab)
+        {
+            UpdateTitle();
+            UpdateFileType();
+        }
+        return true;
+    }
+
+    private bool SaveTabAsSynchronously(TabInfo tab)
+    {
+        if (tab.IsBusy) return false;
+        if (!ConfigureSaveAsTarget(tab)) return false;
+        if (!WriteAndFinishSaveSynchronously(tab)) return false;
+        if (tab == _activeTab)
+        {
+            UpdateTitle();
+            UpdateFileType();
+        }
+        return true;
+    }
+
+    private bool ConfigureSaveAsTarget(TabInfo tab)
     {
         int filterIndex = 1;
         if (tab.FilePath != null)
@@ -1237,54 +1396,106 @@ public partial class MainWindow
             FilterIndex = filterIndex,
             FileName = tab.FilePath != null ? Path.GetFileName(tab.FilePath) : ""
         };
-        if (dlg.ShowDialog() != true) return;
+        if (dlg.ShowDialog() != true) return false;
         var oldExt = tab.FilePath != null ? Path.GetExtension(tab.FilePath) : "";
         tab.FilePath = dlg.FileName;
         // Clear manual language override when the extension changes so auto-detect kicks in
         if (!string.Equals(oldExt, Path.GetExtension(dlg.FileName), StringComparison.OrdinalIgnoreCase))
             tab.LanguageOverride = null;
-        if (!WriteAndFinishSave(tab)) return;
-        if (tab == _activeTab)
-        {
-            UpdateTitle();
-            UpdateFileType();
-        }
+        UpdateTabHeader(tab);
+        return true;
     }
 
     /// <summary>
     /// Writes the tab content to disk and updates post-save state (watcher, file size, dirty flag, header).
     /// Returns false if the write failed (error already shown to user).
     /// </summary>
-    private bool WriteAndFinishSave(TabInfo tab)
+    private async Task<bool> WriteAndFinishSaveAsync(TabInfo tab)
     {
+        if (tab.FilePath == null || tab.IsBusy) return false;
+        string path = tab.FilePath;
+        Encoding encoding = tab.FileEncoding;
+        EditorControl.SaveSnapshot snapshot = tab.Editor.CreateSaveSnapshot();
+
         tab.StopWatching();
+        BeginTabSave(tab);
+        if (tab == _activeTab) UpdateCaretPos();
+
         try
         {
-            FileHelper.AtomicWriteText(tab.FilePath!, tab.Editor.GetContent(), tab.FileEncoding);
+            FileSaveResult result = await SaveFileDataAsync(path, encoding, snapshot);
+            if (!TabExistsInAnyPane(tab)) return true;
+
+            tab.Editor.ApplySavedContent(result.Prepared);
+            ApplyFileSaveResult(tab, result);
+            return true;
         }
         catch (Exception ex)
         {
-            tab.StartWatching();
+            if (TabExistsInAnyPane(tab))
+            {
+                ThemedMessageBox.Show(this, $"Could not save '{tab.DisplayName}':\n\n{ex.Message}",
+                    "Save Failed");
+            }
+            return false;
+        }
+        finally
+        {
+            if (TabExistsInAnyPane(tab))
+            {
+                EndTabSave(tab);
+                tab.StartWatching();
+                UpdateTabHeader(tab);
+                if (tab == _activeTab) UpdateCaretPos();
+            }
+        }
+    }
+
+    private bool WriteAndFinishSaveSynchronously(TabInfo tab)
+    {
+        if (tab.FilePath == null || tab.IsBusy) return false;
+        string path = tab.FilePath;
+        Encoding encoding = tab.FileEncoding;
+        EditorControl.SaveSnapshot snapshot = tab.Editor.CreateSaveSnapshot();
+
+        tab.StopWatching();
+        BeginTabSave(tab);
+        if (tab == _activeTab) UpdateCaretPos();
+
+        try
+        {
+            FileSaveResult result = SaveFileData(path, encoding, snapshot);
+            tab.Editor.ApplySavedContent(result.Prepared);
+            ApplyFileSaveResult(tab, result);
+            return true;
+        }
+        catch (Exception ex)
+        {
             ThemedMessageBox.Show(this, $"Could not save '{tab.DisplayName}':\n\n{ex.Message}",
                 "Save Failed");
             return false;
         }
-        tab.StartWatching();
-        try
+        finally
         {
-            tab.LastKnownFileSize = new FileInfo(tab.FilePath!).Length;
-            tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(tab.FilePath!, tab.LastKnownFileSize);
+            EndTabSave(tab);
+            tab.StartWatching();
+            UpdateTabHeader(tab);
+            if (tab == _activeTab) UpdateCaretPos();
         }
-        catch (Exception) { }
+    }
+
+    private static void ApplyFileSaveResult(TabInfo tab, FileSaveResult result)
+    {
+        tab.LastKnownFileSize = result.FileSize;
+        tab.TailVerifyBytes = result.TailBytes;
+        tab.LastKnownWriteTimeUtc = result.LastWriteTimeUtc;
         tab.Editor.MarkClean();
-        UpdateTabHeader(tab);
-        return true;
     }
 
     private void OnFileChangedExternally(TabInfo tab)
     {
         if (tab.IsHandlingExternalChange) return;
-        if (tab.IsLoading) return;
+        if (tab.IsLoading || tab.IsSaving) return;
         if (tab.FilePath == null || !File.Exists(tab.FilePath)) return;
 
         var diskTime = File.GetLastWriteTimeUtc(tab.FilePath);
@@ -1344,7 +1555,8 @@ public partial class MainWindow
             {
                 // Full reload: file was truncated, edited in place, or this is the first load
                 tab.FileEncoding = FileHelper.DetectEncoding(tab.FilePath);
-                tab.Editor.ReloadContent(FileHelper.ReadAllText(tab.FilePath, tab.FileEncoding));
+                var prepared = TextBuffer.PrepareContentFromFile(tab.FilePath, tab.FileEncoding, tab.Editor.TabSize);
+                tab.Editor.ReloadPreparedContent(prepared);
                 tab.LastKnownFileSize = currentSize;
                 tab.TailVerifyBytes = FileHelper.ReadTailVerifyBytes(tab.FilePath, currentSize);
             }
@@ -1549,16 +1761,16 @@ public partial class MainWindow
         _settings.Save();
     }
 
-    private void OnSave(object sender, RoutedEventArgs e)
+    private async void OnSave(object sender, RoutedEventArgs e)
     {
         if (_activeTab == null) return;
-        SaveTab(_activeTab);
+        await SaveTabAsync(_activeTab);
     }
 
-    private void OnSaveAs(object sender, RoutedEventArgs e)
+    private async void OnSaveAs(object sender, RoutedEventArgs e)
     {
         if (_activeTab == null) return;
-        SaveTabAs(_activeTab);
+        await SaveTabAsAsync(_activeTab);
     }
 
     private void OnToggleWordWrap(object sender, RoutedEventArgs e)
@@ -2102,6 +2314,11 @@ public partial class MainWindow
     {
         foreach (var tab in AllTabsOrdered().ToList())
         {
+            if (tab.IsBusy)
+            {
+                ActivateTab(tab);
+                return false;
+            }
             if (tab.Editor.IsDirty)
             {
                 ActivateTab(tab);
@@ -2172,8 +2389,7 @@ public partial class MainWindow
             if (st.FilePath != null)
             {
                 tab.FilePath = st.FilePath;
-                tab.IsLoading = true;
-                ShowTabSpinner(tab);
+                BeginTabLoad(tab);
                 asyncLoads.Add((tab, st));
             }
 
@@ -2202,7 +2418,23 @@ public partial class MainWindow
 
     private async Task LoadWorkspaceTabAsync(TabInfo tab, WorkspaceSessionTab st)
     {
-        var result = await LoadFileDataAsync(st.FilePath!, tab.Editor.TabSize);
+        FileLoadResult result;
+        try
+        {
+            result = await LoadFileDataAsync(st.FilePath!, tab.Editor.TabSize);
+        }
+        catch (Exception ex)
+        {
+            if (TabExistsInAnyPane(tab))
+            {
+                EndTabLoad(tab);
+                UpdateTabHeader(tab);
+                ThemedMessageBox.Show(this, $"Could not restore '{tab.DisplayName}':\n\n{ex.Message}",
+                    "Open Failed");
+            }
+            return;
+        }
+
         if (!TabExistsInAnyPane(tab)) return;
 
         ApplyFileLoadResult(tab, result);

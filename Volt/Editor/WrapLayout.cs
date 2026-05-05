@@ -12,6 +12,7 @@ namespace Volt;
 /// </summary>
 internal class WrapLayout
 {
+    private const int LongLineThreshold = 500_000;
     private int _charsPerVisualLine;
     private int[]? _wrapLineCount;      // visual lines per logical line
     private int[]? _wrapCumulOffset;    // cumulative visual line offset
@@ -81,6 +82,15 @@ internal class WrapLayout
 
         int count = buffer.Count;
         EnsureArrays(count);
+        bool hasVeryLongLine = buffer.MaxLineLength > LongLineThreshold;
+        if (hasVeryLongLine)
+        {
+            // Avoid per-wrap-line column-start arrays for files such as large
+            // minified JSON where one physical line may span millions of visual
+            // rows. For those lines, wrap mapping is arithmetic.
+            breakAtWords = false;
+            wrapIndent = false;
+        }
 
         if (wrapIndent)
         {
@@ -115,7 +125,7 @@ internal class WrapLayout
     private void ComputeIndents(TextBuffer buffer, int count)
     {
         for (int i = 0; i < count; i++)
-            _wrapIndent![i] = MeasureIndent(buffer[i]);
+            _wrapIndent![i] = buffer.GetLineLength(i) > LongLineThreshold ? 0 : MeasureIndent(buffer[i]);
     }
 
     /// <summary>
@@ -143,8 +153,8 @@ internal class WrapLayout
         {
             _wrapCumulOffset![i] = cumul;
             if (IsHidden(i)) { _wrapLineCount![i] = 0; continue; }
-            int len = buffer[i].Length;
-            _wrapLineCount![i] = len <= _charsPerVisualLine ? 1 : (len + _charsPerVisualLine - 1) / _charsPerVisualLine;
+            int len = buffer.GetLineLength(i);
+            _wrapLineCount![i] = len <= _charsPerVisualLine ? 1 : 1 + (len - 1) / _charsPerVisualLine;
             cumul += _wrapLineCount[i];
         }
         _totalVisualLines = cumul;
@@ -158,7 +168,7 @@ internal class WrapLayout
         {
             _wrapCumulOffset![i] = cumul;
             if (IsHidden(i)) { _wrapLineCount![i] = 0; continue; }
-            int len = buffer[i].Length;
+            int len = buffer.GetLineLength(i);
 
             if (len <= _charsPerVisualLine)
             {
@@ -199,8 +209,7 @@ internal class WrapLayout
         {
             _wrapCumulOffset![i] = cumul;
             if (IsHidden(i)) { _wrapLineCount![i] = 0; continue; }
-            string line = buffer[i];
-            int len = line.Length;
+            int len = buffer.GetLineLength(i);
 
             if (len <= _charsPerVisualLine)
             {
@@ -210,8 +219,18 @@ internal class WrapLayout
                 continue;
             }
 
+            if (len > LongLineThreshold)
+            {
+                _wrapLineCount![i] = 1 + (len - 1) / _charsPerVisualLine;
+                for (int colStart = 0; colStart < len; colStart += _charsPerVisualLine)
+                    _colStartBuffer.Add(colStart);
+                cumul += _wrapLineCount[i];
+                continue;
+            }
+
             int subLines = 0;
             int pos = 0;
+            string line = buffer[i];
             var span = line.AsSpan();
             while (pos < len)
             {

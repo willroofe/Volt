@@ -1,9 +1,11 @@
 using System.Collections;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 
 namespace Volt;
@@ -88,6 +90,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         get => _wordWrap;
         set
         {
+            if (value && ShouldSuppressWordWrap())
+                value = false;
             if (_wordWrap == value) return;
             // Anchor to top visible line so toggling wrap doesn't shift the viewport
             int anchorLine;
@@ -126,8 +130,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 double maxY = Math.Max(0, _extent.Height - _viewport.Height);
                 _offset.Y = Math.Clamp(newY, 0, maxY);
             }
-            _textTransform.Y = -_offset.Y;
-            _gutterTransform.Y = -_offset.Y;
+            ApplyVisualTransforms();
             ScrollOwner?.InvalidateScrollInfo();
             InvalidateVisual();
         }
@@ -188,14 +191,19 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     // ── Multi-line syntax state ────────────────────────────────────
     private readonly List<LineState> _lineStates = new();
+    private int _lineStatesBaseLine;
     private int _lineStatesDirtyFrom = int.MaxValue;
+    private const int SyntaxLookbackLines = 500;
 
     // ── Layered rendering visuals ───────────────────────────────────
     private readonly DrawingVisual _textVisual = new();
     private readonly DrawingVisual _gutterVisual = new();
     private readonly DrawingVisual _caretVisual = new();
+    private readonly DrawingVisual _busyVisual = new();
+    private readonly DrawingVisual _busySpinnerVisual = new();
     private readonly TranslateTransform _textTransform = new();
     private readonly TranslateTransform _gutterTransform = new();
+    private readonly RotateTransform _busySpinnerTransform = new();
     private readonly RectangleGeometry _textClipGeom = new();
     private bool _textVisualDirty = true;
     private bool _gutterVisualDirty = true;
@@ -205,12 +213,17 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private int _gutterRenderedLastLine = -1;
     private const int RenderBufferLines = 50;
     private const int LongLineThreshold = 500_000; // skip expensive processing for lines longer than this
+    private const int MaxEagerWordWrapLines = 1_000_000;
     // Track rendered scroll region for long-line viewport clamping
     private double _renderedScrollX = double.NaN;
     private double _renderedScrollY = double.NaN;
     // Bias subtracted from content-space X coords to keep values small enough for
     // WPF's float32 render pipeline. Zero for normal files.
     private double _textXBias;
+    // Bias subtracted from content-space Y coords so very high line numbers do
+    // not lose row-level precision in retained WPF drawing visuals.
+    private double _textYBias;
+    private double _gutterYBias;
 
     // ── Font property delegation ─────────────────────────────────────
     public string FontFamilyName
@@ -252,6 +265,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public bool CanHorizontallyScroll { get; set; }
     public bool CanVerticallyScroll { get; set; }
 
+    // ── Busy/read-only operation state ───────────────────────────────
+    private bool _isBusy;
+    private string _busyMessage = "";
+    private bool _busySpinnerAnimating;
+    public bool IsBusy => _isBusy;
+
     // ── Word wrap state ──────────────────────────────────────────────
     private readonly WrapLayout _wrap = new();
     private bool _skipWrapAnchor;
@@ -275,6 +294,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     {
         _tokenCacheDirty = true;
         RebuildGutterPen();
+        UpdateBusyVisual();
         InvalidateText();
     }
 
@@ -323,13 +343,20 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _textVisual.Transform = _textTransform;
         _textVisual.Clip = _textClipGeom;
         _gutterVisual.Transform = _gutterTransform;
+        _busySpinnerVisual.Transform = _busySpinnerTransform;
         TextOptions.SetTextRenderingMode(_textVisual, TextRenderingMode.ClearType);
         TextOptions.SetTextRenderingMode(_gutterVisual, TextRenderingMode.ClearType);
+        TextOptions.SetTextRenderingMode(_busyVisual, TextRenderingMode.ClearType);
+        TextOptions.SetTextRenderingMode(_busySpinnerVisual, TextRenderingMode.ClearType);
         TextOptions.SetTextHintingMode(_textVisual, TextHintingMode.Fixed);
         TextOptions.SetTextHintingMode(_gutterVisual, TextHintingMode.Fixed);
+        TextOptions.SetTextHintingMode(_busyVisual, TextHintingMode.Fixed);
+        TextOptions.SetTextHintingMode(_busySpinnerVisual, TextHintingMode.Fixed);
         AddVisualChild(_textVisual);
         AddVisualChild(_gutterVisual);
         AddVisualChild(_caretVisual);
+        AddVisualChild(_busyVisual);
+        AddVisualChild(_busySpinnerVisual);
 
         Loaded += (_, _) =>
         {
@@ -339,24 +366,32 @@ public class EditorControl : FrameworkElement, IScrollInfo
             Keyboard.Focus(this);
             _blinkTimer.Start();
             UpdateExtent();
+            if (_isBusy)
+            {
+                UpdateBusyVisual();
+                StartBusySpinnerAnimation();
+            }
         };
 
         Unloaded += (_, _) =>
         {
             _blinkTimer.Stop();
+            StopBusySpinnerAnimation();
             _font.BeforeFontChanged -= OnBeforeFontChanged;
             _font.FontChanged -= OnFontChanged;
             ThemeManager.ThemeChanged -= OnThemeChanged;
         };
     }
 
-    // ── Visual tree (layered children: text → gutter → caret) ─────
-    protected override int VisualChildrenCount => 3;
+    // ── Visual tree (layered children: text → gutter → caret → busy overlay → busy spinner) ─────
+    protected override int VisualChildrenCount => 5;
     protected override Visual GetVisualChild(int index) => index switch
     {
         0 => _textVisual,
         1 => _gutterVisual,
         2 => _caretVisual,
+        3 => _busyVisual,
+        4 => _busySpinnerVisual,
         _ => throw new ArgumentOutOfRangeException(nameof(index))
     };
 
@@ -383,7 +418,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void UpdateCaretVisual()
     {
         using var dc = _caretVisual.RenderOpen();
-        if (!IsKeyboardFocused || !_caretVisible) return;
+        if (_isBusy || !IsKeyboardFocused || !_caretVisible) return;
 
         var (caretX, caretY) = GetPixelForPosition(_caretLine, _caretCol);
         if (caretX >= _gutterWidth && caretY + _font.LineHeight > 0 && caretY < ActualHeight)
@@ -392,9 +427,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
             {
                 dc.DrawRectangle(ThemeManager.CaretBrush, null,
                     new Rect(caretX, caretY, _font.CharWidth, _font.LineHeight));
-                if (_caretCol < _buffer[_caretLine].Length)
+                if (_caretCol < LineLength(_caretLine))
                 {
-                    _font.DrawGlyphRun(dc, _buffer[_caretLine], _caretCol, 1, caretX, caretY, ThemeManager.EditorBg);
+                    _font.DrawGlyphRun(dc, LineSegment(_caretLine, _caretCol, 1), 0, 1, caretX, caretY, ThemeManager.EditorBg);
                 }
             }
             else
@@ -403,6 +438,142 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     new Rect(caretX, caretY, BarCaretWidth, _font.LineHeight));
             }
         }
+    }
+
+    public void SetBusy(bool isBusy, string? message = null)
+    {
+        string nextMessage = isBusy ? message ?? _busyMessage : "";
+        if (_isBusy == isBusy && string.Equals(_busyMessage, nextMessage, StringComparison.Ordinal))
+            return;
+
+        _isBusy = isBusy;
+        _busyMessage = nextMessage;
+
+        if (_isBusy)
+        {
+            _isDragging = false;
+            if (IsMouseCaptured)
+                ReleaseMouseCapture();
+            _caretVisible = false;
+            Cursor = Cursors.Wait;
+        }
+        else
+        {
+            Cursor = Cursors.IBeam;
+            _caretVisible = true;
+        }
+
+        UpdateBusyVisual();
+        if (_isBusy)
+            StartBusySpinnerAnimation();
+        else
+            StopBusySpinnerAnimation();
+        UpdateCaretVisual();
+        InvalidateVisual();
+    }
+
+    private void UpdateBusyVisual()
+    {
+        if (!_isBusy || ActualWidth <= 0 || ActualHeight <= 0)
+        {
+            using (_busyVisual.RenderOpen()) { }
+            using (_busySpinnerVisual.RenderOpen()) { }
+            return;
+        }
+
+        Brush overlayBrush = CloneWithOpacity(ThemeManager.EditorBg, 0.78);
+        Brush panelBrush = CloneWithOpacity(ThemeManager.EditorBg, 0.96);
+        Pen borderPen = new(CloneWithOpacity(ThemeManager.GutterFg, 0.55), 1);
+        if (borderPen.CanFreeze) borderPen.Freeze();
+
+        string message = string.IsNullOrWhiteSpace(_busyMessage) ? "Working..." : _busyMessage;
+        double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        var icon = new FormattedText(
+            Codicons.Loading,
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            new Typeface(Codicons.Font, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
+            18,
+            ThemeManager.EditorFg,
+            dpi);
+        var text = new FormattedText(
+            message,
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            new Typeface("Segoe UI"),
+            13,
+            ThemeManager.EditorFg,
+            dpi);
+
+        double width = Math.Min(Math.Max(icon.WidthIncludingTrailingWhitespace + text.WidthIncludingTrailingWhitespace + 48, 220),
+            Math.Max(220, ActualWidth - 32));
+        double height = 48;
+        double left = Math.Max(16, (ActualWidth - width) / 2);
+        double top = Math.Max(16, (ActualHeight - height) / 2);
+        var panel = new Rect(left, top, width, height);
+
+        double contentWidth = icon.WidthIncludingTrailingWhitespace + 10 + text.WidthIncludingTrailingWhitespace;
+        double x = left + Math.Max(16, (width - contentWidth) / 2);
+        double iconY = top + (height - icon.Height) / 2;
+        double textY = top + (height - text.Height) / 2;
+        double iconCenterX = x + icon.WidthIncludingTrailingWhitespace / 2;
+        double iconCenterY = iconY + icon.Height / 2;
+        _busySpinnerTransform.CenterX = iconCenterX;
+        _busySpinnerTransform.CenterY = iconCenterY;
+
+        using (var dc = _busyVisual.RenderOpen())
+        {
+            dc.DrawRectangle(overlayBrush, null, new Rect(0, 0, ActualWidth, ActualHeight));
+            dc.DrawRoundedRectangle(panelBrush, borderPen, panel, 6, 6);
+            dc.DrawText(text, new Point(x + icon.WidthIncludingTrailingWhitespace + 10, textY));
+        }
+
+        using (var dc = _busySpinnerVisual.RenderOpen())
+        {
+            dc.DrawText(icon, new Point(x, iconY));
+        }
+    }
+
+    private void StartBusySpinnerAnimation()
+    {
+        if (_busySpinnerAnimating)
+            return;
+
+        var animation = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(1))
+        {
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+        _busySpinnerTransform.BeginAnimation(RotateTransform.AngleProperty, animation);
+        _busySpinnerAnimating = true;
+    }
+
+    private void StopBusySpinnerAnimation()
+    {
+        _busySpinnerTransform.BeginAnimation(RotateTransform.AngleProperty, null);
+        _busySpinnerTransform.Angle = 0;
+        _busySpinnerAnimating = false;
+    }
+
+    private static Brush CloneWithOpacity(Brush brush, double opacity)
+    {
+        Brush clone = brush.CloneCurrentValue();
+        clone.Opacity = opacity;
+        if (clone.CanFreeze) clone.Freeze();
+        return clone;
+    }
+
+    private static bool IsBusyHandledKey(Key key, bool ctrl, bool alt)
+    {
+        if (alt && (key == Key.Up || key == Key.Down))
+            return true;
+
+        return key switch
+        {
+            Key.Return or Key.Back or Key.Delete or Key.Tab => true,
+            Key.Left or Key.Right or Key.Up or Key.Down or Key.Home or Key.End or Key.PageUp or Key.PageDown => true,
+            Key.A or Key.C or Key.X or Key.V or Key.Z or Key.Y or Key.D or Key.K or Key.L when ctrl => true,
+            _ => false
+        };
     }
 
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
@@ -420,20 +591,23 @@ public class EditorControl : FrameworkElement, IScrollInfo
     /// <summary>Snapshot of the buffer region before an edit, used by BeginEdit/EndEdit.</summary>
     private readonly record struct EditScope(
         int StartLine, int LineCount, int BufferCount,
-        List<string> Before, int CaretLine, int CaretCol);
+        TextBuffer.LineSnapshot Before, int CaretLine, int CaretCol);
 
     private EditScope BeginEdit(int startLine, int endLine)
     {
-        int count = endLine - startLine + 1;
-        return new EditScope(startLine, count, _buffer.Count,
-            _buffer.GetLines(startLine, count), _caretLine, _caretCol);
+        int safeStart = Math.Clamp(startLine, 0, Math.Max(0, _buffer.Count - 1));
+        int safeEnd = Math.Clamp(endLine, safeStart, Math.Max(0, _buffer.Count - 1));
+        int count = safeEnd - safeStart + 1;
+        return new EditScope(safeStart, count, _buffer.Count,
+            _buffer.SnapshotLines(safeStart, count), _caretLine, _caretCol);
     }
 
     private void EndEdit(EditScope scope)
     {
         int lineDelta = _buffer.Count - scope.BufferCount;
-        int afterCount = scope.LineCount + lineDelta;
-        var after = _buffer.GetLines(scope.StartLine, afterCount);
+        int afterStart = Math.Min(scope.StartLine, _buffer.Count);
+        int afterCount = Math.Clamp(scope.LineCount + lineDelta, 0, _buffer.Count - afterStart);
+        var after = _buffer.SnapshotLines(afterStart, afterCount);
         bool evicted = _undoManager.Push(new UndoManager.UndoEntry(
             scope.StartLine, scope.Before, after,
             scope.CaretLine, scope.CaretCol, _caretLine, _caretCol));
@@ -444,7 +618,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     /// <summary>
     /// Shared post-edit bookkeeping: update dirty flags, line states, and clean depth.
-    /// Called by both EndEdit (for UndoEntry) and HandleTab (for IndentEntry).
+    /// Called after region-based edits are captured by the undo manager.
     /// </summary>
     private void MarkEditDirty(bool undoEntryEvicted, int dirtyFromLine)
     {
@@ -489,17 +663,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
         switch (entry)
         {
             case UndoManager.UndoEntry ue:
-            {
-                int delta = ue.Before.Count - ue.After.Count;
-                _buffer.ReplaceLines(ue.StartLine, ue.After.Count, ue.Before);
-                InvalidateLineStatesFrom(ue.StartLine);
-                if (delta != 0 && _foldedLines.Count > 0) ShiftFolds(ue.StartLine, delta);
-                break;
-            }
-            case UndoManager.IndentEntry ie:
-                ApplyIndentEntry(ie, reverse: true);
-                InvalidateLineStatesFrom(ie.StartLine);
-                break;
+                {
+                    int delta = ue.Before.Count - ue.After.Count;
+                    _buffer.ReplaceLines(ue.StartLine, ue.After.Count, ue.Before);
+                    InvalidateLineStatesFrom(ue.StartLine);
+                    if (delta != 0 && _foldedLines.Count > 0) ShiftFolds(ue.StartLine, delta);
+                    break;
+                }
         }
 
         FinishUndoRedo(entry.CaretLineBefore, entry.CaretColBefore);
@@ -513,17 +683,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
         switch (entry)
         {
             case UndoManager.UndoEntry ue:
-            {
-                int delta = ue.After.Count - ue.Before.Count;
-                _buffer.ReplaceLines(ue.StartLine, ue.Before.Count, ue.After);
-                InvalidateLineStatesFrom(ue.StartLine);
-                if (delta != 0 && _foldedLines.Count > 0) ShiftFolds(ue.StartLine, delta);
-                break;
-            }
-            case UndoManager.IndentEntry ie:
-                ApplyIndentEntry(ie, reverse: false);
-                InvalidateLineStatesFrom(ie.StartLine);
-                break;
+                {
+                    int delta = ue.After.Count - ue.Before.Count;
+                    _buffer.ReplaceLines(ue.StartLine, ue.Before.Count, ue.After);
+                    InvalidateLineStatesFrom(ue.StartLine);
+                    if (delta != 0 && _foldedLines.Count > 0) ShiftFolds(ue.StartLine, delta);
+                    break;
+                }
         }
 
         FinishUndoRedo(entry.CaretLineAfter, entry.CaretColAfter);
@@ -542,28 +708,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
         InvalidateText();
     }
 
-    private void ApplyIndentEntry(UndoManager.IndentEntry indent, bool reverse)
-    {
-        bool add = indent.IsIndent != reverse; // indent+undo = remove, unindent+undo = add
-        for (int i = 0; i < indent.LineCount; i++)
-        {
-            int spaces = indent.SpacesPerLine[i];
-            if (spaces == 0) continue;
-            int lineIdx = indent.StartLine + i;
-            if (add)
-                _buffer.InsertAt(lineIdx, 0, spaces < IndentStrings.Length ? IndentStrings[spaces] : new string(' ', spaces));
-            else
-                _buffer.DeleteAt(lineIdx, 0, spaces);
-        }
-    }
-
     // ──────────────────────────────────────────────────────────────────
     //  String/comment detection (for suppressing auto-close)
     // ──────────────────────────────────────────────────────────────────
     private bool IsCaretInsideString(string line, int caretCol)
     {
         EnsureLineStates(_caretLine);
-        var inState = _caretLine < _lineStates.Count ? _lineStates[_caretLine] : SyntaxManager.DefaultState;
+        var inState = GetCachedLineState(_caretLine);
         List<SyntaxToken> tokens;
         if (_tokenCache.TryGetValue(_caretLine, out var cached) && cached.content == line && cached.inState == inState)
             tokens = cached.tokens;
@@ -610,7 +761,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             line = Math.Clamp(line, 0, _buffer.Count - 1);
             double textX = pos.X + _offset.X - _gutterWidth - GutterPadding;
             int col = (int)Math.Round(textX / _font.CharWidth);
-            col = Math.Clamp(col, 0, _buffer[line].Length);
+            col = Math.Clamp(col, 0, LineLength(line));
             return (line, col);
         }
 
@@ -623,7 +774,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         int colInWrap = (int)Math.Round(tx / _font.CharWidth);
         colInWrap = Math.Max(0, colInWrap);
         int col2 = WrapColStart(logLine, wrapIndex) + colInWrap;
-        col2 = Math.Clamp(col2, 0, _buffer[logLine].Length);
+        col2 = Math.Clamp(col2, 0, LineLength(logLine));
         return (logLine, col2);
     }
 
@@ -653,7 +804,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private (int start, int end) GetWordAt(int line, int col)
     {
-        var text = _buffer[line];
+        var text = LineSegment(line, 0, Math.Min(LineLength(line), LongLineThreshold));
         if (text.Length == 0) return (0, 0);
         col = Math.Clamp(col, 0, Math.Max(0, text.Length - 1));
 
@@ -695,8 +846,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             double newY = (_wrap.CumulOffset(anchorLine) + newWrap) * _font.LineHeight + anchorDelta;
             double maxY = Math.Max(0, _wrap.TotalVisualLines * _font.LineHeight + _viewport.Height / 2 - _viewport.Height);
             _offset.Y = Math.Clamp(newY, 0, maxY);
-            _textTransform.Y = -_offset.Y;
-            _gutterTransform.Y = -_offset.Y;
+            ApplyVisualTransforms();
         }
 
         int digits = _buffer.Count > 0
@@ -737,6 +887,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private double GetVisualY(int logLine, int col = 0) =>
         _wrap.GetVisualY(_wordWrap, logLine, _font.LineHeight, col);
 
+    private double GetLineTopY(int logLine) =>
+        (_wordWrap || HasFoldLayout ? _wrap.CumulOffset(logLine) : logLine) * _font.LineHeight;
+
+    private void ApplyVisualTransforms()
+    {
+        _textTransform.X = -(_offset.X - _textXBias);
+        _textTransform.Y = -(_offset.Y - _textYBias);
+        _gutterTransform.Y = -(_offset.Y - _gutterYBias);
+    }
+
     private (int logLine, int wrapIndex) VisualToLogical(int visualLine) =>
         _wrap.VisualToLogical(_wordWrap, visualLine, _buffer.Count);
 
@@ -752,6 +912,26 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private (double x, double y) GetPixelForPosition(int line, int col) =>
         _wrap.GetPixelForPosition(_wordWrap, line, col, _gutterWidth, GutterPadding,
             _font.CharWidth, _font.LineHeight, _offset.X, _offset.Y);
+
+    private int LineLength(int line) => _buffer.GetLineLength(line);
+
+    private string LineSegment(int line, int startColumn, int length) =>
+        _buffer.GetLineSegment(line, startColumn, length);
+
+    private int CountLeadingSpacesToRemove(int line)
+    {
+        int inspect = Math.Min(TabSize, LineLength(line));
+        return LeadingSpaceRemovalTextSource.CountLeadingSpaces(LineSegment(line, 0, inspect), inspect);
+    }
+
+    private bool ShouldSuppressWordWrap() =>
+        _buffer.Count > MaxEagerWordWrapLines || _buffer.MaxLineLength > LongLineThreshold;
+
+    private void SuppressWordWrapIfNeeded()
+    {
+        if (_wordWrap && ShouldSuppressWordWrap())
+            _wordWrap = false;
+    }
 
     private void EnsureCaretVisible()
     {
@@ -775,7 +955,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void ClampCaret()
     {
         _caretLine = Math.Clamp(_caretLine, 0, Math.Max(0, _buffer.Count - 1));
-        _caretCol = Math.Clamp(_caretCol, 0, _buffer[_caretLine].Length);
+        _caretCol = Math.Clamp(_caretCol, 0, LineLength(_caretLine));
     }
 
     private void ResetPreferredCol() => _preferredCol = -1;
@@ -825,46 +1005,49 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     private void EnsureLineStates(int throughLine)
     {
-        if (_lineStates.Count == 0)
+        if (_buffer.Count == 0)
+            return;
+
+        throughLine = Math.Clamp(throughLine, 0, _buffer.Count - 1);
+        int desiredBase = Math.Max(0, throughLine - SyntaxLookbackLines);
+        bool dirtyTouchesWindow = _lineStatesDirtyFrom <= throughLine;
+        bool missingWindow = _lineStates.Count == 0
+            || desiredBase < _lineStatesBaseLine
+            || throughLine >= _lineStatesBaseLine + _lineStates.Count - 1;
+
+        if (missingWindow)
+        {
+            _lineStates.Clear();
+            _lineStatesBaseLine = desiredBase;
             _lineStates.Add(SyntaxManager.DefaultState);
-
-        if (_lineStatesDirtyFrom < int.MaxValue)
-        {
-            int from = _lineStatesDirtyFrom;
             _lineStatesDirtyFrom = int.MaxValue;
-
-            bool lineCountShifted = _lineStates.Count > 1
-                && _lineStates.Count - 1 != _buffer.Count;
-
-            if (lineCountShifted)
-            {
-                int keepCount = from + 1;
-                if (keepCount < _lineStates.Count)
-                    _lineStates.RemoveRange(keepCount, _lineStates.Count - keepCount);
-            }
-            else
-            {
-                for (int i = from; i < _buffer.Count && i + 1 < _lineStates.Count; i++)
-                {
-                    var outState = _buffer[i].Length > LongLineThreshold
-                        ? SyntaxManager.DefaultState
-                        : TokenizeLineState(_buffer[i], _lineStates[i]);
-                    if (_lineStates[i + 1] == outState)
-                        break;
-                    _lineStates[i + 1] = outState;
-                }
-            }
         }
-
-        while (_lineStates.Count <= throughLine && _lineStates.Count <= _buffer.Count)
+        else if (dirtyTouchesWindow)
         {
-            int lineIdx = _lineStates.Count - 1;
-            var inState = _lineStates[lineIdx];
-            var outState = _buffer[lineIdx].Length > LongLineThreshold
-                ? SyntaxManager.DefaultState
-                : TokenizeLineState(_buffer[lineIdx], inState);
-            _lineStates.Add(outState);
+            int keepCount = Math.Clamp(_lineStatesDirtyFrom - _lineStatesBaseLine, 1, _lineStates.Count);
+            if (keepCount < _lineStates.Count)
+                _lineStates.RemoveRange(keepCount, _lineStates.Count - keepCount);
+            _lineStatesDirtyFrom = int.MaxValue;
         }
+
+        int nextLine = _lineStatesBaseLine + _lineStates.Count - 1;
+        while (nextLine <= throughLine)
+        {
+            var inState = _lineStates[^1];
+            var outState = LineLength(nextLine) > LongLineThreshold
+                ? SyntaxManager.DefaultState
+                : TokenizeLineState(_buffer[nextLine], inState);
+            _lineStates.Add(outState);
+            nextLine++;
+        }
+    }
+
+    private LineState GetCachedLineState(int line)
+    {
+        int index = line - _lineStatesBaseLine;
+        return index >= 0 && index < _lineStates.Count
+            ? _lineStates[index]
+            : SyntaxManager.DefaultState;
     }
 
     private LineState TokenizeLineState(string line, LineState inState)
@@ -876,12 +1059,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void InvalidateLineStates()
     {
         _lineStates.Clear();
+        _lineStatesBaseLine = 0;
         _lineStatesDirtyFrom = int.MaxValue;
     }
 
     private void InvalidateLineStatesFrom(int lineIndex)
     {
-        _lineStatesDirtyFrom = Math.Min(_lineStatesDirtyFrom, lineIndex);
+        int firstDirtyState = Math.Min(_buffer.Count, Math.Max(0, lineIndex + 1));
+        _lineStatesDirtyFrom = Math.Min(_lineStatesDirtyFrom, firstDirtyState);
     }
 
     // ── Background line state precomputation ───────────────────────
@@ -895,11 +1080,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
         void ProcessBatch()
         {
             if (gen != _precomputeGeneration) return;
-            if (_lineStates.Count > _buffer.Count) return;
-            int target = Math.Min(_lineStates.Count + PrecomputeBatchSize - 1, _buffer.Count);
+            var (_, last) = VisibleLineRange();
+            int target = Math.Min(_buffer.Count - 1, last + PrecomputeBatchSize);
             EnsureLineStates(target);
-            if (_lineStates.Count <= _buffer.Count)
-                Dispatcher.BeginInvoke(ProcessBatch, DispatcherPriority.ApplicationIdle);
         }
 
         Dispatcher.BeginInvoke(ProcessBatch, DispatcherPriority.ApplicationIdle);
@@ -930,6 +1113,15 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     protected override void OnRender(DrawingContext dc)
     {
+        if (_isBusy)
+        {
+            dc.DrawRectangle(ThemeManager.EditorBg, null,
+                new Rect(0, 0, ActualWidth, ActualHeight));
+            UpdateCaretVisual();
+            UpdateBusyVisual();
+            return;
+        }
+
         ClampCaret();
 
         if (_tokenCacheDirty)
@@ -959,7 +1151,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             {
                 if (IsLineHidden(i)) continue;
                 int selStart = i == sl ? sc : 0;
-                int selEnd = i == el ? ec : _buffer[i].Length;
+                int selEnd = i == el ? ec : LineLength(i);
 
                 if (!_wordWrap && !HasFoldLayout)
                 {
@@ -1021,7 +1213,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                         int wrapIndex = visLine - _wrap.CumulOffset(mLine);
                         int wrapStart = WrapColStart(mLine, wrapIndex);
                         int colInWrap = col - wrapStart;
-                        int wrapEnd = wrapIndex + 1 < vCount ? WrapColStart(mLine, wrapIndex + 1) : _buffer[mLine].Length;
+                        int wrapEnd = wrapIndex + 1 < vCount ? WrapColStart(mLine, wrapIndex + 1) : LineLength(mLine);
                         int charsOnThisLine = Math.Min(remaining, wrapEnd - col);
                         double indentPx = WrapIndentPx(mLine, wrapIndex);
                         double mx = _gutterWidth + GutterPadding + indentPx + colInWrap * _font.CharWidth;
@@ -1039,7 +1231,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             if (_bracketMatchDirty)
             {
-                _bracketMatchCache = _caretLine < _buffer.Count && _buffer[_caretLine].Length > LongLineThreshold
+                _bracketMatchCache = _caretLine < _buffer.Count && LineLength(_caretLine) > LongLineThreshold
                     ? null
                     : BracketMatcher.FindMatch(_buffer, _caretLine, _caretCol, LiteralSkip);
                 _bracketMatchDirty = false;
@@ -1092,15 +1284,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _gutterVisualDirty = false;
         }
 
-        // Set transform/clip AFTER RenderTextVisual so _textXBias is up to date
-        _textTransform.X = -(_offset.X - _textXBias);
-        _textTransform.Y = -_offset.Y;
-        _gutterTransform.Y = -_offset.Y;
+        // Set transform/clip AFTER rendering so render biases are up to date.
+        ApplyVisualTransforms();
 
         _textClipGeom.Rect = new Rect(
-            _gutterWidth + _offset.X - _textXBias, _offset.Y,
+            _gutterWidth + _offset.X - _textXBias, _offset.Y - _textYBias,
             Math.Max(0, ActualWidth - _gutterWidth), ActualHeight);
         UpdateCaretVisual();
+        UpdateBusyVisual();
     }
 
     private void RenderWrappedSelection(DrawingContext dc, int line, int selStart, int selEnd, int sl, int sc, int el)
@@ -1113,7 +1304,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         for (int w = Math.Max(0, visFirst); w <= visLast; w++)
         {
             int wStart = WrapColStart(line, w);
-            int wEnd = w + 1 < vCount ? WrapColStart(line, w + 1) : _buffer[line].Length;
+            int wEnd = w + 1 < vCount ? WrapColStart(line, w + 1) : LineLength(line);
             int sA = Math.Max(selStart, wStart);
             int sB = Math.Min(selEnd, wEnd);
             if (sA >= sB && !(line != el && w == vCount - 1 && selEnd >= wEnd)) continue;
@@ -1152,26 +1343,29 @@ public class EditorControl : FrameworkElement, IScrollInfo
         // precision loss in WPF's transform pipeline at very large pixel offsets.
         bool hasLongLine = false;
         for (int i = drawFirst; i <= drawLast; i++)
-            if (_buffer[i].Length > LongLineThreshold) { hasLongLine = true; break; }
+            if (LineLength(i) > LongLineThreshold) { hasLongLine = true; break; }
         _textXBias = hasLongLine ? _offset.X : 0;
+        _textYBias = GetLineTopY(drawFirst);
 
         if (_indentGuides)
-            RenderIndentGuides(dc, drawFirst, drawLast);
+            RenderIndentGuides(dc, drawFirst, drawLast, _textYBias);
 
         EnsureLineStates(drawLast);
         for (int i = drawFirst; i <= drawLast; i++)
         {
             if (IsLineHidden(i)) continue;
-            var line = _buffer[i];
-            if (line.Length == 0) continue;
+            int lineLength = LineLength(i);
+            if (lineLength == 0) continue;
             double x = _gutterWidth + GutterPadding;
 
-            var inState = i < _lineStates.Count ? _lineStates[i] : SyntaxManager.DefaultState;
+            var inState = GetCachedLineState(i);
+            bool longLine = lineLength > LongLineThreshold;
+            string line = longLine ? "" : _buffer[i];
             if (!_tokenCache.TryGetValue(i, out var cached)
                 || cached.content != line || cached.inState != inState)
             {
                 // Skip expensive tokenization for extremely long lines — render as plain text
-                var tokens = line.Length > LongLineThreshold
+                var tokens = longLine
                     ? []
                     : SyntaxManager.Tokenize(line, _grammar, inState, out _);
                 _tokenCache[i] = (line, inState, tokens);
@@ -1180,18 +1374,23 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
             if (!_wordWrap || VisualLineCount(i) <= 1)
             {
-                double y = _wordWrap || HasFoldLayout ? _wrap.CumulOffset(i) * _font.LineHeight : i * _font.LineHeight;
+                double y = GetLineTopY(i) - _textYBias;
                 int segStart = 0;
-                int segEnd = line.Length;
-                if (line.Length > LongLineThreshold)
+                int segEnd = lineLength;
+                string drawText = line;
+                if (longLine)
                 {
                     // Clamp to visible horizontal range to avoid rendering millions of off-screen chars
                     segStart = Math.Max(0, (int)(_offset.X / _font.CharWidth) - 2);
-                    segEnd = Math.Min(line.Length,
+                    segEnd = Math.Min(lineLength,
                         (int)((_offset.X + _viewport.Width) / _font.CharWidth) + 2);
+                    drawText = LineSegment(i, segStart, segEnd - segStart);
+                    RenderLineTokens(dc, drawText, x + segStart * _font.CharWidth - _textXBias,
+                        y, 0, drawText.Length, cached.tokens);
+                    continue;
                 }
                 // Subtract _textXBias from X to keep content-space coords small
-                RenderLineTokens(dc, line, x + segStart * _font.CharWidth - _textXBias,
+                RenderLineTokens(dc, drawText, x + segStart * _font.CharWidth - _textXBias,
                     y, segStart, segEnd, cached.tokens);
             }
             else
@@ -1205,10 +1404,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 for (int w = Math.Max(0, visFirst); w <= visLast; w++)
                 {
                     int segStart = WrapColStart(i, w);
-                    int segEnd = w + 1 < vCount ? WrapColStart(i, w + 1) : line.Length;
-                    double y = (baseCumul + w) * _font.LineHeight;
+                    int segEnd = w + 1 < vCount ? WrapColStart(i, w + 1) : lineLength;
+                    double y = (baseCumul + w) * _font.LineHeight - _textYBias;
                     double wx = x + WrapIndentPx(i, w);
-                    RenderLineTokens(dc, line, wx, y, segStart, segEnd, cached.tokens);
+                    string drawText = longLine ? LineSegment(i, segStart, segEnd - segStart) : line;
+                    RenderLineTokens(dc, drawText, wx, y, longLine ? 0 : segStart, longLine ? drawText.Length : segEnd, cached.tokens);
                 }
             }
         }
@@ -1309,7 +1509,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             for (int i = _caretLine - 1; i >= 0; i--)
             {
-                if (!_hiddenLines[i]) { _caretLine = i; _caretCol = _buffer[i].Length; break; }
+                if (!_hiddenLines[i]) { _caretLine = i; _caretCol = LineLength(i); break; }
             }
         }
 
@@ -1430,7 +1630,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     /// </summary>
     private int? FindStructuralBlock(int line)
     {
-        if (_buffer[line].Length > LongLineThreshold) return null;
+        if (LineLength(line) > LongLineThreshold) return null;
         var closer = BracketMatcher.FindBlockCloser(_buffer, line, LiteralSkip);
         if (closer == null) return null;
         // The '}' must be the first non-whitespace character on its line
@@ -1445,13 +1645,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
         return closer.Value.line;
     }
 
-    private void RenderIndentGuides(DrawingContext dc, int drawFirst, int drawLast)
+    private void RenderIndentGuides(DrawingContext dc, int drawFirst, int drawLast, double yBias)
     {
         if (_buffer.Count == 0) return;
         // Skip indent guides when any visible line is extremely long —
         // bracket scanning would be O(line_length) per character.
         for (int i = drawFirst; i <= drawLast; i++)
-            if (_buffer[i].Length > LongLineThreshold) return;
+            if (LineLength(i) > LongLineThreshold) return;
 
         double baseX = _gutterWidth + GutterPadding;
         var pen = ThemeManager.IndentGuidePen;
@@ -1485,7 +1685,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             }
 
             if (yTop < yBot)
-                dc.DrawLine(pen, new Point(x, yTop), new Point(x, yBot));
+                dc.DrawLine(pen, new Point(x, yTop - yBias), new Point(x, yBot - yBias));
         }
 
         // Find guides that start above the draw range but pass through it.
@@ -1528,7 +1728,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     yBot = (_wrap.CumulOffset(guideLast) + VisualLineCount(guideLast)) * _font.LineHeight;
                 }
 
-                dc.DrawLine(pen, new Point(x, yTop), new Point(x, yBot));
+                dc.DrawLine(pen, new Point(x, yTop - yBias), new Point(x, yBot - yBias));
             }
         }
     }
@@ -1541,6 +1741,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         using var dc = _gutterVisual.RenderOpen();
 
         if (drawLast < drawFirst) return;
+
+        _gutterYBias = GetLineTopY(drawFirst);
 
         double bgTop, bgBottom;
         if (_wordWrap || HasFoldLayout)
@@ -1555,6 +1757,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
             bgBottom = (drawLast + 1) * _font.LineHeight;
         }
 
+        bgTop -= _gutterYBias;
+        bgBottom -= _gutterYBias;
+
         dc.DrawRectangle(ThemeManager.EditorBg, null,
             new Rect(0, bgTop, _gutterWidth, bgBottom - bgTop));
         dc.DrawLine(_gutterSepPen,
@@ -1567,6 +1772,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             double y = _wordWrap || HasFoldLayout
                 ? _wrap.CumulOffset(i) * _font.LineHeight
                 : i * _font.LineHeight;
+            y -= _gutterYBias;
             var brush = i == _caretLine
                 ? ThemeManager.ActiveLineNumberFg : ThemeManager.GutterFg;
             int lineNum = i + 1;
@@ -1653,6 +1859,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
+        if (_isBusy)
+        {
+            e.Handled = true;
+            return;
+        }
+
         Focus();
         Keyboard.Focus(this);
 
@@ -1703,6 +1915,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
+        if (_isBusy)
+        {
+            Cursor = Cursors.Wait;
+            e.Handled = true;
+            return;
+        }
+
         var pos = e.GetPosition(this);
 
         // Update fold gutter hover state and cursor
@@ -1754,6 +1973,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
+        if (_isBusy)
+        {
+            e.Handled = true;
+            return;
+        }
+
         _isDragging = false;
         ReleaseMouseCapture();
         e.Handled = true;
@@ -1772,6 +1997,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     protected override void OnMouseRightButtonUp(MouseButtonEventArgs e)
     {
+        if (_isBusy)
+        {
+            e.Handled = true;
+            return;
+        }
+
         Focus();
         var menu = ContextMenuHelper.Create();
 
@@ -1815,6 +2046,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     protected override void OnTextInput(TextCompositionEventArgs e)
     {
+        if (_isBusy)
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (string.IsNullOrEmpty(e.Text) || e.Text[0] < ' ') return;
 
         char ch = e.Text[0];
@@ -1871,6 +2108,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
         bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
         bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
         bool alt = (Keyboard.Modifiers & ModifierKeys.Alt) != 0;
+        Key key = e.Key == Key.System ? e.SystemKey : e.Key;
+
+        if (_isBusy)
+        {
+            if (IsBusyHandledKey(key, ctrl, alt))
+                e.Handled = true;
+            return;
+        }
 
         // Alt+key arrives as Key.System — check SystemKey for the real key
         if (e.Key == Key.System && alt && !ctrl)
@@ -2078,7 +2323,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
         else if (_caretLine > 0)
         {
-            _caretCol = _buffer[_caretLine - 1].Length;
+            _caretCol = LineLength(_caretLine - 1);
             _buffer.JoinWithNext(_caretLine - 1);
             _caretLine--;
             _tokenCacheDirty = true;
@@ -2090,7 +2335,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     {
         ResetPreferredCol();
         var (sl, el) = GetEditRange();
-        if (!_selection.HasSelection && _caretCol >= _buffer[_caretLine].Length && _caretLine < _buffer.Count - 1)
+        if (!_selection.HasSelection && _caretCol >= LineLength(_caretLine) && _caretLine < _buffer.Count - 1)
             el = _caretLine + 1;
         var scope = BeginEdit(sl, el);
 
@@ -2098,7 +2343,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             (_caretLine, _caretCol) = _selection.DeleteSelection(_buffer, _caretLine, _caretCol);
         }
-        else if (_caretCol < _buffer[_caretLine].Length)
+        else if (_caretCol < LineLength(_caretLine))
         {
             _buffer.DeleteAt(_caretLine, _caretCol, 1);
         }
@@ -2117,40 +2362,35 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         if (_selection.HasSelection && sl != el)
         {
-            int caretLineBefore = _caretLine, caretColBefore = _caretCol;
             int lineCount = el - sl + 1;
-            var spacesPerLine = new int[lineCount];
+            var indentScope = BeginEdit(sl, el);
 
-            for (int i = sl; i <= el; i++)
+            if (!shift)
             {
-                if (shift)
-                {
-                    int remove = 0;
-                    while (remove < TabSize && remove < _buffer[i].Length && _buffer[i][remove] == ' ')
-                        remove++;
-                    spacesPerLine[i - sl] = remove;
-                    if (remove > 0)
-                    {
-                        _buffer.DeleteAt(i, 0, remove);
-                        if (i == _caretLine) _caretCol = Math.Max(0, _caretCol - remove);
-                        if (i == _selection.AnchorLine) _selection.AnchorCol = Math.Max(0, _selection.AnchorCol - remove);
-                    }
-                }
-                else
-                {
-                    spacesPerLine[i - sl] = TabSize;
-                    _buffer.InsertAt(i, 0, new string(' ', TabSize));
-                    if (i == _caretLine) _caretCol += TabSize;
-                    if (i == _selection.AnchorLine) _selection.AnchorCol += TabSize;
-                }
+                string prefix = TabSize < IndentStrings.Length
+                    ? IndentStrings[TabSize]
+                    : new string(' ', TabSize);
+
+                _buffer.AddPrefixToLines(sl, lineCount, prefix);
+                if (_caretLine >= sl && _caretLine <= el) _caretCol += TabSize;
+                if (_selection.AnchorLine >= sl && _selection.AnchorLine <= el) _selection.AnchorCol += TabSize;
+            }
+            else
+            {
+                int caretRemove = _caretLine >= sl && _caretLine <= el ? CountLeadingSpacesToRemove(_caretLine) : 0;
+                int anchorRemove = _selection.AnchorLine >= sl && _selection.AnchorLine <= el
+                    ? CountLeadingSpacesToRemove(_selection.AnchorLine)
+                    : 0;
+
+                _buffer.RemoveLeadingSpacesFromLines(sl, lineCount, TabSize);
+                if (_caretLine >= sl && _caretLine <= el) _caretCol = Math.Max(0, _caretCol - caretRemove);
+                if (_selection.AnchorLine >= sl && _selection.AnchorLine <= el)
+                    _selection.AnchorCol = Math.Max(0, _selection.AnchorCol - anchorRemove);
             }
 
-            bool evicted = _undoManager.Push(new UndoManager.IndentEntry(
-                sl, lineCount, spacesPerLine, !shift,
-                caretLineBefore, caretColBefore, _caretLine, _caretCol));
-            MarkEditDirty(evicted, sl);
-
+            EndEdit(indentScope);
             _selection.HasSelection = true;
+            _tokenCacheDirty = true;
             UpdateExtent();
             EnsureCaretVisible();
             ResetCaret();
@@ -2181,7 +2421,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 else if (_caretLine > 0)
                 {
                     _caretLine = PrevVisibleLine(_caretLine - 1);
-                    _caretCol = _buffer[_caretLine].Length;
+                    _caretCol = LineLength(_caretLine);
                 }
                 if (!shift) _selection.Clear();
                 break;
@@ -2191,7 +2431,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 if (shift) _selection.Start(_caretLine, _caretCol);
                 if (ctrl)
                     _caretCol = WordRight(_buffer[_caretLine], _caretCol);
-                else if (_caretCol < _buffer[_caretLine].Length)
+                else if (_caretCol < LineLength(_caretLine))
                     _caretCol++;
                 else if (_caretLine < _buffer.Count - 1)
                 {
@@ -2207,7 +2447,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 {
                     if (_preferredCol < 0) _preferredCol = _caretCol;
                     _caretLine = PrevVisibleLine(_caretLine - 1);
-                    _caretCol = Math.Min(_preferredCol, _buffer[_caretLine].Length);
+                    _caretCol = Math.Min(_preferredCol, LineLength(_caretLine));
                 }
                 if (!shift) _selection.Clear();
                 break;
@@ -2218,7 +2458,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 {
                     if (_preferredCol < 0) _preferredCol = _caretCol;
                     _caretLine = NextVisibleLine(_caretLine + 1);
-                    _caretCol = Math.Min(_preferredCol, _buffer[_caretLine].Length);
+                    _caretCol = Math.Min(_preferredCol, LineLength(_caretLine));
                 }
                 if (!shift) _selection.Clear();
                 break;
@@ -2244,23 +2484,23 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 ResetPreferredCol();
                 if (shift) _selection.Start(_caretLine, _caretCol);
                 if (ctrl) _caretLine = _buffer.Count - 1;
-                _caretCol = _buffer[_caretLine].Length;
+                _caretCol = LineLength(_caretLine);
                 if (!shift) _selection.Clear();
                 break;
 
             case Key.PageUp:
             case Key.PageDown:
-            {
-                int visibleLines = Math.Max(1, (int)(_viewport.Height / _font.LineHeight) - 1);
-                if (shift) _selection.Start(_caretLine, _caretCol);
-                if (key == Key.PageUp)
-                    _caretLine = PrevVisibleLine(Math.Max(0, _caretLine - visibleLines));
-                else
-                    _caretLine = NextVisibleLine(Math.Min(_buffer.Count - 1, _caretLine + visibleLines));
-                _caretCol = Math.Min(_caretCol, _buffer[_caretLine].Length);
-                if (!shift) _selection.Clear();
-                break;
-            }
+                {
+                    int visibleLines = Math.Max(1, (int)(_viewport.Height / _font.LineHeight) - 1);
+                    if (shift) _selection.Start(_caretLine, _caretCol);
+                    if (key == Key.PageUp)
+                        _caretLine = PrevVisibleLine(Math.Max(0, _caretLine - visibleLines));
+                    else
+                        _caretLine = NextVisibleLine(Math.Min(_buffer.Count - 1, _caretLine + visibleLines));
+                    _caretCol = Math.Min(_caretCol, LineLength(_caretLine));
+                    if (!shift) _selection.Clear();
+                    break;
+                }
         }
         EnsureCaretVisible();
         ResetCaret();
@@ -2271,7 +2511,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _selection.AnchorLine = 0;
         _selection.AnchorCol = 0;
         _caretLine = _buffer.Count - 1;
-        _caretCol = _buffer[_buffer.Count - 1].Length;
+        _caretCol = LineLength(_buffer.Count - 1);
         _selection.HasSelection = true;
         InvalidateVisual();
     }
@@ -2348,7 +2588,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     _caretLine++;
                     _buffer.InsertLine(_caretLine, pasteLines[i]);
                 }
-                _caretCol = _buffer[_caretLine].Length;
+                _caretCol = LineLength(_caretLine);
                 _buffer.InsertAt(_caretLine, _caretCol, after);
                 _tokenCacheDirty = true;
             }
@@ -2368,9 +2608,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
             var (sl, _, el, _) = _selection.GetOrdered(_caretLine, _caretCol);
             int count = el - sl + 1;
             var scope = BeginEdit(sl, el + count);
-            var lines = _buffer.GetLines(sl, count);
-            for (int i = 0; i < count; i++)
-                _buffer.InsertLine(el + 1 + i, lines[i]);
+            TextBuffer.LineSnapshot lines = _buffer.SnapshotLines(sl, count);
+            _buffer.InsertLineSnapshot(el + 1, lines);
             _caretLine += count;
             _selection.AnchorLine += count;
             _tokenCacheDirty = true;
@@ -2426,7 +2665,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             _buffer.RemoveRange(sl, count);
             _caretLine = Math.Min(sl, _buffer.Count - 1);
-            _caretCol = Math.Min(_caretCol, _buffer[_caretLine].Length);
+            _caretCol = Math.Min(_caretCol, LineLength(_caretLine));
         }
         _selection.Clear();
         _tokenCacheDirty = true;
@@ -2513,7 +2752,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
         else
         {
-            _caretCol = _buffer[_caretLine].Length;
+            _caretCol = LineLength(_caretLine);
         }
         ResetPreferredCol();
         EnsureCaretVisible();
@@ -2527,6 +2766,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     protected override void OnMouseWheel(MouseWheelEventArgs e)
     {
+        if (_isBusy)
+        {
+            e.Handled = true;
+            return;
+        }
+
         SetVerticalOffset(_offset.Y - e.Delta / MouseWheelDeltaUnit * _font.LineHeight * ScrollWheelLines);
         e.Handled = true;
     }
@@ -2612,6 +2857,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _gutterVisualDirty = true;
             SetHorizontalOffset(_offset.X);
             SetVerticalOffset(_offset.Y);
+            UpdateBusyVisual();
             ScrollOwner?.InvalidateScrollInfo();
         }
         return finalSize;
@@ -2651,6 +2897,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _tokenCacheDirty = true;
         _lineNumStrings.Clear();
         InvalidateLineStates();
+        SuppressWordWrapIfNeeded();
         UpdateExtent();
         SetVerticalOffset(0);
         SetHorizontalOffset(0);
@@ -2662,7 +2909,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     {
         if (_buffer.Count == 0) return;
         _caretLine = Math.Clamp(line, 0, _buffer.Count - 1);
-        _caretCol = Math.Clamp(col, 0, _buffer[_caretLine].Length);
+        _caretCol = Math.Clamp(col, 0, LineLength(_caretLine));
         _selection.Clear();
     }
 
@@ -2684,11 +2931,38 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _find.Clear();
         _tokenCacheDirty = true;
         InvalidateLineStates();
+        SuppressWordWrapIfNeeded();
         UpdateExtent();
 
         // Clamp caret to new buffer bounds
         _caretLine = Math.Min(savedLine, _buffer.Count - 1);
-        _caretCol = Math.Min(savedCol, _buffer[_caretLine].Length);
+        _caretCol = Math.Min(savedCol, LineLength(_caretLine));
+
+        SetVerticalOffset(savedVOffset);
+        SetHorizontalOffset(savedHOffset);
+        InvalidateText();
+        PrecomputeLineStates();
+    }
+
+    public void ReloadPreparedContent(TextBuffer.PreparedContent prepared)
+    {
+        var savedVOffset = _offset.Y;
+        var savedHOffset = _offset.X;
+        var savedLine = _caretLine;
+        var savedCol = _caretCol;
+
+        _buffer.SetPreparedContent(prepared);
+        _selection.Clear();
+        _undoManager.Clear();
+        _cleanUndoDepth = 0;
+        _find.Clear();
+        _tokenCacheDirty = true;
+        InvalidateLineStates();
+        SuppressWordWrapIfNeeded();
+        UpdateExtent();
+
+        _caretLine = Math.Min(savedLine, _buffer.Count - 1);
+        _caretCol = Math.Min(savedCol, LineLength(_caretLine));
 
         SetVerticalOffset(savedVOffset);
         SetHorizontalOffset(savedHOffset);
@@ -2709,12 +2983,33 @@ public class EditorControl : FrameworkElement, IScrollInfo
         for (int i = dirtyFrom; i < _buffer.Count; i++)
             _tokenCache.Remove(i);
 
+        SuppressWordWrapIfNeeded();
         UpdateExtent();
         InvalidateText();
         PrecomputeLineStates();
     }
 
     public string GetContent() => _buffer.GetContent();
+
+    public sealed record SaveSnapshot(TextBuffer.LineSnapshot Lines, string LineEnding, int TabSize);
+
+    public SaveSnapshot CreateSaveSnapshot() =>
+        new(_buffer.SnapshotLines(0, _buffer.Count), _buffer.LineEnding, TabSize);
+
+    public void ApplySavedContent(TextBuffer.PreparedContent prepared)
+    {
+        _buffer.SetPreparedContent(prepared);
+        _tokenCacheDirty = true;
+        InvalidateLineStates();
+        UpdateExtent();
+        InvalidateText();
+    }
+
+    public void SaveToFile(string path, System.Text.Encoding encoding)
+    {
+        ApplySavedContent(TextBuffer.SaveSnapshotToFile(path, encoding, TabSize,
+            _buffer.SnapshotLines(0, _buffer.Count), _buffer.LineEnding));
+    }
 
     /// <summary>
     /// Release undo history, buffer, and caches to free memory when closing a tab.

@@ -267,4 +267,17 @@ public class WrapLayoutTests
         Assert.Equal(0, wrap.WrapIndentPx(wordWrap: true, 0, 0, charWidth: 8));
         Assert.Equal(0, wrap.WrapIndentPx(wordWrap: true, 0, 1, charWidth: 8));
     }
+
+    [Fact]
+    public void WordBreak_VeryLongLineUsesArithmeticWrap()
+    {
+        var buf = TestHelpers.MakeBuffer(new string('x', 1_000_000));
+        var wrap = new WrapLayout();
+
+        wrap.Recalculate(wordWrap: true, breakAtWords: true, wrapIndent: true, buf, textAreaWidth: 80, charWidth: 8);
+
+        Assert.Equal(10, wrap.CharsPerVisualLine);
+        Assert.Equal(100_000, wrap.VisualLineCount(wordWrap: true, 0));
+        Assert.Equal(12_340, wrap.WrapColStart(wordWrap: true, 0, 1234));
+    }
 }

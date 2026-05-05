@@ -7,7 +7,14 @@ namespace Volt.Tests;
 public class UndoManagerTests
 {
     private static UndoEntry MakeEntry(int startLine = 0) =>
-        new(startLine, ["before"], ["after"], 0, 0, 0, 5);
+        new(startLine, Snapshot("before"), Snapshot("after"), 0, 0, 0, 5);
+
+    private static TextBuffer.LineSnapshot Snapshot(params string[] lines)
+    {
+        var buffer = new TextBuffer();
+        buffer.SetContent(string.Join("\n", lines), tabSize: 4);
+        return buffer.SnapshotLines(0, buffer.Count);
+    }
 
     [Fact]
     public void PushUndo_RestoresEntry()
