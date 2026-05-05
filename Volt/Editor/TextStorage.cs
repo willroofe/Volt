@@ -12,7 +12,7 @@ internal interface ITextSource
     string GetLine(int line);
     int GetLineLength(int line);
     string GetLineSegment(int line, int startColumn, int length);
-    IEnumerable<string> EnumerateLines(int startLine, int count);
+    IEnumerable<string> EnumerateLines(int startLine, int count, bool cache = true);
     int GetMaxLineLength(int startLine, int count);
     long GetCharCountWithoutLineEndings(int startLine, int count);
 }
@@ -54,7 +54,7 @@ internal sealed class MemoryTextSource : ITextSource
         return text.Substring(startColumn, count);
     }
 
-    public IEnumerable<string> EnumerateLines(int startLine, int count)
+    public IEnumerable<string> EnumerateLines(int startLine, int count, bool cache = true)
     {
         int end = Math.Min(_lines.Count, startLine + count);
         for (int i = startLine; i < end; i++)
@@ -112,9 +112,9 @@ internal sealed class PrefixedTextSource : ITextSource
         return prefixPart + innerPart;
     }
 
-    public IEnumerable<string> EnumerateLines(int startLine, int count)
+    public IEnumerable<string> EnumerateLines(int startLine, int count, bool cache = true)
     {
-        foreach (string line in Inner.EnumerateLines(startLine, count))
+        foreach (string line in Inner.EnumerateLines(startLine, count, cache))
             yield return Prefix + line;
     }
 
@@ -166,9 +166,9 @@ internal sealed class FixedPrefixRemovalTextSource : ITextSource
         return value.Substring(startColumn, Math.Min(length, value.Length - startColumn));
     }
 
-    public IEnumerable<string> EnumerateLines(int startLine, int count)
+    public IEnumerable<string> EnumerateLines(int startLine, int count, bool cache = true)
     {
-        foreach (string line in Inner.EnumerateLines(startLine, count))
+        foreach (string line in Inner.EnumerateLines(startLine, count, cache))
             yield return line.StartsWith(Prefix, StringComparison.Ordinal)
                 ? line[Prefix.Length..]
                 : line;
@@ -224,9 +224,9 @@ internal sealed class LeadingSpaceRemovalTextSource : ITextSource
         return Inner.GetLineSegment(line, startColumn + remove, Math.Min(length, lineLength - startColumn));
     }
 
-    public IEnumerable<string> EnumerateLines(int startLine, int count)
+    public IEnumerable<string> EnumerateLines(int startLine, int count, bool cache = true)
     {
-        foreach (string line in Inner.EnumerateLines(startLine, count))
+        foreach (string line in Inner.EnumerateLines(startLine, count, cache))
         {
             int remove = CountLeadingSpaces(line, MaxSpaces);
             yield return remove == 0 ? line : line[remove..];
@@ -375,7 +375,7 @@ internal sealed class FileTextSource : ITextSource
         return requested;
     }
 
-    public IEnumerable<string> EnumerateLines(int startLine, int count)
+    public IEnumerable<string> EnumerateLines(int startLine, int count, bool cache = true)
     {
         if (count <= 0 || startLine >= _index.LineCount)
             yield break;
@@ -387,7 +387,8 @@ internal sealed class FileTextSource : ITextSource
         int currentLine = startLine;
         foreach (string value in ReadLinesFromFile(startLine, endLine - startLine))
         {
-            _cache.Add(currentLine, value);
+            if (cache)
+                _cache.Add(currentLine, value);
             yield return value;
             currentLine++;
         }
