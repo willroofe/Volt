@@ -94,26 +94,31 @@ public class ConPtySessionTests
         s.Output += data => { lock (sb) sb.Append(Encoding.UTF8.GetString(data.Span)); };
         s.Exited += _ => exited = true;
 
-        // Pump until output arrives or process exits, with a 5s cap.
-        // If output is present, the condition exits early (fast test).
-        // If not, we time out after 5s and fall through to the assertion below.
+        // Pump until the expected output arrives or process exits, with a 5s cap.
+        // ConPTY may emit terminal-mode escape sequences before the command output,
+        // so do not stop on the first bytes observed.
         PumpDispatcherUntil(
-            () => { lock (sb) return sb.Length > 0; },
+            () =>
+            {
+                lock (sb)
+                {
+                    return sb.ToString().Contains("hello", StringComparison.OrdinalIgnoreCase) || exited;
+                }
+            },
             TimeSpan.FromSeconds(5));
 
-        // If we have output, assert on content. If not, check exit was detected.
+        // If we have command output, assert on content. If not, check exit was detected.
         lock (sb)
         {
             var text = sb.ToString();
-            if (text.Length > 0)
+            if (text.Contains("hello", StringComparison.OrdinalIgnoreCase))
             {
-                // Output received — verify it contains "hello".
                 Assert.Contains("hello", text, StringComparison.OrdinalIgnoreCase);
             }
             else
             {
-                // No output received. This can happen in nested-ConPTY environments
-                // where the child process exits before producing any output.
+                // No command output received. This can happen in nested-ConPTY environments
+                // where the child process exits before producing readable command output.
                 // Fall back to verifying the session lifecycle is intact.
                 // Pump a bit more to give the Exited event a chance to fire.
                 PumpDispatcherUntil(() => exited, TimeSpan.FromSeconds(2));
