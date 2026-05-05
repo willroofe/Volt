@@ -17,6 +17,18 @@ internal interface ITextSource
     long GetCharCountWithoutLineEndings(int startLine, int count);
 }
 
+internal interface IFastLiteralMatchCounter
+{
+    bool TryCountLiteralMatches(
+        string text,
+        bool matchCase,
+        CancellationToken cancellationToken,
+        Action<FastLiteralMatchProgress>? progress,
+        out long count);
+}
+
+internal readonly record struct FastLiteralMatchProgress(long BytesRead, long TotalBytes, long MatchCount);
+
 internal sealed class MemoryTextSource : ITextSource
 {
     private readonly List<string> _lines;
@@ -258,9 +270,10 @@ internal sealed class LeadingSpaceRemovalTextSource : ITextSource
     }
 }
 
-internal sealed class FileTextSource : ITextSource
+internal sealed class FileTextSource : ITextSource, IFastLiteralMatchCounter
 {
     private const int CachePageLineCount = 512;
+    private const int LiteralSearchChunkByteCount = 16 * 1024 * 1024;
 
     private readonly string _path;
     private readonly Encoding _encoding;
@@ -283,6 +296,26 @@ internal sealed class FileTextSource : ITextSource
 
     public static bool SupportsEncoding(Encoding encoding) =>
         encoding.CodePage == Encoding.UTF8.CodePage;
+
+    public bool TryCountLiteralMatches(
+        string text,
+        bool matchCase,
+        CancellationToken cancellationToken,
+        Action<FastLiteralMatchProgress>? progress,
+        out long count)
+    {
+        count = 0;
+        if (!matchCase || _index.HasTabs || ContainsLineBreak(text) || ContainsSurrogate(text))
+            return false;
+
+        byte[] needle = _encoding.GetBytes(text);
+        if (needle.Length == 0)
+            return false;
+
+        count = CountLiteralMatchesInFile(_path, _index.ContentStartOffset, needle, cancellationToken,
+            progress: progress);
+        return true;
+    }
 
     public string GetLine(int line)
     {
@@ -461,6 +494,79 @@ internal sealed class FileTextSource : ITextSource
             total += value.Length;
         return total;
     }
+
+    internal static long CountLiteralMatchesInFile(
+        string path,
+        long startOffset,
+        byte[] needle,
+        CancellationToken cancellationToken,
+        int chunkByteCount = LiteralSearchChunkByteCount,
+        Action<FastLiteralMatchProgress>? progress = null)
+    {
+        if (needle.Length == 0)
+            return 0;
+
+        chunkByteCount = Math.Max(chunkByteCount, needle.Length);
+        byte[] buffer = new byte[chunkByteCount + needle.Length - 1];
+        int carry = 0;
+        long count = 0;
+
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete, bufferSize: 1 << 20, FileOptions.SequentialScan);
+        stream.Seek(startOffset, SeekOrigin.Begin);
+        long totalBytes = Math.Max(0, stream.Length - startOffset);
+        long bytesRead = 0;
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int read = stream.Read(buffer, carry, chunkByteCount);
+            if (read == 0)
+                break;
+
+            int length = carry + read;
+            bytesRead += read;
+            count += CountLiteralMatches(buffer.AsSpan(0, length), needle);
+            progress?.Invoke(new FastLiteralMatchProgress(bytesRead, totalBytes, count));
+
+            carry = Math.Min(needle.Length - 1, length);
+            if (carry > 0)
+                Buffer.BlockCopy(buffer, length - carry, buffer, 0, carry);
+        }
+
+        return count;
+    }
+
+    private static long CountLiteralMatches(ReadOnlySpan<byte> text, ReadOnlySpan<byte> needle)
+    {
+        long count = 0;
+        int offset = 0;
+        while (offset <= text.Length - needle.Length)
+        {
+            int found = text[offset..].IndexOf(needle);
+            if (found < 0)
+                break;
+
+            count++;
+            offset += found + 1;
+        }
+
+        return count;
+    }
+
+    private static bool ContainsLineBreak(string text) =>
+        text.AsSpan().IndexOfAny('\r', '\n') >= 0;
+
+    private static bool ContainsSurrogate(string text)
+    {
+        foreach (char ch in text)
+        {
+            if (char.IsSurrogate(ch))
+                return true;
+        }
+
+        return false;
+    }
 }
 
 internal sealed class LargeFileLineIndex
@@ -478,7 +584,8 @@ internal sealed class LargeFileLineIndex
         int lineCount,
         long charCountWithoutLineEndings,
         int maxLineLength,
-        string lineEnding)
+        string lineEnding,
+        bool hasTabs)
     {
         _checkpoints = checkpoints;
         _checkpointCharCounts = checkpointCharCounts;
@@ -487,12 +594,15 @@ internal sealed class LargeFileLineIndex
         CharCountWithoutLineEndings = charCountWithoutLineEndings;
         MaxLineLength = maxLineLength;
         LineEnding = lineEnding;
+        HasTabs = hasTabs;
     }
 
     public int LineCount { get; }
     public long CharCountWithoutLineEndings { get; }
     public int MaxLineLength { get; }
     public string LineEnding { get; }
+    public bool HasTabs { get; }
+    public long ContentStartOffset => _bomLength;
 
     public static LargeFileLineIndex Build(string path, Encoding encoding,
         CancellationToken cancellationToken = default)
@@ -511,6 +621,7 @@ internal sealed class LargeFileLineIndex
         int maxLineLength = 0;
         int lfCount = 0;
         int crlfCount = 0;
+        bool hasTabs = false;
         bool previousWasCr = false;
         long absoluteOffset = bomLength;
 
@@ -526,6 +637,9 @@ internal sealed class LargeFileLineIndex
             for (int i = 0; i < read; i++)
             {
                 byte b = buffer[i];
+                if (b == (byte)'\t')
+                    hasTabs = true;
+
                 if (b == (byte)'\n')
                 {
                     long contentLength = previousWasCr ? Math.Max(0, currentLineLength - 1) : currentLineLength;
@@ -571,7 +685,8 @@ internal sealed class LargeFileLineIndex
             (int)lineCount,
             charCountWithoutLineEndings,
             maxLineLength,
-            lineEnding);
+            lineEnding,
+            hasTabs);
     }
 
     public (int line, long offset) GetCheckpointForLine(int line)

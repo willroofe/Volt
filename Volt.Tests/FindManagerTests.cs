@@ -1,6 +1,8 @@
 using Xunit;
 using Volt;
 using System.Diagnostics;
+using System.IO;
+using System.Text;
 
 namespace Volt.Tests;
 
@@ -73,6 +75,189 @@ public class FindManagerTests
 
         Assert.Equal(0, find.MatchCount);
         Assert.Null(find.GetCurrentMatch());
+    }
+
+    [Fact]
+    public async Task StartSearch_FileBackedLiteralCountMatchesLineScanner()
+    {
+        string text = "test alpha\nattest test\nTEST";
+        string path = WriteTempFile(text);
+        try
+        {
+            var fileBuffer = new TextBuffer();
+            fileBuffer.SetPreparedContent(TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), tabSize: 4));
+            var memoryBuffer = TestHelpers.MakeBuffer(text);
+            var expected = new FindManager();
+            expected.Search(memoryBuffer, "test", matchCase: true, caretLine: 0, caretCol: 0);
+            var find = new FindManager();
+
+            find.StartSearch(fileBuffer, "test", matchCase: true, caretLine: 0, caretCol: 0);
+            await WaitUntil(() => find.HasExactMatchCount);
+
+            Assert.Equal(expected.MatchCount, find.KnownMatchCount);
+            Assert.Empty(find.Matches);
+            find.Clear();
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public async Task StartSearch_FileBackedLiteralFallsBackWhenTabsNeedExpansion()
+    {
+        string path = WriteTempFile("a\tb\n    ");
+        try
+        {
+            var buffer = new TextBuffer();
+            buffer.SetPreparedContent(TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), tabSize: 4));
+            var find = new FindManager();
+
+            find.StartSearch(buffer, "  ", matchCase: true, caretLine: 0, caretCol: 0);
+            await WaitUntil(() => find.HasExactMatchCount);
+
+            Assert.Equal(5, find.KnownMatchCount);
+            find.Clear();
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public async Task StartSearch_FileBackedLiteralFallsBackAfterEdits()
+    {
+        string path = WriteTempFile("test\nplain");
+        try
+        {
+            var buffer = new TextBuffer();
+            buffer.SetPreparedContent(TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), tabSize: 4));
+            buffer.InsertLine(1, "test");
+            var find = new FindManager();
+
+            find.StartSearch(buffer, "test", matchCase: true, caretLine: 0, caretCol: 0);
+            await WaitUntil(() => find.HasExactMatchCount);
+
+            Assert.Equal(2, find.KnownMatchCount);
+            find.Clear();
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public async Task StartSearch_FileBackedRegexAndWholeWordUseExistingScanner()
+    {
+        string path = WriteTempFile("test contest\ntest");
+        try
+        {
+            var buffer = new TextBuffer();
+            buffer.SetPreparedContent(TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), tabSize: 4));
+            var find = new FindManager();
+
+            find.StartSearch(buffer, "t.st", matchCase: true, caretLine: 0, caretCol: 0, useRegex: true);
+            await WaitUntil(() => find.HasExactMatchCount);
+            Assert.Equal(3, find.KnownMatchCount);
+
+            find.StartSearch(buffer, "test", matchCase: true, caretLine: 0, caretCol: 0, wholeWord: true);
+            await WaitUntil(() => find.HasExactMatchCount);
+            Assert.Equal(2, find.KnownMatchCount);
+            find.Clear();
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public void FileLiteralCounter_HandlesBoundaryOverlapNoMatchAndShortNeedles()
+    {
+        string path = WriteTempFile("xxtestyy\naaaaa\nbanana");
+        try
+        {
+            Assert.Equal(1, FileTextSource.CountLiteralMatchesInFile(
+                path,
+                startOffset: 0,
+                Encoding.UTF8.GetBytes("test"),
+                CancellationToken.None,
+                chunkByteCount: 4));
+            Assert.Equal(3, FileTextSource.CountLiteralMatchesInFile(
+                path,
+                startOffset: 0,
+                Encoding.UTF8.GetBytes("aaa"),
+                CancellationToken.None,
+                chunkByteCount: 4));
+            Assert.Equal(0, FileTextSource.CountLiteralMatchesInFile(
+                path,
+                startOffset: 0,
+                Encoding.UTF8.GetBytes("missing"),
+                CancellationToken.None,
+                chunkByteCount: 4));
+            Assert.Equal(8, FileTextSource.CountLiteralMatchesInFile(
+                path,
+                startOffset: 0,
+                Encoding.UTF8.GetBytes("a"),
+                CancellationToken.None,
+                chunkByteCount: 4));
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public void FileLiteralCounter_ReportsByteProgress()
+    {
+        string path = WriteTempFile("xxtestyy\naaaaa\nbanana");
+        var progress = new List<FastLiteralMatchProgress>();
+        try
+        {
+            long count = FileTextSource.CountLiteralMatchesInFile(
+                path,
+                startOffset: 0,
+                Encoding.UTF8.GetBytes("test"),
+                CancellationToken.None,
+                chunkByteCount: 4,
+                progress: progress.Add);
+
+            Assert.Equal(1, count);
+            Assert.NotEmpty(progress);
+            Assert.All(progress, value => Assert.Equal(new FileInfo(path).Length, value.TotalBytes));
+            Assert.Equal(new FileInfo(path).Length, progress[^1].BytesRead);
+            Assert.Equal(count, progress[^1].MatchCount);
+            Assert.Contains(progress, value => value.BytesRead > 0 && value.BytesRead < value.TotalBytes);
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public void FileLiteralCounter_ObservesCancellation()
+    {
+        string path = WriteTempFile("test test");
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        try
+        {
+            Assert.Throws<OperationCanceledException>(() => FileTextSource.CountLiteralMatchesInFile(
+                path,
+                startOffset: 0,
+                Encoding.UTF8.GetBytes("test"),
+                cts.Token,
+                chunkByteCount: 4));
+        }
+        finally
+        {
+            TryDelete(path);
+        }
     }
 
     [Fact]
@@ -331,6 +516,18 @@ public class FindManagerTests
             cts.Token.ThrowIfCancellationRequested();
             await Task.Delay(10, cts.Token);
         }
+    }
+
+    private static string WriteTempFile(string content)
+    {
+        string path = Path.Combine(Path.GetTempPath(), "Volt.Tests." + Guid.NewGuid().ToString("N") + ".txt");
+        File.WriteAllText(path, content, new UTF8Encoding(false));
+        return path;
+    }
+
+    private static void TryDelete(string path)
+    {
+        try { File.Delete(path); } catch { }
     }
 
     private sealed class BlockingTextSource : ITextSource
