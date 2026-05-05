@@ -279,6 +279,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public bool IsDirty => _buffer.IsDirty;
     public event EventHandler? DirtyChanged;
     public event EventHandler? CaretMoved;
+    public event EventHandler? FindChanged;
 
     public int CaretLine => _caretLine;
     public int CaretCol => _caretCol;
@@ -296,6 +297,20 @@ public class EditorControl : FrameworkElement, IScrollInfo
         RebuildGutterPen();
         UpdateBusyVisual();
         InvalidateText();
+    }
+
+    private void OnFindChanged(object? sender, EventArgs e)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Background,
+                () => OnFindChanged(sender, e));
+            return;
+        }
+
+        _textVisualDirty = true;
+        InvalidateVisual();
+        FindChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Top visible line captured BEFORE font metrics change, used by OnFontChanged.</summary>
@@ -332,6 +347,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         Cursor = Cursors.IBeam;
 
         _buffer.DirtyChanged += (_, _) => DirtyChanged?.Invoke(this, EventArgs.Empty);
+        _find.Changed += OnFindChanged;
 
         _blinkTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _blinkTimer.Tick += (_, _) =>
@@ -626,6 +642,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _cleanUndoDepth--;
         _textVisualDirty = true;
         _bracketMatchDirty = true;
+        if (_find.HasQuery)
+            _find.InvalidateForEdit();
         InvalidateLineStatesFrom(dirtyFromLine);
         _buffer.IsDirty = true;
     }
@@ -1172,20 +1190,28 @@ public class EditorControl : FrameworkElement, IScrollInfo
             }
         }
 
-        if (_find.MatchCount > 0)
+        if (_find.HasQuery)
         {
-            int lo = 0, hi = _find.Matches.Count - 1;
-            while (lo <= hi)
+            int firstFindColumn = 0;
+            int lastFindColumn = int.MaxValue;
+            if (!_wordWrap && !HasFoldLayout && _font.CharWidth > 0)
             {
-                int mid = (lo + hi) / 2;
-                if (_find.Matches[mid].Line < firstLine) lo = mid + 1; else hi = mid - 1;
+                double textWidth = Math.Max(0, _viewport.Width - _gutterWidth - GutterPadding);
+                firstFindColumn = Math.Max(0, (int)Math.Floor(_offset.X / _font.CharWidth) - 2);
+                lastFindColumn = Math.Max(firstFindColumn,
+                    (int)Math.Ceiling((_offset.X + textWidth) / _font.CharWidth) + 2);
             }
-            for (int m = lo; m < _find.Matches.Count; m++)
+
+            var currentMatch = _find.GetCurrentMatch();
+            foreach (var (mLine, mCol, mLen) in _find.GetMatchesInRange(
+                         firstLine, lastLine, firstFindColumn, lastFindColumn))
             {
-                var (mLine, mCol, mLen) = _find.Matches[m];
-                if (mLine > lastLine) break;
                 if (IsLineHidden(mLine)) continue;
-                var brush = m == _find.CurrentIndex
+                bool isCurrent = currentMatch.HasValue
+                                 && currentMatch.Value.Line == mLine
+                                 && currentMatch.Value.Col == mCol
+                                 && currentMatch.Value.Length == mLen;
+                var brush = isCurrent
                     ? ThemeManager.FindMatchCurrentBrush
                     : ThemeManager.FindMatchBrush;
 
@@ -3060,8 +3086,15 @@ public class EditorControl : FrameworkElement, IScrollInfo
     //  Find support (delegates to FindManager)
     // ──────────────────────────────────────────────────────────────────
 
+    private int _findNavigationVersion;
+
     public int FindMatchCount => _find.MatchCount;
+    public long FindKnownMatchCount => _find.KnownMatchCount;
     public int CurrentMatchIndex => _find.CurrentIndex;
+    public bool HasCurrentFindMatch => _find.GetCurrentMatch() != null;
+    public bool IsFindSearching => _find.IsSearching;
+    public bool HasExactFindMatchCount => _find.HasExactMatchCount;
+    public string FindStatusText => _find.StatusText;
 
     public string GetSelectedText()
     {
@@ -3078,31 +3111,35 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public void SetFindMatches(string query, bool matchCase, bool useRegex = false, bool wholeWord = false,
         (int, int, int, int)? selectionBounds = null, bool preserveSelection = false)
     {
-        _find.Search(_buffer, query, matchCase, _caretLine, _caretCol, useRegex, wholeWord, selectionBounds);
-        if (_find.MatchCount > 0)
-            NavigateToCurrentMatch(preserveSelection);
+        int version = ++_findNavigationVersion;
+        int caretLine = _caretLine;
+        int caretCol = _caretCol;
+        _find.StartSearch(_buffer, query, matchCase, caretLine, caretCol, useRegex, wholeWord,
+            selectionBounds);
+        _ = NavigateToInitialFindResultAsync(version, caretLine, caretCol, preserveSelection);
         InvalidateVisual();
     }
 
     public void ClearFindMatches()
     {
+        _findNavigationVersion++;
         _find.Clear();
         InvalidateVisual();
     }
 
-    public void FindNext()
+    public async void FindNext(bool preserveSelection = false)
     {
-        if (_find.MatchCount == 0) return;
-        _find.MoveNext();
-        NavigateToCurrentMatch();
+        int version = ++_findNavigationVersion;
+        if (await _find.MoveNextAsync(_caretLine, _caretCol) && version == _findNavigationVersion)
+            NavigateToCurrentMatch(preserveSelection);
         InvalidateVisual();
     }
 
-    public void FindPrevious()
+    public async void FindPrevious(bool preserveSelection = false)
     {
-        if (_find.MatchCount == 0) return;
-        _find.MovePrevious();
-        NavigateToCurrentMatch();
+        int version = ++_findNavigationVersion;
+        if (await _find.MovePreviousAsync(_caretLine, _caretCol) && version == _findNavigationVersion)
+            NavigateToCurrentMatch(preserveSelection);
         InvalidateVisual();
     }
 
@@ -3114,31 +3151,86 @@ public class EditorControl : FrameworkElement, IScrollInfo
         var scope = BeginEdit(line, line);
         _buffer.ReplaceAt(line, col, len, replacement);
         EndEdit(scope);
-        _find.Search(_buffer, _find.LastQuery, _find.LastMatchCase, _caretLine, _caretCol, _find.LastUseRegex, _find.LastWholeWord);
+        int version = ++_findNavigationVersion;
+        _find.StartSearch(_buffer, _find.LastQuery, _find.LastMatchCase, _caretLine, _caretCol,
+            _find.LastUseRegex, _find.LastWholeWord, _find.LastSelectionBounds);
+        _ = NavigateToInitialFindResultAsync(version, _caretLine, _caretCol, preserveSelection: false);
         _buffer.InvalidateMaxLineLength();
         _gutterVisualDirty = true;
         InvalidateVisual();
     }
 
-    public void ReplaceAll(string query, string replacement, bool matchCase, bool useRegex = false, bool wholeWord = false,
+    public async void ReplaceAll(string query, string replacement, bool matchCase, bool useRegex = false, bool wholeWord = false,
         (int, int, int, int)? selectionBounds = null)
     {
-        var range = _find.GetMatchLineRange();
-        if (range == null) return;
-        var (firstLine, lastLine) = range.Value;
-        var scope = BeginEdit(firstLine, lastLine);
-        var matches = _find.Matches;
-        for (int i = matches.Count - 1; i >= 0; i--)
+        SetBusy(true, "Replacing... 0.0%");
+        long lastProgressUpdateTicks = 0;
+        var progress = new Progress<FindManager.ReplaceAllProgress>(value =>
         {
-            var (line, col, len) = matches[i];
-            _buffer.ReplaceAt(line, col, len, replacement);
+            long nowTicks = Environment.TickCount64;
+            if (!value.IsComplete && nowTicks - lastProgressUpdateTicks < 100)
+                return;
+
+            lastProgressUpdateTicks = nowTicks;
+            SetBusy(true, FormatReplaceAllProgress(value));
+        });
+        Exception? replaceError = null;
+        try
+        {
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            FindManager.ReplaceAllResult? result =
+                await _find.CreateReplaceAllSnapshotAsync(replacement, progress).ConfigureAwait(true);
+            if (result == null || result.ReplacementCount == 0 || !_find.IsCurrentSession(result.SessionId))
+                return;
+
+            var scope = BeginEdit(result.StartLine, result.StartLine + result.LineCount - 1);
+            _buffer.ReplaceLines(result.StartLine, result.LineCount, result.Replacement);
+            EndEdit(scope);
+
+            ClampCaret();
+            _buffer.InvalidateMaxLineLength();
+            _tokenCacheDirty = true;
+            InvalidateLineStates();
+            _gutterVisualDirty = true;
+            int version = ++_findNavigationVersion;
+            _find.StartSearch(_buffer, query, matchCase, _caretLine, _caretCol, useRegex, wholeWord,
+                selectionBounds);
+            _ = NavigateToInitialFindResultAsync(version, _caretLine, _caretCol, preserveSelection: false);
+            InvalidateVisual();
         }
-        EndEdit(scope);
-        ClampCaret();
-        _buffer.InvalidateMaxLineLength();
-        _tokenCacheDirty = true;
-        InvalidateLineStates();
-        _gutterVisualDirty = true;
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            replaceError = ex;
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+
+        if (replaceError != null)
+            throw new InvalidOperationException("Replace all failed.", replaceError);
+    }
+
+    private static string FormatReplaceAllProgress(FindManager.ReplaceAllProgress progress)
+    {
+        string noun = progress.ReplacementCount == 1 ? "match" : "matches";
+        return $"Replacing... {progress.Percent:0.0}% ({progress.ReplacementCount:N0} {noun})";
+    }
+
+    private async Task NavigateToInitialFindResultAsync(int version, int caretLine, int caretCol, bool preserveSelection)
+    {
+        if (string.IsNullOrEmpty(_find.LastQuery))
+            return;
+
+        bool found = await _find.FindNearestAsync(caretLine, caretCol);
+        if (!found || version != _findNavigationVersion)
+            return;
+
+        NavigateToCurrentMatch(preserveSelection);
         InvalidateVisual();
     }
 

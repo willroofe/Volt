@@ -222,7 +222,7 @@ public class EditorControlLargeFileTests
                 : segment + new string('x', count - copied);
         }
 
-        public IEnumerable<string> EnumerateLines(int startLine, int count)
+        public IEnumerable<string> EnumerateLines(int startLine, int count, bool cache = true)
         {
             for (int i = 0; i < count && startLine + i < LineCount; i++)
                 yield return _line;
@@ -277,7 +277,7 @@ public class EditorControlLargeFileTests
             return _line.Substring(startColumn, Math.Min(length, MaxLineLength - startColumn));
         }
 
-        public IEnumerable<string> EnumerateLines(int startLine, int count)
+        public IEnumerable<string> EnumerateLines(int startLine, int count, bool cache = true)
         {
             for (int i = 0; i < count && startLine + i < LineCount; i++)
             {

@@ -24,6 +24,7 @@ public partial class FindBar : UserControl
     private EditorControl? _editor;
     private bool _navigating;
     private DispatcherTimer? _selectionDebounce;
+    private DispatcherTimer? _searchDebounce;
     private (int startLine, int startCol, int endLine, int endCol)? _pendingSelectionBounds;
 
     public event EventHandler? Closed;
@@ -32,6 +33,7 @@ public partial class FindBar : UserControl
     {
         InitializeComponent();
         UpdatePanelMargin();
+        UpdateModeButtonStates();
 
         IsVisibleChanged += (_, _) =>
         {
@@ -56,12 +58,14 @@ public partial class FindBar : UserControl
         {
             _editor.CaretMoved -= OnEditorCaretMoved;
             _editor.PreviewMouseLeftButtonUp -= OnEditorMouseUp;
+            _editor.FindChanged -= OnEditorFindChanged;
         }
         _editor = editor;
         if (_editor != null)
         {
             _editor.CaretMoved += OnEditorCaretMoved;
             _editor.PreviewMouseLeftButtonUp += OnEditorMouseUp;
+            _editor.FindChanged += OnEditorFindChanged;
         }
     }
 
@@ -74,7 +78,13 @@ public partial class FindBar : UserControl
         // Keyboard selection changes (shift+arrow, etc.) — debounced
         if (!_findInSelection || _navigating || _editor == null || !IsVisible) return;
         var bounds = _editor.GetSelectionBounds();
-        if (bounds == _selectionBounds) return;
+        if (bounds == null)
+        {
+            _pendingSelectionBounds = null;
+            _selectionDebounce?.Stop();
+            return;
+        }
+        if (!ShouldApplyLiveSelectionBounds(bounds, _selectionBounds)) return;
 
         _pendingSelectionBounds = bounds;
         if (_selectionDebounce == null)
@@ -103,8 +113,12 @@ public partial class FindBar : UserControl
     private void ApplySelectionBounds(
         (int startLine, int startCol, int endLine, int endCol)? bounds)
     {
-        if (bounds == _selectionBounds) return;
+        if (bounds == null)
+            return;
+
+        if (!ShouldApplyLiveSelectionBounds(bounds, _selectionBounds)) return;
         _selectionBounds = bounds;
+        _selectionBoundsAtOpen = bounds;
         SearchWithoutTrackingSelection();
     }
 
@@ -176,14 +190,14 @@ public partial class FindBar : UserControl
     {
         _editor?.ClearFindMatches();
         _selectionDebounce?.Stop();
+        _searchDebounce?.Stop();
         Visibility = Visibility.Collapsed;
         _matchCount.Text = "";
         _findInSelection = false;
         _selectionBounds = null;
         _selectionBoundsAtOpen = null;
         _pendingSelectionBounds = null;
-        _findInSelBtn.SetResourceReference(ForegroundProperty, ThemeResourceKeys.TextFgMuted);
-        _findInSelBtn.SetResourceReference(BackgroundProperty, ThemeResourceKeys.MenuPopupBg);
+        UpdateModeButtonStates();
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -198,45 +212,73 @@ public partial class FindBar : UserControl
 
     private void OnInputTextChanged(object sender, TextChangedEventArgs e)
     {
-        UpdateSearch();
+        ScheduleSearch();
     }
 
     private void OnMatchCaseClick(object sender, RoutedEventArgs e)
     {
         _matchCase = !_matchCase;
-        UpdateToggleButton(_matchCaseBtn, _matchCase);
+        UpdateModeButtonStates();
         UpdateSearch();
     }
 
     private void OnRegexClick(object sender, RoutedEventArgs e)
     {
         _useRegex = !_useRegex;
-        UpdateToggleButton(_regexBtn, _useRegex);
+        UpdateModeButtonStates();
         UpdateSearch();
     }
 
     private void OnWholeWordClick(object sender, RoutedEventArgs e)
     {
         _wholeWord = !_wholeWord;
-        UpdateToggleButton(_wholeWordBtn, _wholeWord);
+        UpdateModeButtonStates();
         UpdateSearch();
     }
 
     private void OnFindInSelectionClick(object sender, RoutedEventArgs e)
     {
         _findInSelection = !_findInSelection;
-        _selectionBounds = _findInSelection ? _editor?.GetSelectionBounds() : null;
-        UpdateToggleButton(_findInSelBtn, _findInSelection);
+        _selectionBounds = _findInSelection ? GetSelectionBoundsForFindInSelectionToggle() : null;
+        UpdateModeButtonStates();
         SearchWithoutTrackingSelection();
     }
 
-    private void UpdateToggleButton(Button btn, bool active)
+    private (int startLine, int startCol, int endLine, int endCol)? GetSelectionBoundsForFindInSelectionToggle()
     {
-        btn.SetResourceReference(ForegroundProperty,
-            active ? ThemeResourceKeys.TextFg : ThemeResourceKeys.TextFgMuted);
-        btn.SetResourceReference(BackgroundProperty,
-            active ? ThemeResourceKeys.MenuItemHover : ThemeResourceKeys.MenuPopupBg);
+        var current = _editor?.GetSelectionBounds();
+        if (current != null)
+        {
+            _selectionBoundsAtOpen = current;
+            return current;
+        }
+
+        return ResolveFindInSelectionBounds(current, _selectionBoundsAtOpen);
     }
+
+    internal static (int startLine, int startCol, int endLine, int endCol)? ResolveFindInSelectionBounds(
+        (int startLine, int startCol, int endLine, int endCol)? currentSelection,
+        (int startLine, int startCol, int endLine, int endCol)? capturedSelection) =>
+        currentSelection ?? capturedSelection;
+
+    internal static bool ShouldApplyLiveSelectionBounds(
+        (int startLine, int startCol, int endLine, int endCol)? liveSelection,
+        (int startLine, int startCol, int endLine, int endCol)? currentFindSelection) =>
+        liveSelection != null && liveSelection != currentFindSelection;
+
+    private void UpdateModeButtonStates()
+    {
+        SetModeButtonActive(_matchCaseBtn, _matchCase);
+        SetModeButtonActive(_regexBtn, _useRegex);
+        SetModeButtonActive(_wholeWordBtn, _wholeWord);
+        SetModeButtonActive(_findInSelBtn, _findInSelection);
+    }
+
+    internal static void SetModeButtonActive(Button button, bool active) =>
+        button.Tag = active ? "Active" : null;
+
+    internal static bool IsModeButtonActive(Button button) =>
+        string.Equals(button.Tag as string, "Active", StringComparison.Ordinal);
 
     private void OnToggleReplaceClick(object sender, RoutedEventArgs e)
     {
@@ -250,13 +292,13 @@ public partial class FindBar : UserControl
 
     private void OnPrevClick(object sender, RoutedEventArgs e)
     {
-        WithNavigationGuard(() => _editor?.FindPrevious());
+        WithNavigationGuard(() => _editor?.FindPrevious(preserveSelection: _findInSelection));
         UpdateMatchCountLabel();
     }
 
     private void OnNextClick(object sender, RoutedEventArgs e)
     {
-        WithNavigationGuard(() => _editor?.FindNext());
+        WithNavigationGuard(() => _editor?.FindNext(preserveSelection: _findInSelection));
         UpdateMatchCountLabel();
     }
 
@@ -279,8 +321,38 @@ public partial class FindBar : UserControl
     //  Search core
     // ──────────────────────────────────────────────────────────────────
 
+    private void ScheduleSearch()
+    {
+        if (_searchDebounce == null)
+        {
+            _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+            _searchDebounce.Tick += (_, _) =>
+            {
+                _searchDebounce.Stop();
+                UpdateSearch();
+            };
+        }
+
+        _searchDebounce.Stop();
+        _searchDebounce.Start();
+    }
+
+    private void OnEditorFindChanged(object? sender, EventArgs e)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Background,
+                () => OnEditorFindChanged(sender, e));
+            return;
+        }
+
+        if (IsVisible)
+            UpdateMatchCountLabel();
+    }
+
     private void UpdateSearch()
     {
+        _searchDebounce?.Stop();
         if (_editor == null) return;
 
         var query = _input.Text;
@@ -292,9 +364,12 @@ public partial class FindBar : UserControl
         }
 
         if (_findInSelection && _selectionBounds == null)
+            _selectionBounds = ResolveFindInSelectionBounds(_editor.GetSelectionBounds(), _selectionBoundsAtOpen);
+
+        if (_findInSelection && _selectionBounds == null)
         {
             _editor.ClearFindMatches();
-            _matchCount.Text = "No results";
+            _matchCount.Text = "No selection";
             return;
         }
 
@@ -306,27 +381,36 @@ public partial class FindBar : UserControl
 
     private void UpdateMatchCountLabel()
     {
-        if (_editor == null || _editor.FindMatchCount == 0)
+        if (_editor == null)
         {
-            _matchCount.Text = _input.Text.Length > 0 ? "No results" : "";
+            _matchCount.Text = "";
             return;
         }
-        _matchCount.Text = $"{_editor.CurrentMatchIndex + 1} of {_editor.FindMatchCount}";
+
+        if (_findInSelection && _selectionBounds == null && _input.Text.Length > 0)
+        {
+            _matchCount.Text = "No selection";
+            return;
+        }
+
+        string status = _editor.FindStatusText;
+        _matchCount.Text = string.IsNullOrEmpty(status) && _input.Text.Length > 0
+            ? "Searching..."
+            : status;
     }
 
     private void DoReplace()
     {
-        if (_editor == null || _editor.FindMatchCount == 0) return;
+        if (_editor == null || !_editor.HasCurrentFindMatch) return;
         WithNavigationGuard(() => _editor.ReplaceCurrent(_replaceInput.Text));
         UpdateSearch();
     }
 
     private void DoReplaceAll()
     {
-        if (_editor == null || _editor.FindMatchCount == 0) return;
+        if (_editor == null || (!_editor.HasCurrentFindMatch && _editor.FindMatchCount == 0 && !_editor.IsFindSearching)) return;
         _editor.ReplaceAll(_input.Text, _replaceInput.Text, _matchCase, _useRegex, _wholeWord,
             _findInSelection ? _selectionBounds : null);
-        UpdateSearch();
     }
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)
@@ -348,9 +432,9 @@ public partial class FindBar : UserControl
                     WithNavigationGuard(() =>
                     {
                         if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
-                            _editor?.FindPrevious();
+                            _editor?.FindPrevious(preserveSelection: _findInSelection);
                         else
-                            _editor?.FindNext();
+                            _editor?.FindNext(preserveSelection: _findInSelection);
                     });
                 }
                 UpdateMatchCountLabel();
