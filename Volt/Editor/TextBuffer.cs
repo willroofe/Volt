@@ -360,13 +360,16 @@ public class TextBuffer
     /// Parse text into line pieces on a background thread. This keeps the same
     /// public preparation API while avoiding a large intermediate string[].
     /// </summary>
-    public static PreparedContent PrepareContent(string text, int tabSize)
+    public static PreparedContent PrepareContent(string text, int tabSize,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         string lineEnding = DetectLineEnding(text);
         var lines = new List<string>();
         var remaining = text.AsSpan();
         while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             int nlIdx = remaining.IndexOfAny('\r', '\n');
             if (nlIdx < 0) break;
             lines.Add(ExpandTabs(remaining.Slice(0, nlIdx).ToString(), tabSize));
@@ -379,11 +382,13 @@ public class TextBuffer
         return new PreparedContent { Source = new MemoryTextSource(lines), LineEnding = lineEnding };
     }
 
-    public static PreparedContent PrepareContentFromFile(string path, Encoding encoding, int tabSize)
+    public static PreparedContent PrepareContentFromFile(string path, Encoding encoding, int tabSize,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (FileTextSource.SupportsEncoding(encoding))
         {
-            LargeFileLineIndex index = LargeFileLineIndex.Build(path, encoding);
+            LargeFileLineIndex index = LargeFileLineIndex.Build(path, encoding, cancellationToken);
             return new PreparedContent
             {
                 Source = new FileTextSource(path, encoding, tabSize, index),
@@ -394,7 +399,9 @@ public class TextBuffer
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
             FileShare.ReadWrite | FileShare.Delete, bufferSize: 1 << 20, FileOptions.SequentialScan);
         using var reader = new StreamReader(stream, encoding, detectEncodingFromByteOrderMarks: false, bufferSize: 1 << 20);
-        return PrepareContent(reader.ReadToEnd(), tabSize);
+        string text = reader.ReadToEnd();
+        cancellationToken.ThrowIfCancellationRequested();
+        return PrepareContent(text, tabSize, cancellationToken);
     }
 
     /// <summary>Apply prepared content to the buffer. Must be called on the UI thread.</summary>

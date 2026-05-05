@@ -59,15 +59,22 @@ public partial class MainWindow
         byte[]? TailBytes,
         DateTime LastWriteTimeUtc);
 
-    private static Task<FileLoadResult> LoadFileDataAsync(string path, int tabSize) => Task.Run(() =>
+    private static Task<FileLoadResult> LoadFileDataAsync(
+        string path,
+        int tabSize,
+        CancellationToken cancellationToken) => Task.Run(() =>
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var enc = FileHelper.DetectEncoding(path);
-        var prep = TextBuffer.PrepareContentFromFile(path, enc, tabSize);
+        cancellationToken.ThrowIfCancellationRequested();
+        var prep = TextBuffer.PrepareContentFromFile(path, enc, tabSize, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         var info = new FileInfo(path);
         var size = info.Length;
         var tail = FileHelper.ReadTailVerifyBytes(path, size);
+        cancellationToken.ThrowIfCancellationRequested();
         return new FileLoadResult(enc, prep, size, tail, info.LastWriteTimeUtc);
-    });
+    }, cancellationToken);
 
     private static Task<FileSaveResult> SaveFileDataAsync(
         string path,
@@ -87,7 +94,7 @@ public partial class MainWindow
         return new FileSaveResult(prepared, info.Length, tail, info.LastWriteTimeUtc);
     }
 
-    private void ApplyFileLoadResult(TabInfo tab, FileLoadResult result)
+    private void ApplyFileLoadResult(TabInfo tab, FileLoadResult result, TabInfo.LoadOperation load)
     {
         tab.FileEncoding = result.Encoding;
         tab.Editor.SetPreparedContent(result.Prepared);
@@ -95,7 +102,7 @@ public partial class MainWindow
         tab.TailVerifyBytes = result.TailBytes;
         tab.LastKnownWriteTimeUtc = result.LastWriteTimeUtc;
         tab.StartWatching();
-        EndTabLoad(tab);
+        EndTabLoad(tab, load);
         UpdateTabHeader(tab);
         if (tab == _activeTab)
         {
@@ -287,7 +294,14 @@ public partial class MainWindow
 
     private async void CloseTab(TabInfo tab)
     {
-        if (tab.IsBusy) return;
+        if (tab.IsSaving) return;
+        if (tab.IsLoading)
+        {
+            if (TabExistsInAnyPane(tab))
+                RemoveTab(tab);
+            return;
+        }
+
         if (tab.Editor.IsDirty && !await PromptSaveTabAsync(tab)) return;
         if (!TabExistsInAnyPane(tab)) return;
         RemoveTab(tab);
@@ -325,15 +339,26 @@ public partial class MainWindow
 
     private const string SpinnerTag = "LoadingSpinner";
 
-    private static void BeginTabLoad(TabInfo tab)
+    private static TabInfo.LoadOperation BeginTabLoad(TabInfo tab)
     {
-        tab.IsLoading = true;
+        TabInfo.LoadOperation load = tab.BeginLoad();
         ApplyTabBusyState(tab, "Loading", "Loading file...");
+        return load;
     }
 
-    private static void EndTabLoad(TabInfo tab)
+    private static void EndTabLoad(TabInfo tab, TabInfo.LoadOperation load)
     {
-        tab.IsLoading = false;
+        if (!tab.EndLoad(load))
+            return;
+
+        ApplyTabBusyState(tab);
+    }
+
+    private static void CancelTabLoad(TabInfo tab)
+    {
+        if (!tab.CancelLoad())
+            return;
+
         ApplyTabBusyState(tab);
     }
 
@@ -787,20 +812,29 @@ public partial class MainWindow
             tab = CreateTab();
 
         tab.FilePath = path;
-        BeginTabLoad(tab);
+        TabInfo.LoadOperation load = BeginTabLoad(tab);
         UpdateTabHeader(tab);
         if (activate) ActivateTab(tab);
 
         FileLoadResult result;
         try
         {
-            result = await LoadFileDataAsync(path, tab.Editor.TabSize);
+            result = await LoadFileDataAsync(path, tab.Editor.TabSize, load.CancellationToken);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (load.CancellationToken.IsCancellationRequested)
         {
             if (TabExistsInAnyPane(tab))
             {
-                EndTabLoad(tab);
+                EndTabLoad(tab, load);
+                UpdateTabHeader(tab);
+            }
+            return null;
+        }
+        catch (Exception ex)
+        {
+            if (TabExistsInAnyPane(tab) && tab.IsCurrentLoad(load))
+            {
+                EndTabLoad(tab, load);
                 UpdateTabHeader(tab);
                 ThemedMessageBox.Show(this, $"Could not open '{Path.GetFileName(path)}':\n\n{ex.Message}",
                     "Open Failed");
@@ -809,9 +843,9 @@ public partial class MainWindow
         }
 
         // Tab may have been closed while we were loading
-        if (!TabExistsInAnyPane(tab)) return null;
+        if (!TabExistsInAnyPane(tab) || !tab.IsCurrentLoad(load)) return null;
 
-        ApplyFileLoadResult(tab, result);
+        ApplyFileLoadResult(tab, result, load);
         return tab;
     }
 
@@ -1018,7 +1052,7 @@ public partial class MainWindow
         EnsureSingleLeafLayoutForRestore();
 
         TabInfo? activeTab = null;
-        var asyncLoads = new List<(TabInfo tab, RestoredTab rt)>();
+        var asyncLoads = new List<(TabInfo tab, RestoredTab rt, TabInfo.LoadOperation load)>();
 
         for (int i = 0; i < restored.Tabs.Count; i++)
         {
@@ -1042,8 +1076,8 @@ public partial class MainWindow
                 else
                 {
                     // File needs reading from disk — defer to async
-                    BeginTabLoad(tab);
-                    asyncLoads.Add((tab, rt));
+                    TabInfo.LoadOperation load = BeginTabLoad(tab);
+                    asyncLoads.Add((tab, rt, load));
                 }
             }
             else if (rt.SavedContent != null)
@@ -1086,22 +1120,31 @@ public partial class MainWindow
         }
 
         // Kick off async file loads (window is already visible at this point)
-        foreach (var (t, r) in asyncLoads)
-            _ = LoadTabContentAsync(t, r);
+        foreach (var (t, r, load) in asyncLoads)
+            _ = LoadTabContentAsync(t, r, load);
     }
 
-    private async Task LoadTabContentAsync(TabInfo tab, RestoredTab rt)
+    private async Task LoadTabContentAsync(TabInfo tab, RestoredTab rt, TabInfo.LoadOperation load)
     {
         FileLoadResult result;
         try
         {
-            result = await LoadFileDataAsync(rt.FilePath!, tab.Editor.TabSize);
+            result = await LoadFileDataAsync(rt.FilePath!, tab.Editor.TabSize, load.CancellationToken);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (load.CancellationToken.IsCancellationRequested)
         {
             if (TabExistsInAnyPane(tab))
             {
-                EndTabLoad(tab);
+                EndTabLoad(tab, load);
+                UpdateTabHeader(tab);
+            }
+            return;
+        }
+        catch (Exception ex)
+        {
+            if (TabExistsInAnyPane(tab) && tab.IsCurrentLoad(load))
+            {
+                EndTabLoad(tab, load);
                 UpdateTabHeader(tab);
                 ThemedMessageBox.Show(this, $"Could not restore '{tab.DisplayName}':\n\n{ex.Message}",
                     "Open Failed");
@@ -1109,9 +1152,9 @@ public partial class MainWindow
             return;
         }
 
-        if (!TabExistsInAnyPane(tab)) return;
+        if (!TabExistsInAnyPane(tab) || !tab.IsCurrentLoad(load)) return;
 
-        ApplyFileLoadResult(tab, result);
+        ApplyFileLoadResult(tab, result, load);
         if (rt.IsDirty) tab.Editor.MarkDirty();
 
         tab.Editor.SetCaretPosition(rt.CaretLine, rt.CaretCol);
@@ -1156,10 +1199,10 @@ public partial class MainWindow
 
     private void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        var busyTab = AllTabsOrdered().FirstOrDefault(tab => tab.IsBusy);
-        if (busyTab != null)
+        var savingTab = AllTabsOrdered().FirstOrDefault(tab => tab.IsSaving);
+        if (savingTab != null)
         {
-            ActivateTab(busyTab);
+            ActivateTab(savingTab);
             e.Cancel = true;
             return;
         }
@@ -1229,7 +1272,10 @@ public partial class MainWindow
         _settings.Save();
 
         foreach (var tab in AllTabsOrdered())
+        {
+            CancelTabLoad(tab);
             tab.StopWatching();
+        }
 
         _explorerPanel.FlushAllStagedDeletes();
     }
@@ -2314,11 +2360,14 @@ public partial class MainWindow
     {
         foreach (var tab in AllTabsOrdered().ToList())
         {
-            if (tab.IsBusy)
+            if (tab.IsSaving)
             {
                 ActivateTab(tab);
                 return false;
             }
+            if (tab.IsLoading)
+                continue;
+
             if (tab.Editor.IsDirty)
             {
                 ActivateTab(tab);
@@ -2376,7 +2425,7 @@ public partial class MainWindow
         EnsureSingleLeafLayoutForRestore();
 
         TabInfo? activeTab = null;
-        var asyncLoads = new List<(TabInfo tab, WorkspaceSessionTab st)>();
+        var asyncLoads = new List<(TabInfo tab, WorkspaceSessionTab st, TabInfo.LoadOperation load)>();
 
         for (int i = 0; i < workspace.Session.Tabs.Count; i++)
         {
@@ -2389,8 +2438,8 @@ public partial class MainWindow
             if (st.FilePath != null)
             {
                 tab.FilePath = st.FilePath;
-                BeginTabLoad(tab);
-                asyncLoads.Add((tab, st));
+                TabInfo.LoadOperation load = BeginTabLoad(tab);
+                asyncLoads.Add((tab, st, load));
             }
 
             if (i == workspace.Session.ActiveTabIndex)
@@ -2410,24 +2459,33 @@ public partial class MainWindow
 
         ActivateTab(activeTab ?? AllTabsOrdered()[0]);
 
-        foreach (var (t, s) in asyncLoads)
-            _ = LoadWorkspaceTabAsync(t, s);
+        foreach (var (t, s, load) in asyncLoads)
+            _ = LoadWorkspaceTabAsync(t, s, load);
 
         ScheduleRestoreTerminalWorkspace(workspace.Session.Terminal);
     }
 
-    private async Task LoadWorkspaceTabAsync(TabInfo tab, WorkspaceSessionTab st)
+    private async Task LoadWorkspaceTabAsync(TabInfo tab, WorkspaceSessionTab st, TabInfo.LoadOperation load)
     {
         FileLoadResult result;
         try
         {
-            result = await LoadFileDataAsync(st.FilePath!, tab.Editor.TabSize);
+            result = await LoadFileDataAsync(st.FilePath!, tab.Editor.TabSize, load.CancellationToken);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (load.CancellationToken.IsCancellationRequested)
         {
             if (TabExistsInAnyPane(tab))
             {
-                EndTabLoad(tab);
+                EndTabLoad(tab, load);
+                UpdateTabHeader(tab);
+            }
+            return;
+        }
+        catch (Exception ex)
+        {
+            if (TabExistsInAnyPane(tab) && tab.IsCurrentLoad(load))
+            {
+                EndTabLoad(tab, load);
                 UpdateTabHeader(tab);
                 ThemedMessageBox.Show(this, $"Could not restore '{tab.DisplayName}':\n\n{ex.Message}",
                     "Open Failed");
@@ -2435,9 +2493,9 @@ public partial class MainWindow
             return;
         }
 
-        if (!TabExistsInAnyPane(tab)) return;
+        if (!TabExistsInAnyPane(tab) || !tab.IsCurrentLoad(load)) return;
 
-        ApplyFileLoadResult(tab, result);
+        ApplyFileLoadResult(tab, result, load);
 
         tab.Editor.SetCaretPosition(st.CaretLine, st.CaretCol);
         tab.ScrollHost?.ScrollToVerticalOffset(st.ScrollY);
