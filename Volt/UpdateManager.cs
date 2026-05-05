@@ -34,12 +34,14 @@ internal static class AppUpdateManager
                 return;
             }
 
-            var result = ThemedMessageBox.Show(owner,
-                $"Version {update.TargetFullRelease.Version} is available. Install and restart?",
-                "Update Available",
-                MessageBoxButton.YesNo);
+            string version = update.TargetFullRelease.Version.ToString();
+            bool shouldInstall = UpdateAvailableDialog.Show(
+                owner,
+                version,
+                update.TargetFullRelease.NotesMarkdown,
+                GetReleasePageUrl(version));
 
-            if (result != MessageBoxResult.Yes) return;
+            if (!shouldInstall) return;
 
             await mgr.DownloadUpdatesAsync(update);
             mgr.ApplyUpdatesAndRestart(update);
@@ -50,5 +52,11 @@ internal static class AppUpdateManager
             if (showUpToDate)
                 ThemedMessageBox.Show(owner, "Could not check for updates. Please try again later.", "Check for Updates");
         }
+    }
+
+    internal static string GetReleasePageUrl(string version)
+    {
+        string tag = version.StartsWith("v", StringComparison.OrdinalIgnoreCase) ? version : $"v{version}";
+        return $"{RepoUrl}/releases/tag/{tag}";
     }
 }
