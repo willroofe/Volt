@@ -19,13 +19,16 @@ internal interface ITextSource
 
 internal interface IFastLiteralMatchCounter
 {
-    bool TryCountLiteralMatches(
-        string text,
-        bool matchCase,
-        CancellationToken cancellationToken,
-        Action<FastLiteralMatchProgress>? progress,
-        out long count);
+    bool TryCountLiteralMatches(FastLiteralMatchRequest request, CancellationToken cancellationToken, out long count);
 }
+
+internal readonly record struct FastLiteralMatchRequest(
+    string Text,
+    bool MatchCase,
+    bool WholeWord,
+    int StartLine,
+    int LineCount,
+    Action<FastLiteralMatchProgress>? Progress);
 
 internal readonly record struct FastLiteralMatchProgress(long BytesRead, long TotalBytes, long MatchCount);
 
@@ -297,23 +300,32 @@ internal sealed class FileTextSource : ITextSource, IFastLiteralMatchCounter
     public static bool SupportsEncoding(Encoding encoding) =>
         encoding.CodePage == Encoding.UTF8.CodePage;
 
-    public bool TryCountLiteralMatches(
-        string text,
-        bool matchCase,
-        CancellationToken cancellationToken,
-        Action<FastLiteralMatchProgress>? progress,
+    public bool TryCountLiteralMatches(FastLiteralMatchRequest request, CancellationToken cancellationToken,
         out long count)
     {
         count = 0;
-        if (!matchCase || _index.HasTabs || ContainsLineBreak(text) || ContainsSurrogate(text))
+        if (request.LineCount <= 0)
+            return true;
+
+        int endLine = request.StartLine + request.LineCount;
+        if (request.StartLine < 0 || endLine < request.StartLine || endLine > _index.LineCount)
             return false;
 
-        byte[] needle = _encoding.GetBytes(text);
+        if (_index.HasTabs || ContainsLineBreak(request.Text) || ContainsSurrogate(request.Text))
+            return false;
+
+        bool requiresAscii = !request.MatchCase || request.WholeWord;
+        if (requiresAscii && (_index.HasNonAscii || !IsAscii(request.Text)))
+            return false;
+
+        byte[] needle = _encoding.GetBytes(request.Text);
         if (needle.Length == 0)
             return false;
 
-        count = CountLiteralMatchesInFile(_path, _index.ContentStartOffset, needle, cancellationToken,
-            progress: progress);
+        long startOffset = GetByteOffsetForLine(request.StartLine, cancellationToken);
+        long endOffset = GetByteOffsetForLine(endLine, cancellationToken);
+        count = CountLiteralMatchesInFile(_path, startOffset, endOffset, needle, request.MatchCase,
+            request.WholeWord, cancellationToken, progress: request.Progress);
         return true;
     }
 
@@ -495,6 +507,45 @@ internal sealed class FileTextSource : ITextSource, IFastLiteralMatchCounter
         return total;
     }
 
+    private long GetByteOffsetForLine(int line, CancellationToken cancellationToken)
+    {
+        if (line <= 0)
+            return _index.ContentStartOffset;
+
+        using var stream = new FileStream(_path, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete, bufferSize: 1 << 20, FileOptions.SequentialScan);
+        if (line >= _index.LineCount)
+            return stream.Length;
+
+        var (checkpointLine, offset) = _index.GetCheckpointForLine(line);
+        if (checkpointLine == line)
+            return offset;
+
+        stream.Seek(offset, SeekOrigin.Begin);
+        byte[] buffer = new byte[1 << 20];
+        int currentLine = checkpointLine;
+        long absoluteOffset = offset;
+
+        int read;
+        while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            for (int i = 0; i < read; i++)
+            {
+                if (buffer[i] != (byte)'\n')
+                    continue;
+
+                currentLine++;
+                if (currentLine == line)
+                    return absoluteOffset + i + 1;
+            }
+
+            absoluteOffset += read;
+        }
+
+        return stream.Length;
+    }
+
     internal static long CountLiteralMatchesInFile(
         string path,
         long startOffset,
@@ -503,33 +554,55 @@ internal sealed class FileTextSource : ITextSource, IFastLiteralMatchCounter
         int chunkByteCount = LiteralSearchChunkByteCount,
         Action<FastLiteralMatchProgress>? progress = null)
     {
+        long endOffset = new FileInfo(path).Length;
+        return CountLiteralMatchesInFile(path, startOffset, endOffset, needle, matchCase: true, wholeWord: false,
+            cancellationToken, chunkByteCount, progress);
+    }
+
+    internal static long CountLiteralMatchesInFile(
+        string path,
+        long startOffset,
+        long endOffset,
+        byte[] needle,
+        bool matchCase,
+        bool wholeWord,
+        CancellationToken cancellationToken,
+        int chunkByteCount = LiteralSearchChunkByteCount,
+        Action<FastLiteralMatchProgress>? progress = null)
+    {
         if (needle.Length == 0)
             return 0;
 
-        chunkByteCount = Math.Max(chunkByteCount, needle.Length);
-        byte[] buffer = new byte[chunkByteCount + needle.Length - 1];
+        int overlapByteCount = wholeWord ? needle.Length + 1 : needle.Length - 1;
+        chunkByteCount = Math.Max(chunkByteCount, needle.Length + (wholeWord ? 1 : 0));
+        byte[] buffer = new byte[chunkByteCount + overlapByteCount];
         int carry = 0;
         long count = 0;
 
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
             FileShare.ReadWrite | FileShare.Delete, bufferSize: 1 << 20, FileOptions.SequentialScan);
-        stream.Seek(startOffset, SeekOrigin.Begin);
-        long totalBytes = Math.Max(0, stream.Length - startOffset);
+        long rangeStart = Math.Clamp(startOffset, 0, stream.Length);
+        long rangeEnd = Math.Clamp(endOffset, rangeStart, stream.Length);
+        stream.Seek(rangeStart, SeekOrigin.Begin);
+        long totalBytes = rangeEnd - rangeStart;
         long bytesRead = 0;
 
-        while (true)
+        while (bytesRead < totalBytes)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            int read = stream.Read(buffer, carry, chunkByteCount);
+            int targetRead = (int)Math.Min(chunkByteCount, totalBytes - bytesRead);
+            int read = stream.Read(buffer, carry, targetRead);
             if (read == 0)
                 break;
 
             int length = carry + read;
+            int minStart = wholeWord && carry > 0 ? 1 : 0;
             bytesRead += read;
-            count += CountLiteralMatches(buffer.AsSpan(0, length), needle);
+            bool finalChunk = bytesRead >= totalBytes;
+            count += CountLiteralMatches(buffer.AsSpan(0, length), needle, matchCase, wholeWord, finalChunk, minStart);
             progress?.Invoke(new FastLiteralMatchProgress(bytesRead, totalBytes, count));
 
-            carry = Math.Min(needle.Length - 1, length);
+            carry = finalChunk ? 0 : Math.Min(overlapByteCount, length);
             if (carry > 0)
                 Buffer.BlockCopy(buffer, length - carry, buffer, 0, carry);
         }
@@ -537,21 +610,116 @@ internal sealed class FileTextSource : ITextSource, IFastLiteralMatchCounter
         return count;
     }
 
-    private static long CountLiteralMatches(ReadOnlySpan<byte> text, ReadOnlySpan<byte> needle)
+    private static long CountLiteralMatches(ReadOnlySpan<byte> text, ReadOnlySpan<byte> needle, bool matchCase,
+        bool wholeWord, bool finalChunk, int minStart)
     {
+        if (text.Length < needle.Length)
+            return 0;
+
+        int maxStart = text.Length - needle.Length;
+        if (wholeWord && !finalChunk)
+            maxStart--;
+        if (maxStart < minStart)
+            return 0;
+
+        return matchCase
+            ? CountCaseSensitiveLiteralMatches(text, needle, wholeWord, minStart, maxStart)
+            : CountAsciiIgnoreCaseLiteralMatches(text, needle, wholeWord, minStart, maxStart);
+    }
+
+    private static long CountCaseSensitiveLiteralMatches(ReadOnlySpan<byte> text, ReadOnlySpan<byte> needle,
+        bool wholeWord, int minStart, int maxStart)
+    {
+        ReadOnlySpan<byte> searchable = text[..(maxStart + needle.Length)];
         long count = 0;
-        int offset = 0;
-        while (offset <= text.Length - needle.Length)
+        int offset = minStart;
+        while (offset <= maxStart)
         {
-            int found = text[offset..].IndexOf(needle);
+            int found = searchable[offset..].IndexOf(needle);
             if (found < 0)
                 break;
 
-            count++;
-            offset += found + 1;
+            int matchStart = offset + found;
+            if (!wholeWord || HasAsciiWordBoundaries(text, matchStart, needle.Length))
+                count++;
+
+            offset = matchStart + 1;
         }
 
         return count;
+    }
+
+    private static long CountAsciiIgnoreCaseLiteralMatches(ReadOnlySpan<byte> text, ReadOnlySpan<byte> needle,
+        bool wholeWord, int minStart, int maxStart)
+    {
+        long count = 0;
+        int offset = minStart;
+        byte first = ToLowerAscii(needle[0]);
+        while (offset <= maxStart)
+        {
+            int found = IndexOfAsciiByteIgnoreCase(text.Slice(offset, maxStart - offset + 1), first);
+            if (found < 0)
+                break;
+
+            int matchStart = offset + found;
+            if (AsciiEqualsIgnoreCase(text.Slice(matchStart, needle.Length), needle) &&
+                (!wholeWord || HasAsciiWordBoundaries(text, matchStart, needle.Length)))
+            {
+                count++;
+            }
+
+            offset = matchStart + 1;
+        }
+
+        return count;
+    }
+
+    private static int IndexOfAsciiByteIgnoreCase(ReadOnlySpan<byte> text, byte lower)
+    {
+        byte upper = ToUpperAscii(lower);
+        return upper == lower ? text.IndexOf(lower) : text.IndexOfAny(lower, upper);
+    }
+
+    private static bool AsciiEqualsIgnoreCase(ReadOnlySpan<byte> text, ReadOnlySpan<byte> needle)
+    {
+        for (int i = 0; i < needle.Length; i++)
+        {
+            if (ToLowerAscii(text[i]) != ToLowerAscii(needle[i]))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool HasAsciiWordBoundaries(ReadOnlySpan<byte> text, int start, int length)
+    {
+        bool beforeIsWord = start > 0 && IsAsciiWordByte(text[start - 1]);
+        int after = start + length;
+        bool afterIsWord = after < text.Length && IsAsciiWordByte(text[after]);
+        return !beforeIsWord && !afterIsWord;
+    }
+
+    private static bool IsAsciiWordByte(byte value) =>
+        value is >= (byte)'A' and <= (byte)'Z' ||
+        value is >= (byte)'a' and <= (byte)'z' ||
+        value is >= (byte)'0' and <= (byte)'9' ||
+        value == (byte)'_';
+
+    private static byte ToLowerAscii(byte value) =>
+        value is >= (byte)'A' and <= (byte)'Z' ? (byte)(value + 32) : value;
+
+    private static byte ToUpperAscii(byte value) =>
+        value is >= (byte)'a' and <= (byte)'z' ? (byte)(value - 32) : value;
+
+    private static bool IsAscii(string text)
+    {
+        foreach (char ch in text)
+        {
+            if (ch > 0x7F)
+                return false;
+        }
+
+        return true;
     }
 
     private static bool ContainsLineBreak(string text) =>
@@ -585,7 +753,8 @@ internal sealed class LargeFileLineIndex
         long charCountWithoutLineEndings,
         int maxLineLength,
         string lineEnding,
-        bool hasTabs)
+        bool hasTabs,
+        bool hasNonAscii)
     {
         _checkpoints = checkpoints;
         _checkpointCharCounts = checkpointCharCounts;
@@ -595,6 +764,7 @@ internal sealed class LargeFileLineIndex
         MaxLineLength = maxLineLength;
         LineEnding = lineEnding;
         HasTabs = hasTabs;
+        HasNonAscii = hasNonAscii;
     }
 
     public int LineCount { get; }
@@ -602,6 +772,7 @@ internal sealed class LargeFileLineIndex
     public int MaxLineLength { get; }
     public string LineEnding { get; }
     public bool HasTabs { get; }
+    public bool HasNonAscii { get; }
     public long ContentStartOffset => _bomLength;
 
     public static LargeFileLineIndex Build(string path, Encoding encoding,
@@ -622,6 +793,7 @@ internal sealed class LargeFileLineIndex
         int lfCount = 0;
         int crlfCount = 0;
         bool hasTabs = false;
+        bool hasNonAscii = false;
         bool previousWasCr = false;
         long absoluteOffset = bomLength;
 
@@ -639,6 +811,8 @@ internal sealed class LargeFileLineIndex
                 byte b = buffer[i];
                 if (b == (byte)'\t')
                     hasTabs = true;
+                if (b >= 0x80)
+                    hasNonAscii = true;
 
                 if (b == (byte)'\n')
                 {
@@ -686,7 +860,8 @@ internal sealed class LargeFileLineIndex
             charCountWithoutLineEndings,
             maxLineLength,
             lineEnding,
-            hasTabs);
+            hasTabs,
+            hasNonAscii);
     }
 
     public (int line, long offset) GetCheckpointForLine(int line)
