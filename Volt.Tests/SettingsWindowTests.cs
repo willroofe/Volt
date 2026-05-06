@@ -224,16 +224,54 @@ public class SettingsWindowTests
         }
     }
 
-    private static SettingsWindow CreateWindow()
+    [StaFact]
+    public void ResettingSingleKeybind_DoesNotMoveSettingsScroll()
+    {
+        var keyBindings = new Dictionary<VoltCommand, KeyCombo>(KeyBindingManager.Defaults)
+        {
+            [VoltCommand.CommandPalette] = KeyCombo.None,
+        };
+        var window = CreateWindow(keyBindings);
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            DrainDispatcher();
+
+            Field<Button>(window, "NavKeybinds").RaiseEvent(
+                new RoutedEventArgs(Button.ClickEvent));
+            window.UpdateLayout();
+            DrainDispatcher();
+
+            var scroller = Field<ScrollViewer>(window, "SettingsScroller");
+            double scrollOffset = scroller.VerticalOffset;
+            var resetButtons = Field<Dictionary<VoltCommand, Button>>(window, "_keybindResetButtons");
+
+            resetButtons[VoltCommand.CommandPalette].RaiseEvent(
+                new RoutedEventArgs(Button.ClickEvent));
+            window.UpdateLayout();
+            DrainDispatcher();
+            DrainDispatcher();
+
+            Assert.Equal(Visibility.Collapsed, resetButtons[VoltCommand.CommandPalette].Visibility);
+            Assert.Equal(scrollOffset, scroller.VerticalOffset, precision: 3);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    private static SettingsWindow CreateWindow(Dictionary<VoltCommand, KeyCombo>? keyBindings = null)
     {
         EnsureWpfResources();
         var themeManager = new ThemeManager();
         themeManager.Initialize();
         themeManager.Apply("Volt Dark");
-        return new SettingsWindow(themeManager, CreateSnapshot());
+        return new SettingsWindow(themeManager, CreateSnapshot(keyBindings));
     }
 
-    private static SettingsSnapshot CreateSnapshot()
+    private static SettingsSnapshot CreateSnapshot(Dictionary<VoltCommand, KeyCombo>? keyBindings = null)
     {
         return new SettingsSnapshot(
             TabSize: 4,
@@ -254,7 +292,7 @@ public class SettingsWindowTests
             CommandPalettePosition: "Top",
             ExplorerFileIcons: "Full",
             ExplorerRevealActiveFile: false,
-            KeyBindings: new Dictionary<VoltCommand, KeyCombo>(KeyBindingManager.Defaults),
+            KeyBindings: keyBindings ?? new Dictionary<VoltCommand, KeyCombo>(KeyBindingManager.Defaults),
             TerminalShellPath: null,
             TerminalShellArgs: null,
             TerminalScrollbackLines: 10_000);

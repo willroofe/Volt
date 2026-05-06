@@ -19,27 +19,41 @@
             <Setter Property="FontSize" Value="11"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Foreground" Value="{DynamicResource ThemeTextFgMuted}"/>
-            <Setter Property="Margin" Value="16,10,0,2"/>
+            <Setter Property="Margin" Value="18,12,0,3"/>
         </Style>
         <Style x:Key="NavButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
-            <Setter Property="Padding" Value="24,5,16,5"/>
+            <Setter Property="Padding" Value="14,5,16,5"/>
             <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Foreground" Value="{DynamicResource ThemeButtonFg}"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Tag" Value="{x:Null}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Bd" Background="{TemplateBinding Background}"
                                 Padding="{TemplateBinding Padding}">
-                            <ContentPresenter VerticalAlignment="Center"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2"/>
+                                    <ColumnDefinition Width="12"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="Accent" Grid.Column="0"
+                                        Background="{DynamicResource ThemeTextFg}"
+                                        Visibility="Collapsed"/>
+                                <ContentPresenter Grid.Column="2" VerticalAlignment="Center"/>
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeNavHover}"/>
+                            </Trigger>
+                            <Trigger Property="Tag" Value="Active">
+                                <Setter TargetName="Accent" Property="Visibility" Value="Visible"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -47,8 +61,9 @@
             </Setter>
         </Style>
         <Style x:Key="NavButtonActive" TargetType="Button" BasedOn="{StaticResource NavButton}">
-            <Setter Property="Background" Value="{DynamicResource ThemeNavActive}"/>
+            <Setter Property="Background" Value="Transparent"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Tag" Value="Active"/>
         </Style>
         <Style x:Key="SettingLabel" TargetType="TextBlock">
             <Setter Property="FontFamily" Value="Segoe UI"/>
@@ -58,16 +73,56 @@
         </Style>
         <Style x:Key="SectionHeader" TargetType="TextBlock">
             <Setter Property="FontFamily" Value="Segoe UI"/>
-            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontSize" Value="16"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Foreground" Value="{DynamicResource ThemeTextFgStrong}"/>
-            <Setter Property="Margin" Value="0,0,0,16"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
         </Style>
         <Style x:Key="SectionPanel" TargetType="StackPanel">
-            <Setter Property="Margin" Value="0,0,0,24"/>
-        </Style>
-        <Style x:Key="SettingRow" TargetType="StackPanel">
             <Setter Property="Margin" Value="0,0,0,16"/>
+        </Style>
+        <Style x:Key="SectionDivider" TargetType="Border">
+            <Setter Property="Height" Value="1"/>
+            <Setter Property="Margin" Value="0,0,0,18"/>
+            <Setter Property="Background" Value="{DynamicResource ThemeBorderBrush}"/>
+        </Style>
+        <Style x:Key="SettingRow" TargetType="Grid">
+            <Setter Property="Margin" Value="0,0,0,6"/>
+            <Setter Property="MinHeight" Value="34"/>
+        </Style>
+        <Style x:Key="KeybindResetButton" TargetType="Button">
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTextFgMuted}"/>
+            <Setter Property="FontFamily" Value="{x:Static local:Codicons.Font}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="ToolTip" Value="Reset to default"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{DynamicResource ThemeMenuPopupBorder}"
+                                BorderThickness="1,0,0,0"
+                                CornerRadius="0,3,3,0">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeButtonHover}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeMenuItemHover}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <!-- Themed ComboBox -->
@@ -323,7 +378,8 @@
 
                 <!-- Search -->
                 <Border x:Name="SettingsSearchBorder" Grid.Row="0"
-                        Margin="18,12,18,10"
+                        Margin="24,8,24,8"
+                        Height="30"
                         Background="{DynamicResource ThemeContentBg}"
                         BorderThickness="1" CornerRadius="3"
                         SnapsToDevicePixels="True"
@@ -351,7 +407,7 @@
                         <TextBox x:Name="SettingsSearchInput"
                                  BorderThickness="0"
                                  FontFamily="Segoe UI" FontSize="13"
-                                 Padding="5,4,0,4"
+                                 Padding="5,2,0,2"
                                  VerticalContentAlignment="Center"
                                  Background="Transparent"
                                  Foreground="{DynamicResource ThemeTextFg}"
@@ -371,97 +427,147 @@
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled"
                               ScrollChanged="OnSettingsScrollChanged">
-                    <StackPanel x:Name="SettingsContent" Margin="28,20,28,16">
+                    <StackPanel x:Name="SettingsContent"
+                                Margin="36,18,36,18"
+                                MaxWidth="860"
+                                HorizontalAlignment="Stretch">
                         <!-- Theme section -->
                         <StackPanel x:Name="ThemeSection" Style="{StaticResource SectionPanel}">
                             <TextBlock Text="Theme" Style="{StaticResource SectionHeader}"/>
 
-                            <StackPanel x:Name="ThemeColorThemeRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Colour theme" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="ThemeColorThemeRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Colour theme" Style="{StaticResource SettingLabel}"/>
                                 <ComboBox x:Name="ColorThemeBox" Width="220" Height="26"
-                                          HorizontalAlignment="Left"
+                                          Grid.Column="1"
+                                          HorizontalAlignment="Right"
                                           VerticalContentAlignment="Center" FontSize="13"/>
-                            </StackPanel>
+                            </Grid>
                         </StackPanel>
 
                         <!-- Command Palette section -->
                         <StackPanel x:Name="CommandPaletteSection" Style="{StaticResource SectionPanel}">
+                            <Border Style="{StaticResource SectionDivider}"/>
                             <TextBlock Text="Command Palette" Style="{StaticResource SectionHeader}"/>
 
-                            <StackPanel x:Name="CommandPalettePositionRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Position" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="CommandPalettePositionRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Position" Style="{StaticResource SettingLabel}"/>
                                 <ComboBox x:Name="CmdPalettePosBox" Width="100" Height="26"
-                                          HorizontalAlignment="Left"
+                                          Grid.Column="1"
+                                          HorizontalAlignment="Right"
                                           VerticalContentAlignment="Center" FontSize="13">
                                     <ComboBoxItem Content="Top"/>
                                     <ComboBoxItem Content="Center"/>
                                 </ComboBox>
-                            </StackPanel>
+                            </Grid>
                         </StackPanel>
 
                         <!-- Keybinds section -->
                         <StackPanel x:Name="KeybindsSection" Style="{StaticResource SectionPanel}">
-                            <DockPanel Margin="0,0,0,16">
-                                <TextBlock Text="Keybinds" Style="{StaticResource SectionHeader}"
-                                           DockPanel.Dock="Left" Margin="0"/>
+                            <Border Style="{StaticResource SectionDivider}"/>
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Keybinds" Style="{StaticResource SectionHeader}" Margin="0"/>
                                 <Button x:Name="ResetAllKeybinds" Content="Reset All"
                                         Style="{StaticResource ActionButton}"
+                                        Grid.Column="1"
                                         HorizontalAlignment="Right" VerticalAlignment="Top"
                                         Click="OnResetAllKeybinds"/>
-                            </DockPanel>
+                            </Grid>
                             <ItemsControl x:Name="KeybindList"/>
                         </StackPanel>
 
                         <!-- Font section -->
                         <StackPanel x:Name="FontSection" Style="{StaticResource SectionPanel}">
+                            <Border Style="{StaticResource SectionDivider}"/>
                             <TextBlock Text="Font" Style="{StaticResource SectionHeader}"/>
 
-                            <StackPanel x:Name="FontFamilyRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Font family" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="FontFamilyRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Font family" Style="{StaticResource SettingLabel}"/>
                                 <ComboBox x:Name="FontFamilyBox" Width="220" Height="26"
-                                          HorizontalAlignment="Left"
+                                          Grid.Column="1"
+                                          HorizontalAlignment="Right"
                                           VerticalContentAlignment="Center" FontSize="13"/>
-                            </StackPanel>
+                            </Grid>
 
-                            <StackPanel x:Name="FontSizeRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Font size" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="FontSizeRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Font size" Style="{StaticResource SettingLabel}"/>
                                 <ComboBox x:Name="FontSizeBox" Width="80" Height="26"
-                                          HorizontalAlignment="Left"
+                                          Grid.Column="1"
+                                          HorizontalAlignment="Right"
                                           VerticalContentAlignment="Center" FontSize="13"/>
-                            </StackPanel>
+                            </Grid>
 
-                            <StackPanel x:Name="FontWeightRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Font weight" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="FontWeightRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Font weight" Style="{StaticResource SettingLabel}"/>
                                 <ComboBox x:Name="FontWeightBox" Width="140" Height="26"
-                                          HorizontalAlignment="Left"
+                                          Grid.Column="1"
+                                          HorizontalAlignment="Right"
                                           VerticalContentAlignment="Center" FontSize="13"/>
-                            </StackPanel>
+                            </Grid>
 
-                            <StackPanel x:Name="LineHeightRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Line height" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="LineHeightRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Line height" Style="{StaticResource SettingLabel}"/>
                                 <ComboBox x:Name="LineHeightBox" Width="80" Height="26"
-                                          HorizontalAlignment="Left"
+                                          Grid.Column="1"
+                                          HorizontalAlignment="Right"
                                           VerticalContentAlignment="Center" FontSize="13"/>
-                            </StackPanel>
+                            </Grid>
                         </StackPanel>
 
                         <!-- Caret section -->
                         <StackPanel x:Name="CaretSection" Style="{StaticResource SectionPanel}">
+                            <Border Style="{StaticResource SectionDivider}"/>
                             <TextBlock Text="Caret" Style="{StaticResource SectionHeader}"/>
 
-                            <StackPanel x:Name="CaretStyleRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Caret style" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="CaretStyleRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Caret style" Style="{StaticResource SettingLabel}"/>
                                 <ComboBox x:Name="CaretStyleBox" Width="100" Height="26"
-                                          HorizontalAlignment="Left"
+                                          Grid.Column="1"
+                                          HorizontalAlignment="Right"
                                           VerticalContentAlignment="Center" FontSize="13">
                                     <ComboBoxItem Content="Bar"/>
                                     <ComboBoxItem Content="Block"/>
                                 </ComboBox>
-                            </StackPanel>
+                            </Grid>
 
-                            <StackPanel x:Name="CaretBlinkRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Caret blink" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
-                                <StackPanel Orientation="Horizontal">
+                            <Grid x:Name="CaretBlinkRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Caret blink" Style="{StaticResource SettingLabel}"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
                                     <Slider x:Name="CaretBlinkSlider" Width="180" Minimum="0" Maximum="1000"
                                             TickFrequency="50" IsSnapToTickEnabled="True"
                                             VerticalAlignment="Center"
@@ -469,161 +575,233 @@
                                     <TextBlock x:Name="CaretBlinkLabel" Style="{StaticResource SettingLabel}"
                                                Margin="10,0,0,0" Width="50"/>
                                 </StackPanel>
-                            </StackPanel>
+                            </Grid>
                         </StackPanel>
 
                         <!-- Tabs section -->
                         <StackPanel x:Name="TabsSection" Style="{StaticResource SectionPanel}">
+                            <Border Style="{StaticResource SectionDivider}"/>
                             <TextBlock Text="Tabs" Style="{StaticResource SectionHeader}"/>
 
-                            <StackPanel x:Name="TabsFixedWidthRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Fixed width tabs" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="TabsFixedWidthRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Fixed width tabs" Style="{StaticResource SettingLabel}"/>
                                 <ComboBox x:Name="FixedWidthTabsBox" Width="100" Height="26"
-                                          HorizontalAlignment="Left"
+                                          Grid.Column="1"
+                                          HorizontalAlignment="Right"
                                           VerticalContentAlignment="Center" FontSize="13">
                                     <ComboBoxItem Content="On"/>
                                     <ComboBoxItem Content="Off"/>
                                 </ComboBox>
-                            </StackPanel>
+                            </Grid>
                         </StackPanel>
 
                         <!-- Find section -->
                         <StackPanel x:Name="FindSection" Style="{StaticResource SectionPanel}">
+                            <Border Style="{StaticResource SectionDivider}"/>
                             <TextBlock Text="Find" Style="{StaticResource SectionHeader}"/>
 
-                            <StackPanel x:Name="FindBarPositionRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Find bar position" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="FindBarPositionRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Find bar position" Style="{StaticResource SettingLabel}"/>
                                 <ComboBox x:Name="FindBarPosBox" Width="100" Height="26"
-                                          HorizontalAlignment="Left"
+                                          Grid.Column="1"
+                                          HorizontalAlignment="Right"
                                           VerticalContentAlignment="Center" FontSize="13">
                                     <ComboBoxItem Content="Top"/>
                                     <ComboBoxItem Content="Bottom"/>
                                 </ComboBox>
-                            </StackPanel>
+                            </Grid>
 
-                            <StackPanel x:Name="FindSeedSelectionRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Add selection to find" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="FindSeedSelectionRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Add selection to find" Style="{StaticResource SettingLabel}"/>
                                 <ComboBox x:Name="FindSeedSelBox" Width="100" Height="26"
-                                          HorizontalAlignment="Left"
+                                          Grid.Column="1"
+                                          HorizontalAlignment="Right"
                                           VerticalContentAlignment="Center" FontSize="13">
                                     <ComboBoxItem Content="On"/>
                                     <ComboBoxItem Content="Off"/>
                                 </ComboBox>
-                            </StackPanel>
+                            </Grid>
                         </StackPanel>
 
                         <!-- Indentation section -->
                         <StackPanel x:Name="IndentationSection" Style="{StaticResource SectionPanel}">
+                            <Border Style="{StaticResource SectionDivider}"/>
                             <TextBlock Text="Indentation" Style="{StaticResource SectionHeader}"/>
 
-                            <StackPanel x:Name="IndentationTabSizeRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Tab size" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="IndentationTabSizeRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Tab size" Style="{StaticResource SettingLabel}"/>
                                 <ComboBox x:Name="TabSizeBox" Width="70" Height="26"
-                                          HorizontalAlignment="Left"
+                                          Grid.Column="1"
+                                          HorizontalAlignment="Right"
                                           VerticalContentAlignment="Center" FontSize="13">
                                     <ComboBoxItem Content="2"/>
                                     <ComboBoxItem Content="4"/>
                                     <ComboBoxItem Content="8"/>
                                 </ComboBox>
-                            </StackPanel>
+                            </Grid>
 
-                            <StackPanel x:Name="IndentationGuidesRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Indent guides" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="IndentationGuidesRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Indent guides" Style="{StaticResource SettingLabel}"/>
                                 <ComboBox x:Name="IndentGuidesBox" Width="100" Height="26"
-                                          HorizontalAlignment="Left"
+                                          Grid.Column="1"
+                                          HorizontalAlignment="Right"
                                           VerticalContentAlignment="Center" FontSize="13">
                                     <ComboBoxItem Content="On"/>
                                     <ComboBoxItem Content="Off"/>
                                 </ComboBox>
-                            </StackPanel>
+                            </Grid>
                         </StackPanel>
 
                         <!-- Word Wrap section -->
                         <StackPanel x:Name="WordWrapSection" Style="{StaticResource SectionPanel}">
+                            <Border Style="{StaticResource SectionDivider}"/>
                             <TextBlock Text="Word Wrap" Style="{StaticResource SectionHeader}"/>
 
-                            <StackPanel x:Name="WordWrapEnabledRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Word wrap" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="WordWrapEnabledRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Word wrap" Style="{StaticResource SettingLabel}"/>
                                 <ComboBox x:Name="WordWrapBox" Width="100" Height="26"
-                                          HorizontalAlignment="Left"
+                                          Grid.Column="1"
+                                          HorizontalAlignment="Right"
                                           VerticalContentAlignment="Center" FontSize="13">
                                     <ComboBoxItem Content="On"/>
                                     <ComboBoxItem Content="Off"/>
                                 </ComboBox>
-                            </StackPanel>
+                            </Grid>
 
-                            <StackPanel x:Name="WordWrapAtWordsRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Break at word boundaries" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="WordWrapAtWordsRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Break at word boundaries" Style="{StaticResource SettingLabel}"/>
                                 <ComboBox x:Name="WordWrapAtWordsBox" Width="100" Height="26"
-                                          HorizontalAlignment="Left"
+                                          Grid.Column="1"
+                                          HorizontalAlignment="Right"
                                           VerticalContentAlignment="Center" FontSize="13">
                                     <ComboBoxItem Content="On"/>
                                     <ComboBoxItem Content="Off"/>
                                 </ComboBox>
-                            </StackPanel>
+                            </Grid>
 
-                            <StackPanel x:Name="WordWrapIndentRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Indent wrapped lines" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="WordWrapIndentRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Indent wrapped lines" Style="{StaticResource SettingLabel}"/>
                                 <ComboBox x:Name="WordWrapIndentBox" Width="100" Height="26"
-                                          HorizontalAlignment="Left"
+                                          Grid.Column="1"
+                                          HorizontalAlignment="Right"
                                           VerticalContentAlignment="Center" FontSize="13">
                                     <ComboBoxItem Content="On"/>
                                     <ComboBoxItem Content="Off"/>
                                 </ComboBox>
-                            </StackPanel>
+                            </Grid>
                         </StackPanel>
 
                         <!-- Explorer section -->
                         <StackPanel x:Name="ExplorerSection" Style="{StaticResource SectionPanel}">
+                            <Border Style="{StaticResource SectionDivider}"/>
                             <TextBlock Text="Explorer" Style="{StaticResource SectionHeader}"/>
 
-                            <StackPanel x:Name="ExplorerFileIconsRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="File icons" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="ExplorerFileIconsRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="File icons" Style="{StaticResource SettingLabel}"/>
                                 <ComboBox x:Name="ExplorerFileIconsBox" Width="100" Height="26"
-                                          HorizontalAlignment="Left"
+                                          Grid.Column="1"
+                                          HorizontalAlignment="Right"
                                           VerticalContentAlignment="Center" FontSize="13"/>
-                            </StackPanel>
+                            </Grid>
 
-                            <StackPanel x:Name="ExplorerRevealActiveFileRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Reveal active file" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="ExplorerRevealActiveFileRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Reveal active file" Style="{StaticResource SettingLabel}"/>
                                 <ComboBox x:Name="ExplorerRevealActiveFileBox" Width="100" Height="26"
-                                          HorizontalAlignment="Left"
+                                          Grid.Column="1"
+                                          HorizontalAlignment="Right"
                                           VerticalContentAlignment="Center" FontSize="13">
                                     <ComboBoxItem Content="On"/>
                                     <ComboBoxItem Content="Off"/>
                                 </ComboBox>
-                            </StackPanel>
+                            </Grid>
                         </StackPanel>
 
                         <!-- Terminal section -->
                         <StackPanel x:Name="TerminalSection" Style="{StaticResource SectionPanel}">
+                            <Border Style="{StaticResource SectionDivider}"/>
                             <TextBlock Text="Terminal" Style="{StaticResource SectionHeader}"/>
 
-                            <StackPanel x:Name="TerminalShellRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Shell" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="TerminalShellRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Shell" Style="{StaticResource SettingLabel}"/>
                                 <ComboBox x:Name="TerminalShellBox" Width="220" Height="26"
-                                          HorizontalAlignment="Left"
+                                          Grid.Column="1"
+                                          HorizontalAlignment="Right"
                                           VerticalContentAlignment="Center" FontSize="13">
                                     <ComboBoxItem Content="PowerShell"/>
                                     <ComboBoxItem Content="Command Prompt"/>
                                 </ComboBox>
-                            </StackPanel>
+                            </Grid>
 
-                            <StackPanel x:Name="TerminalShellArgsRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Shell arguments" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="TerminalShellArgsRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Shell arguments" Style="{StaticResource SettingLabel}"/>
                                 <TextBox x:Name="TerminalShellArgsBox" Style="{StaticResource RoundedTextBox}"
-                                         Height="26" Padding="8,4"
+                                         Grid.Column="1"
+                                         Width="260" Height="26" Padding="8,4"
+                                         HorizontalAlignment="Right"
                                          VerticalContentAlignment="Center" FontSize="13"
                                          Foreground="{DynamicResource ThemeTextFg}"/>
-                            </StackPanel>
+                            </Grid>
 
-                            <StackPanel x:Name="TerminalScrollbackRow" Style="{StaticResource SettingRow}">
-                                <TextBlock Text="Scrollback lines" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                            <Grid x:Name="TerminalScrollbackRow" Style="{StaticResource SettingRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Scrollback lines" Style="{StaticResource SettingLabel}"/>
                                 <TextBox x:Name="TerminalScrollbackBox" Style="{StaticResource RoundedTextBox}"
-                                         Width="120" Height="26" HorizontalAlignment="Left" Padding="8,4"
+                                         Grid.Column="1"
+                                         Width="120" Height="26" HorizontalAlignment="Right" Padding="8,4"
                                          VerticalContentAlignment="Center" FontSize="13"
                                          Foreground="{DynamicResource ThemeTextFg}"/>
-                            </StackPanel>
+                            </Grid>
                         </StackPanel>
 
                         <StackPanel x:Name="NoSettingsResults" Visibility="Collapsed"

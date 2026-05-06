@@ -67,6 +67,7 @@ public partial class SettingsWindow : Window
     private readonly Dictionary<VoltCommand, TextBlock> _keybindDisplays = new();
     private readonly Dictionary<VoltCommand, Border> _keybindBorders = new();
     private readonly Dictionary<VoltCommand, Button> _keybindResetButtons = new();
+    private readonly Dictionary<VoltCommand, ColumnDefinition> _keybindResetColumns = new();
     private readonly Dictionary<VoltCommand, TextBlock> _keybindConflictLabels = new();
     private VoltCommand? _capturingCommand;
     private IReadOnlyList<SettingsSectionInfo>? _sectionInfos;
@@ -175,11 +176,15 @@ public partial class SettingsWindow : Window
         {
             if (!_pendingBindings.ContainsKey(cmd)) continue;
 
-            var row = new Grid { Margin = new Thickness(0, 0, 0, 2) };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(170) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(50) });
+            var row = new Grid
+            {
+                MinHeight = 30,
+                Margin = new Thickness(0, 0, 0, 2),
+            };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             // Command name
             var nameLabel = new TextBlock
@@ -188,6 +193,7 @@ public partial class SettingsWindow : Window
                 FontFamily = new FontFamily("Segoe UI"),
                 FontSize = 13,
                 VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 12, 0),
             };
             nameLabel.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFg);
             Grid.SetColumn(nameLabel, 0);
@@ -204,44 +210,62 @@ public partial class SettingsWindow : Window
             };
             bindingText.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFg);
 
-            var bindingBorder = new Border
+            var capturedCmd = cmd;
+            var bindingGrid = new Grid
             {
+                Width = 220,
+                Height = 26,
+            };
+            bindingGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var resetColumn = new ColumnDefinition
+            {
+                Width = IsDefault(cmd) ? new GridLength(0) : new GridLength(28),
+            };
+            bindingGrid.ColumnDefinitions.Add(resetColumn);
+
+            var bindingFrame = new Border
+            {
+                Width = 220,
+                Height = 26,
                 CornerRadius = new CornerRadius(3),
                 BorderThickness = new Thickness(1),
+                IsHitTestVisible = false,
+            };
+            bindingFrame.SetResourceReference(Border.BorderBrushProperty, ThemeResourceKeys.MenuPopupBorder);
+            bindingFrame.SetResourceReference(Border.BackgroundProperty, ThemeResourceKeys.ContentBg);
+            Grid.SetColumnSpan(bindingFrame, 2);
+            bindingGrid.Children.Add(bindingFrame);
+
+            var bindingHitArea = new Border
+            {
+                Background = Brushes.Transparent,
                 Padding = new Thickness(8, 4, 8, 4),
+                Margin = new Thickness(1, 1, 0, 1),
                 Cursor = Cursors.Hand,
                 Child = bindingText,
             };
-            bindingBorder.SetResourceReference(Border.BorderBrushProperty, ThemeResourceKeys.MenuPopupBorder);
-            bindingBorder.SetResourceReference(Border.BackgroundProperty, ThemeResourceKeys.ContentBg);
+            bindingHitArea.MouseLeftButtonDown += (_, _) => StartCapture(capturedCmd);
+            Grid.SetColumn(bindingHitArea, 0);
+            bindingGrid.Children.Add(bindingHitArea);
 
-            var capturedCmd = cmd;
-            bindingBorder.MouseLeftButtonDown += (_, _) => StartCapture(capturedCmd);
-            Grid.SetColumn(bindingBorder, 1);
-            row.Children.Add(bindingBorder);
-
-            _keybindDisplays[cmd] = bindingText;
-            _keybindBorders[cmd] = bindingBorder;
-
-            // Reset button
             var resetBtn = new Button
             {
-                Content = "Reset",
-                FontFamily = new FontFamily("Segoe UI"),
-                FontSize = 11,
-                Padding = new Thickness(4, 2, 4, 2),
-                Cursor = Cursors.Hand,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(6, 0, 0, 0),
-                Visibility = IsDefault(cmd) ? Visibility.Hidden : Visibility.Visible,
+                Content = Codicons.Refresh,
+                Style = (Style)FindResource("KeybindResetButton"),
+                Visibility = IsDefault(cmd) ? Visibility.Collapsed : Visibility.Visible,
             };
             resetBtn.SetResourceReference(Control.ForegroundProperty, ThemeResourceKeys.TextFgMuted);
-            resetBtn.SetResourceReference(Control.BackgroundProperty, ThemeResourceKeys.ContentBg);
-            resetBtn.SetResourceReference(Control.BorderBrushProperty, ThemeResourceKeys.MenuPopupBorder);
             resetBtn.Click += (_, _) => ResetKeybind(capturedCmd);
-            Grid.SetColumn(resetBtn, 2);
-            row.Children.Add(resetBtn);
+            Grid.SetColumn(resetBtn, 1);
+            bindingGrid.Children.Add(resetBtn);
+
+            Grid.SetColumn(bindingGrid, 1);
+            row.Children.Add(bindingGrid);
+
+            _keybindDisplays[cmd] = bindingText;
+            _keybindBorders[cmd] = bindingFrame;
             _keybindResetButtons[cmd] = resetBtn;
+            _keybindResetColumns[cmd] = resetColumn;
 
             // Conflict label
             var conflictLabel = new TextBlock
@@ -250,10 +274,11 @@ public partial class SettingsWindow : Window
                 FontSize = 11,
                 Foreground = new SolidColorBrush(Color.FromRgb(0xE8, 0xA8, 0x30)),
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(8, 0, 0, 0),
+                Margin = new Thickness(0, 2, 0, 2),
                 Visibility = Visibility.Collapsed,
             };
-            Grid.SetColumn(conflictLabel, 3);
+            Grid.SetRow(conflictLabel, 1);
+            Grid.SetColumn(conflictLabel, 1);
             row.Children.Add(conflictLabel);
             _keybindConflictLabels[cmd] = conflictLabel;
 
@@ -282,7 +307,7 @@ public partial class SettingsWindow : Window
         _keybindDisplays[cmd].FontStyle = FontStyles.Normal;
         _keybindDisplays[cmd].SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFg);
         _keybindBorders[cmd].SetResourceReference(Border.BorderBrushProperty, ThemeResourceKeys.MenuPopupBorder);
-        _keybindResetButtons[cmd].Visibility = IsDefault(cmd) ? Visibility.Hidden : Visibility.Visible;
+        SetKeybindResetVisible(cmd, !IsDefault(cmd));
         UpdateConflicts();
     }
 
@@ -341,6 +366,8 @@ public partial class SettingsWindow : Window
 
     private void ResetKeybind(VoltCommand cmd)
     {
+        double scrollOffset = SettingsScroller.VerticalOffset;
+
         if (_capturingCommand == cmd)
             _capturingCommand = null;
 
@@ -351,12 +378,15 @@ public partial class SettingsWindow : Window
         _keybindDisplays[cmd].FontStyle = FontStyles.Normal;
         _keybindDisplays[cmd].SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFg);
         _keybindBorders[cmd].SetResourceReference(Border.BorderBrushProperty, ThemeResourceKeys.MenuPopupBorder);
-        _keybindResetButtons[cmd].Visibility = Visibility.Hidden;
+        SetKeybindResetVisible(cmd, visible: false);
         UpdateConflicts();
+        RestoreSettingsScrollOffset(scrollOffset);
     }
 
     private void OnResetAllKeybinds(object sender, RoutedEventArgs e)
     {
+        double scrollOffset = SettingsScroller.VerticalOffset;
+
         _capturingCommand = null;
         foreach (var cmd in _pendingBindings.Keys)
         {
@@ -366,9 +396,26 @@ public partial class SettingsWindow : Window
             _keybindDisplays[cmd].FontStyle = FontStyles.Normal;
             _keybindDisplays[cmd].SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFg);
             _keybindBorders[cmd].SetResourceReference(Border.BorderBrushProperty, ThemeResourceKeys.MenuPopupBorder);
-            _keybindResetButtons[cmd].Visibility = Visibility.Hidden;
+            SetKeybindResetVisible(cmd, visible: false);
         }
         UpdateConflicts();
+        RestoreSettingsScrollOffset(scrollOffset);
+    }
+
+    private void SetKeybindResetVisible(VoltCommand cmd, bool visible)
+    {
+        _keybindResetButtons[cmd].Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        _keybindResetColumns[cmd].Width = visible ? new GridLength(28) : new GridLength(0);
+    }
+
+    private void RestoreSettingsScrollOffset(double scrollOffset)
+    {
+        if (!IsLoaded)
+            return;
+
+        SettingsScroller.ScrollToVerticalOffset(scrollOffset);
+        Dispatcher.BeginInvoke(DispatcherPriority.Background,
+            () => SettingsScroller.ScrollToVerticalOffset(scrollOffset));
     }
 
     private void UpdateConflicts()
