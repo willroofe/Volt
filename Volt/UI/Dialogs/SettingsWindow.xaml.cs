@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace Volt;
 
@@ -12,6 +13,7 @@ public record SettingsSnapshot(
     bool FindSeedWithSelection, bool FixedWidthTabs,
     bool WordWrap, bool WordWrapAtWords, bool WordWrapIndent,
     bool IndentGuides, string CommandPalettePosition,
+    string ExplorerFileIcons, bool ExplorerRevealActiveFile,
     Dictionary<VoltCommand, KeyCombo> KeyBindings,
     string? TerminalShellPath, string? TerminalShellArgs, int TerminalScrollbackLines);
 
@@ -33,12 +35,26 @@ public partial class SettingsWindow : Window
     public bool WordWrapIndent { get; private set; }
     public bool IndentGuides { get; private set; }
     public string CommandPalettePosition { get; private set; }
+    public string ExplorerFileIcons { get; private set; }
+    public bool ExplorerRevealActiveFile { get; private set; }
     public Dictionary<VoltCommand, KeyCombo> KeyBindings => new(_pendingBindings);
     public string? TerminalShellPath { get; private set; }
     public string? TerminalShellArgs { get; private set; }
     public int TerminalScrollbackLines { get; private set; }
 
-    private enum SettingsSection { Theme, CommandPalette, Keybinds, Font, Caret, Tabs, Find, Explorer, Terminal, WordWrap, Indentation }
+    private enum SettingsSection { Theme, CommandPalette, Keybinds, Font, Caret, Tabs, Find, Indentation, WordWrap, Explorer, Terminal }
+
+    private sealed record SettingsSectionInfo(
+        SettingsSection Section,
+        Button NavButton,
+        FrameworkElement Container,
+        string[] Terms,
+        bool IsKeybinds = false);
+
+    private sealed record SettingSearchEntry(
+        SettingsSection Section,
+        FrameworkElement Row,
+        string[] Terms);
 
     public event EventHandler? Applied;
 
@@ -51,8 +67,13 @@ public partial class SettingsWindow : Window
     private readonly Dictionary<VoltCommand, TextBlock> _keybindDisplays = new();
     private readonly Dictionary<VoltCommand, Border> _keybindBorders = new();
     private readonly Dictionary<VoltCommand, Button> _keybindResetButtons = new();
+    private readonly Dictionary<VoltCommand, ColumnDefinition> _keybindResetColumns = new();
     private readonly Dictionary<VoltCommand, TextBlock> _keybindConflictLabels = new();
     private VoltCommand? _capturingCommand;
+    private IReadOnlyList<SettingsSectionInfo>? _sectionInfos;
+    private IReadOnlyList<SettingSearchEntry>? _settingSearchEntries;
+    private SettingsSection? _activeSection = SettingsSection.Theme;
+    private bool _isProgrammaticScroll;
 
     public SettingsWindow(ThemeManager themeManager, SettingsSnapshot snapshot)
     {
@@ -68,6 +89,8 @@ public partial class SettingsWindow : Window
         ColorThemeName = snapshot.ColorTheme;
         FindBarPosition = snapshot.FindBarPosition;
         CommandPalettePosition = snapshot.CommandPalettePosition;
+        ExplorerFileIcons = AppSettings.NormalizeExplorerFileIcons(snapshot.ExplorerFileIcons);
+        ExplorerRevealActiveFile = snapshot.ExplorerRevealActiveFile;
 
         foreach (var (cmd, combo) in snapshot.KeyBindings)
             _pendingBindings[cmd] = combo;
@@ -98,6 +121,11 @@ public partial class SettingsWindow : Window
         WordWrapIndentBox.SelectedIndex = snapshot.WordWrapIndent ? 0 : 1;
         IndentGuides = snapshot.IndentGuides;
         IndentGuidesBox.SelectedIndex = snapshot.IndentGuides ? 0 : 1;
+        foreach (var option in AppSettings.ExplorerFileIconOptions)
+            ExplorerFileIconsBox.Items.Add(option);
+        int fileIconsIndex = Array.IndexOf(AppSettings.ExplorerFileIconOptions, ExplorerFileIcons);
+        ExplorerFileIconsBox.SelectedIndex = fileIconsIndex >= 0 ? fileIconsIndex : 0;
+        ExplorerRevealActiveFileBox.SelectedIndex = snapshot.ExplorerRevealActiveFile ? 0 : 1;
 
         // Populate font family dropdown
         _fontNames = FontManager.GetMonospaceFonts();
@@ -132,6 +160,12 @@ public partial class SettingsWindow : Window
         ColorThemeBox.SelectedIndex = ti >= 0 ? ti : 0;
 
         BuildKeybindRows();
+        SetActiveNav(SettingsSection.Theme);
+        Loaded += (_, _) =>
+        {
+            ApplySettingsSearch();
+            FocusSettingsSearch();
+        };
     }
 
     // ── Keybind UI ──────────────────────────────────────────────────────
@@ -142,11 +176,15 @@ public partial class SettingsWindow : Window
         {
             if (!_pendingBindings.ContainsKey(cmd)) continue;
 
-            var row = new Grid { Margin = new Thickness(0, 0, 0, 2) };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(170) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(50) });
+            var row = new Grid
+            {
+                MinHeight = 30,
+                Margin = new Thickness(0, 0, 0, 2),
+            };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             // Command name
             var nameLabel = new TextBlock
@@ -155,6 +193,7 @@ public partial class SettingsWindow : Window
                 FontFamily = new FontFamily("Segoe UI"),
                 FontSize = 13,
                 VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 12, 0),
             };
             nameLabel.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFg);
             Grid.SetColumn(nameLabel, 0);
@@ -171,44 +210,62 @@ public partial class SettingsWindow : Window
             };
             bindingText.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFg);
 
-            var bindingBorder = new Border
+            var capturedCmd = cmd;
+            var bindingGrid = new Grid
             {
+                Width = 220,
+                Height = 26,
+            };
+            bindingGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var resetColumn = new ColumnDefinition
+            {
+                Width = IsDefault(cmd) ? new GridLength(0) : new GridLength(28),
+            };
+            bindingGrid.ColumnDefinitions.Add(resetColumn);
+
+            var bindingFrame = new Border
+            {
+                Width = 220,
+                Height = 26,
                 CornerRadius = new CornerRadius(3),
                 BorderThickness = new Thickness(1),
+                IsHitTestVisible = false,
+            };
+            bindingFrame.SetResourceReference(Border.BorderBrushProperty, ThemeResourceKeys.MenuPopupBorder);
+            bindingFrame.SetResourceReference(Border.BackgroundProperty, ThemeResourceKeys.ContentBg);
+            Grid.SetColumnSpan(bindingFrame, 2);
+            bindingGrid.Children.Add(bindingFrame);
+
+            var bindingHitArea = new Border
+            {
+                Background = Brushes.Transparent,
                 Padding = new Thickness(8, 4, 8, 4),
+                Margin = new Thickness(1, 1, 0, 1),
                 Cursor = Cursors.Hand,
                 Child = bindingText,
             };
-            bindingBorder.SetResourceReference(Border.BorderBrushProperty, ThemeResourceKeys.MenuPopupBorder);
-            bindingBorder.SetResourceReference(Border.BackgroundProperty, ThemeResourceKeys.ContentBg);
+            bindingHitArea.MouseLeftButtonDown += (_, _) => StartCapture(capturedCmd);
+            Grid.SetColumn(bindingHitArea, 0);
+            bindingGrid.Children.Add(bindingHitArea);
 
-            var capturedCmd = cmd;
-            bindingBorder.MouseLeftButtonDown += (_, _) => StartCapture(capturedCmd);
-            Grid.SetColumn(bindingBorder, 1);
-            row.Children.Add(bindingBorder);
-
-            _keybindDisplays[cmd] = bindingText;
-            _keybindBorders[cmd] = bindingBorder;
-
-            // Reset button
             var resetBtn = new Button
             {
-                Content = "Reset",
-                FontFamily = new FontFamily("Segoe UI"),
-                FontSize = 11,
-                Padding = new Thickness(4, 2, 4, 2),
-                Cursor = Cursors.Hand,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(6, 0, 0, 0),
-                Visibility = IsDefault(cmd) ? Visibility.Hidden : Visibility.Visible,
+                Content = Codicons.Refresh,
+                Style = (Style)FindResource("KeybindResetButton"),
+                Visibility = IsDefault(cmd) ? Visibility.Collapsed : Visibility.Visible,
             };
             resetBtn.SetResourceReference(Control.ForegroundProperty, ThemeResourceKeys.TextFgMuted);
-            resetBtn.SetResourceReference(Control.BackgroundProperty, ThemeResourceKeys.ContentBg);
-            resetBtn.SetResourceReference(Control.BorderBrushProperty, ThemeResourceKeys.MenuPopupBorder);
             resetBtn.Click += (_, _) => ResetKeybind(capturedCmd);
-            Grid.SetColumn(resetBtn, 2);
-            row.Children.Add(resetBtn);
+            Grid.SetColumn(resetBtn, 1);
+            bindingGrid.Children.Add(resetBtn);
+
+            Grid.SetColumn(bindingGrid, 1);
+            row.Children.Add(bindingGrid);
+
+            _keybindDisplays[cmd] = bindingText;
+            _keybindBorders[cmd] = bindingFrame;
             _keybindResetButtons[cmd] = resetBtn;
+            _keybindResetColumns[cmd] = resetColumn;
 
             // Conflict label
             var conflictLabel = new TextBlock
@@ -217,10 +274,11 @@ public partial class SettingsWindow : Window
                 FontSize = 11,
                 Foreground = new SolidColorBrush(Color.FromRgb(0xE8, 0xA8, 0x30)),
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(8, 0, 0, 0),
+                Margin = new Thickness(0, 2, 0, 2),
                 Visibility = Visibility.Collapsed,
             };
-            Grid.SetColumn(conflictLabel, 3);
+            Grid.SetRow(conflictLabel, 1);
+            Grid.SetColumn(conflictLabel, 1);
             row.Children.Add(conflictLabel);
             _keybindConflictLabels[cmd] = conflictLabel;
 
@@ -249,7 +307,7 @@ public partial class SettingsWindow : Window
         _keybindDisplays[cmd].FontStyle = FontStyles.Normal;
         _keybindDisplays[cmd].SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFg);
         _keybindBorders[cmd].SetResourceReference(Border.BorderBrushProperty, ThemeResourceKeys.MenuPopupBorder);
-        _keybindResetButtons[cmd].Visibility = IsDefault(cmd) ? Visibility.Hidden : Visibility.Visible;
+        SetKeybindResetVisible(cmd, !IsDefault(cmd));
         UpdateConflicts();
     }
 
@@ -257,6 +315,24 @@ public partial class SettingsWindow : Window
     {
         if (_capturingCommand is not { } cmd)
         {
+            if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && e.Key == Key.F)
+            {
+                FocusSettingsSearch();
+                e.Handled = true;
+                return;
+            }
+
+            if (SettingsSearchInput.IsKeyboardFocusWithin && e.Key == Key.Escape)
+            {
+                if (!string.IsNullOrEmpty(SettingsSearchInput.Text))
+                    SettingsSearchInput.Clear();
+                else
+                    Keyboard.ClearFocus();
+
+                e.Handled = true;
+                return;
+            }
+
             base.OnPreviewKeyDown(e);
             return;
         }
@@ -290,6 +366,8 @@ public partial class SettingsWindow : Window
 
     private void ResetKeybind(VoltCommand cmd)
     {
+        double scrollOffset = SettingsScroller.VerticalOffset;
+
         if (_capturingCommand == cmd)
             _capturingCommand = null;
 
@@ -300,12 +378,15 @@ public partial class SettingsWindow : Window
         _keybindDisplays[cmd].FontStyle = FontStyles.Normal;
         _keybindDisplays[cmd].SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFg);
         _keybindBorders[cmd].SetResourceReference(Border.BorderBrushProperty, ThemeResourceKeys.MenuPopupBorder);
-        _keybindResetButtons[cmd].Visibility = Visibility.Hidden;
+        SetKeybindResetVisible(cmd, visible: false);
         UpdateConflicts();
+        RestoreSettingsScrollOffset(scrollOffset);
     }
 
     private void OnResetAllKeybinds(object sender, RoutedEventArgs e)
     {
+        double scrollOffset = SettingsScroller.VerticalOffset;
+
         _capturingCommand = null;
         foreach (var cmd in _pendingBindings.Keys)
         {
@@ -315,9 +396,26 @@ public partial class SettingsWindow : Window
             _keybindDisplays[cmd].FontStyle = FontStyles.Normal;
             _keybindDisplays[cmd].SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFg);
             _keybindBorders[cmd].SetResourceReference(Border.BorderBrushProperty, ThemeResourceKeys.MenuPopupBorder);
-            _keybindResetButtons[cmd].Visibility = Visibility.Hidden;
+            SetKeybindResetVisible(cmd, visible: false);
         }
         UpdateConflicts();
+        RestoreSettingsScrollOffset(scrollOffset);
+    }
+
+    private void SetKeybindResetVisible(VoltCommand cmd, bool visible)
+    {
+        _keybindResetButtons[cmd].Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        _keybindResetColumns[cmd].Width = visible ? new GridLength(28) : new GridLength(0);
+    }
+
+    private void RestoreSettingsScrollOffset(double scrollOffset)
+    {
+        if (!IsLoaded)
+            return;
+
+        SettingsScroller.ScrollToVerticalOffset(scrollOffset);
+        Dispatcher.BeginInvoke(DispatcherPriority.Background,
+            () => SettingsScroller.ScrollToVerticalOffset(scrollOffset));
     }
 
     private void UpdateConflicts()
@@ -356,30 +454,142 @@ public partial class SettingsWindow : Window
 
     // ── Navigation ──────────────────────────────────────────────────────
 
-    private (Button nav, FrameworkElement scroller)[] _navSections = null!;
-
-    private (Button nav, FrameworkElement scroller)[] NavSections => _navSections ??=
+    private IReadOnlyList<SettingsSectionInfo> SectionInfos => _sectionInfos ??=
     [
-        (NavTheme, ThemeScroller), (NavCommandPalette, CommandPaletteScroller),
-        (NavKeybinds, KeybindsScroller), (NavFont, FontScroller),
-        (NavCaret, CaretScroller), (NavTabs, TabsScroller),
-        (NavFind, FindScroller), (NavExplorer, ExplorerScroller),
-        (NavTerminal, TerminalScroller),
-        (NavWordWrap, WordWrapScroller), (NavIndentation, IndentationScroller),
+        new(SettingsSection.Theme, NavTheme, ThemeSection, ["theme", "appearance"]),
+        new(SettingsSection.CommandPalette, NavCommandPalette, CommandPaletteSection, ["command palette", "palette", "commands"]),
+        new(SettingsSection.Keybinds, NavKeybinds, KeybindsSection, ["keybinds", "key bindings", "keybindings", "bindings", "shortcuts", "hotkeys", "keyboard"], IsKeybinds: true),
+        new(SettingsSection.Font, NavFont, FontSection, ["font", "typeface", "text"]),
+        new(SettingsSection.Caret, NavCaret, CaretSection, ["caret", "cursor"]),
+        new(SettingsSection.Tabs, NavTabs, TabsSection, ["tabs"]),
+        new(SettingsSection.Find, NavFind, FindSection, ["find", "search"]),
+        new(SettingsSection.Indentation, NavIndentation, IndentationSection, ["indentation", "indent"]),
+        new(SettingsSection.WordWrap, NavWordWrap, WordWrapSection, ["word wrap", "wrapping", "wrapped lines", "line wrapping"]),
+        new(SettingsSection.Explorer, NavExplorer, ExplorerSection, ["explorer", "files", "folders", "panel"]),
+        new(SettingsSection.Terminal, NavTerminal, TerminalSection, ["terminal", "console"]),
     ];
 
-    private void SelectNav(SettingsSection section)
+    private IReadOnlyList<SettingSearchEntry> SettingSearchEntries => _settingSearchEntries ??=
+    [
+        new(SettingsSection.Theme, ThemeColorThemeRow, ["theme", "colour theme", "color theme", "appearance"]),
+        new(SettingsSection.CommandPalette, CommandPalettePositionRow, ["command palette", "palette", "position", "top", "center"]),
+        new(SettingsSection.Font, FontFamilyRow, ["font", "font family", "typeface", "family"]),
+        new(SettingsSection.Font, FontSizeRow, ["font", "font size", "text size", "size"]),
+        new(SettingsSection.Font, FontWeightRow, ["font", "font weight", "weight", "bold"]),
+        new(SettingsSection.Font, LineHeightRow, ["font", "line height", "line spacing", "spacing"]),
+        new(SettingsSection.Caret, CaretStyleRow, ["caret", "caret style", "cursor", "bar", "block"]),
+        new(SettingsSection.Caret, CaretBlinkRow, ["caret", "caret blink", "blink", "cursor blink"]),
+        new(SettingsSection.Tabs, TabsFixedWidthRow, ["tabs", "fixed width tabs", "fixed tabs"]),
+        new(SettingsSection.Find, FindBarPositionRow, ["find", "find bar position", "search position", "top", "bottom"]),
+        new(SettingsSection.Find, FindSeedSelectionRow, ["find", "selection", "add selection to find", "seed selection"]),
+        new(SettingsSection.Indentation, IndentationTabSizeRow, ["indentation", "tab size", "indent size"]),
+        new(SettingsSection.Indentation, IndentationGuidesRow, ["indentation", "indent guides", "guide lines"]),
+        new(SettingsSection.WordWrap, WordWrapEnabledRow, ["word wrap", "wrap", "line wrapping"]),
+        new(SettingsSection.WordWrap, WordWrapAtWordsRow, ["word wrap", "word boundaries", "break at word boundaries"]),
+        new(SettingsSection.WordWrap, WordWrapIndentRow, ["word wrap", "indent wrapped lines", "wrapped line indent"]),
+        new(SettingsSection.Explorer, ExplorerFileIconsRow, ["explorer", "file icons", "file type icons", "icons", "types", "full", "basic"]),
+        new(SettingsSection.Explorer, ExplorerRevealActiveFileRow, ["explorer", "reveal active file", "active file", "follow active file", "select active file"]),
+        new(SettingsSection.Terminal, TerminalShellRow, ["terminal", "shell", "powershell", "command prompt"]),
+        new(SettingsSection.Terminal, TerminalShellArgsRow, ["terminal", "shell arguments", "arguments", "args"]),
+        new(SettingsSection.Terminal, TerminalScrollbackRow, ["terminal", "scrollback", "scrollback lines", "history"]),
+    ];
+
+    private void SelectNav(SettingsSection section) => ScrollToSection(section);
+
+    private void ScrollToSection(SettingsSection section)
+    {
+        var info = SectionInfos.FirstOrDefault(s => s.Section == section);
+        if (info == null || info.Container.Visibility != Visibility.Visible)
+            return;
+
+        SetActiveNav(section);
+
+        if (!IsLoaded)
+            return;
+
+        try
+        {
+            SettingsContent.UpdateLayout();
+            var position = info.Container.TransformToAncestor(SettingsContent).Transform(new Point(0, 0));
+            _isProgrammaticScroll = true;
+            SettingsScroller.ScrollToVerticalOffset(Math.Max(0, position.Y - 4));
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+            {
+                _isProgrammaticScroll = false;
+                UpdateActiveSectionFromScroll();
+            });
+        }
+        catch (InvalidOperationException)
+        {
+            _isProgrammaticScroll = false;
+        }
+    }
+
+    private void SetActiveNav(SettingsSection? section)
     {
         var active = (Style)FindResource("NavButtonActive");
         var inactive = (Style)FindResource("NavButton");
-        var sections = NavSections;
 
-        for (int i = 0; i < sections.Length; i++)
+        foreach (var info in SectionInfos)
         {
-            bool isActive = i == (int)section;
-            sections[i].nav.Style = isActive ? active : inactive;
-            sections[i].scroller.Visibility = isActive ? Visibility.Visible : Visibility.Collapsed;
+            bool isActive = section == info.Section && info.NavButton.Visibility == Visibility.Visible;
+            info.NavButton.Style = isActive ? active : inactive;
         }
+
+        _activeSection = section;
+    }
+
+    private void OnSettingsScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (_isProgrammaticScroll)
+            return;
+
+        UpdateActiveSectionFromScroll();
+    }
+
+    private void UpdateActiveSectionFromScroll()
+    {
+        if (!IsLoaded)
+            return;
+
+        var visibleSections = SectionInfos
+            .Where(info => info.Container.Visibility == Visibility.Visible)
+            .ToList();
+
+        if (visibleSections.Count == 0)
+        {
+            SetActiveNav(null);
+            return;
+        }
+
+        if (SettingsScroller.VerticalOffset >= SettingsScroller.ScrollableHeight - 1)
+        {
+            SetActiveNav(visibleSections[^1].Section);
+            return;
+        }
+
+        SettingsSection? active = null;
+        double offset = SettingsScroller.VerticalOffset + 24;
+
+        foreach (var info in visibleSections)
+        {
+            try
+            {
+                var position = info.Container.TransformToAncestor(SettingsContent).Transform(new Point(0, 0));
+                if (position.Y <= offset)
+                    active = info.Section;
+                else
+                    break;
+            }
+            catch (InvalidOperationException)
+            {
+                break;
+            }
+        }
+
+        active ??= visibleSections[0].Section;
+        if (active != _activeSection)
+            SetActiveNav(active);
     }
 
     private void OnNavTheme(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Theme);
@@ -393,6 +603,108 @@ public partial class SettingsWindow : Window
     private void OnNavTerminal(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Terminal);
     private void OnNavWordWrap(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.WordWrap);
     private void OnNavIndentation(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Indentation);
+
+    // ── Search ──────────────────────────────────────────────────────────
+
+    private void OnSettingsSearchTextChanged(object sender, TextChangedEventArgs e)
+    {
+        ClearSettingsSearchBtn.Visibility = string.IsNullOrEmpty(SettingsSearchInput.Text)
+            ? Visibility.Hidden : Visibility.Visible;
+        ApplySettingsSearch();
+    }
+
+    private void OnSettingsSearchFocusChanged(object sender, RoutedEventArgs e)
+    {
+        SettingsSearchBorder.SetResourceReference(Border.BorderBrushProperty,
+            SettingsSearchInput.IsKeyboardFocused ? ThemeResourceKeys.TextFgMuted : ThemeResourceKeys.MenuPopupBorder);
+    }
+
+    private void OnClearSettingsSearchClick(object sender, RoutedEventArgs e)
+    {
+        SettingsSearchInput.Clear();
+        FocusSettingsSearch();
+    }
+
+    private void FocusSettingsSearch()
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.Input,
+            () =>
+            {
+                Keyboard.Focus(SettingsSearchInput);
+                SettingsSearchInput.SelectAll();
+            });
+    }
+
+    private void ApplySettingsSearch()
+    {
+        string query = SettingsSearchInput.Text?.Trim() ?? "";
+        bool hasQuery = query.Length > 0;
+        var sectionMatches = new Dictionary<SettingsSection, bool>();
+
+        foreach (var section in SectionInfos)
+            sectionMatches[section.Section] = !hasQuery || TermsMatch(section.Terms, query);
+
+        var rowMatchesBySection = new HashSet<SettingsSection>();
+        foreach (var entry in SettingSearchEntries)
+        {
+            bool rowVisible = !hasQuery
+                || sectionMatches[entry.Section]
+                || TermsMatch(entry.Terms, query);
+
+            entry.Row.Visibility = rowVisible ? Visibility.Visible : Visibility.Collapsed;
+            if (rowVisible && hasQuery)
+                rowMatchesBySection.Add(entry.Section);
+        }
+
+        SettingsSection? firstVisible = null;
+        foreach (var section in SectionInfos)
+        {
+            bool visible = !hasQuery
+                || sectionMatches[section.Section]
+                || (!section.IsKeybinds && rowMatchesBySection.Contains(section.Section));
+
+            section.Container.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            section.NavButton.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            firstVisible ??= visible ? section.Section : null;
+        }
+
+        UpdateNavGroupVisibility();
+        NoSettingsResults.Visibility = firstVisible == null ? Visibility.Visible : Visibility.Collapsed;
+
+        if (firstVisible == null)
+        {
+            SetActiveNav(null);
+            return;
+        }
+
+        SettingsContent.UpdateLayout();
+        ScrollToSection(firstVisible.Value);
+    }
+
+    private void UpdateNavGroupVisibility()
+    {
+        SetHeaderVisibility(NavApplicationHeader, SettingsSection.Theme, SettingsSection.CommandPalette, SettingsSection.Keybinds);
+        SetHeaderVisibility(NavEditorHeader, SettingsSection.Font, SettingsSection.Caret, SettingsSection.Tabs,
+            SettingsSection.Find, SettingsSection.Indentation, SettingsSection.WordWrap);
+        SetHeaderVisibility(NavPanelsHeader, SettingsSection.Explorer, SettingsSection.Terminal);
+    }
+
+    private void SetHeaderVisibility(TextBlock header, params SettingsSection[] sections)
+    {
+        bool anyVisible = SectionInfos.Any(info =>
+            sections.Contains(info.Section) && info.NavButton.Visibility == Visibility.Visible);
+        header.Visibility = anyVisible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static bool TermsMatch(IEnumerable<string> terms, string query)
+    {
+        var tokens = query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (tokens.Length == 0)
+            return true;
+
+        string haystack = string.Join(' ', terms);
+        return tokens.All(token => haystack.Contains(token, StringComparison.OrdinalIgnoreCase));
+    }
 
     // ── Read / Apply ────────────────────────────────────────────────────
 
@@ -414,6 +726,8 @@ public partial class SettingsWindow : Window
         WordWrapAtWords = WordWrapAtWordsBox.SelectedIndex == 0;
         WordWrapIndent = WordWrapIndentBox.SelectedIndex == 0;
         IndentGuides = IndentGuidesBox.SelectedIndex == 0;
+        ExplorerFileIcons = AppSettings.ExplorerFileIconOptions[Math.Max(0, ExplorerFileIconsBox.SelectedIndex)];
+        ExplorerRevealActiveFile = ExplorerRevealActiveFileBox.SelectedIndex == 0;
 
         var shellChoice = (TerminalPanel.TerminalShellPreference)Math.Clamp(TerminalShellBox.SelectedIndex, 0, 1);
         TerminalShellPath = TerminalPanel.ResolveShellPath(shellChoice);

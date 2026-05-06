@@ -35,6 +35,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
     private ObservableCollection<FileTreeItem>? _rootItems;
     private int _hoverRowIndex = -1;
     private int _selectedRowIndex = -1;
+    private string _fileIcons = "Full";
 
     // IScrollInfo state
     private double _verticalOffset;
@@ -76,6 +77,20 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         _selectedRowIndex >= 0 && _selectedRowIndex < _flatRows.Count
             ? _flatRows[_selectedRowIndex].Item
             : null;
+
+    public string FileIcons
+    {
+        get => _fileIcons;
+        set
+        {
+            var normalized = AppSettings.NormalizeExplorerFileIcons(value);
+            if (_fileIcons == normalized)
+                return;
+
+            _fileIcons = normalized;
+            InvalidateVisual();
+        }
+    }
 
     public ExplorerTreeControl()
     {
@@ -237,7 +252,7 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
         RebuildFlatList();
     }
 
-    public void SelectByPath(string? path)
+    public void SelectByPath(string? path, bool center = false)
     {
         if (string.IsNullOrEmpty(path))
         {
@@ -251,15 +266,13 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
 
         var idx = _flatRows.FindIndex(r =>
             string.Equals(r.Item.FullPath, path, StringComparison.OrdinalIgnoreCase));
-        if (idx < 0 || idx == _selectedRowIndex) return;
+        if (idx < 0) return;
 
         _selectedRowIndex = idx;
-        // Scroll the selected row into view
-        double rowTop = idx * RowHeight;
-        if (rowTop < _verticalOffset)
-            SetVerticalOffset(rowTop);
-        else if (rowTop + RowHeight > _verticalOffset + _viewport.Height)
-            SetVerticalOffset(rowTop + RowHeight - _viewport.Height);
+        if (center)
+            CenterRowInView(idx);
+        else
+            ScrollIntoView(idx);
 
         InvalidateVisual();
     }
@@ -498,11 +511,10 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             x += ArrowZoneWidth;
 
             // Icon
+            if (_fileIcons != "Off")
             {
                 FormattedText iconText = !row.Item.IsDirectory
-                    ? GetFileIconFormattedText(
-                        ExplorerFileIconMap.Resolve(row.Item.FullPath, row.Item.Name),
-                        textBrush, dpi)
+                    ? GetFileIconFormattedText(GetFileIconSpec(row.Item), textBrush, dpi)
                     : visuallyExpanded ? _folderOpenIconText! : _folderIconText!;
                 double iconX = x + (IconZoneWidth - iconText.Width) / 2;
                 double iconY = y + (RowHeight - iconText.Height) / 2;
@@ -790,6 +802,20 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
             SetVerticalOffset(rowBottom - _viewport.Height);
     }
 
+    private void CenterRowInView(int rowIndex)
+    {
+        double rowTop = rowIndex * RowHeight;
+        double targetOffset = rowTop - Math.Max(0, (_viewport.Height - RowHeight) / 2);
+        SetVerticalOffset(targetOffset);
+    }
+
+    private ExplorerFileIconMap.FileIconSpec GetFileIconSpec(FileTreeItem item)
+    {
+        return _fileIcons == "Basic"
+            ? new ExplorerFileIconMap.FileIconSpec(Codicons.File, null)
+            : ExplorerFileIconMap.Resolve(item.FullPath, item.Name);
+    }
+
     protected override void OnMouseRightButtonDown(MouseButtonEventArgs e)
     {
         Focus();
@@ -858,7 +884,8 @@ public class ExplorerTreeControl : FrameworkElement, IScrollInfo
 
         var item = _flatRows[row].Item;
         double indent = _flatRows[row].Depth * IndentWidth + ArrowZoneWidth;
-        indent += IconZoneWidth + IconGap;
+        if (_fileIcons != "Off")
+            indent += IconZoneWidth + IconGap;
         double maxTextWidth = Math.Max(0, ActualWidth - indent - 8);
         var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
         var typeface = NormalTypeface;

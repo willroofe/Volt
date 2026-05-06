@@ -9,6 +9,7 @@ namespace Volt.Tests;
 /// <summary>
 /// Pure editor layout tree helpers + snapshot DTO JSON (requires STA + minimal WPF <see cref="Application"/> for <see cref="TabInfo"/>).
 /// </summary>
+[Collection("WpfApplication")]
 public class EditorLayoutTreeTests
 {
     private static readonly object AppGate = new();

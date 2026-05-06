@@ -116,14 +116,14 @@ public partial class AboutWindow : Window
         }
         else
         {
-            UpdateProgress.Visibility = Visibility.Hidden;
+            UpdateProgress.Visibility = Visibility.Collapsed;
         }
     }
 
     private void HideUpdateStatus()
     {
-        UpdateStatusText.Visibility = Visibility.Hidden;
-        UpdateProgress.Visibility = Visibility.Hidden;
+        UpdateStatusText.Visibility = Visibility.Collapsed;
+        UpdateProgress.Visibility = Visibility.Collapsed;
     }
 
     private void OnClose(object sender, RoutedEventArgs e)
