@@ -661,6 +661,9 @@ public partial class MainWindow
         _tabHeaderFactory.FixedWidth = _settings.Editor.FixedWidthTabs;
         foreach (var tab in AllTabsOrdered())
             _tabHeaderFactory.ApplyFixedWidth(tab.HeaderElement);
+        _explorerPanel.FileIcons = _settings.Editor.Explorer.FileIcons;
+        if (_settings.Editor.Explorer.RevealActiveFile)
+            _explorerPanel.SelectFile(_activeTab?.FilePath);
     }
 
     private void ApplySettingsToEditor(EditorControl editor)
@@ -2032,6 +2035,7 @@ public partial class MainWindow
             _settings.Editor.Find.SeedWithSelection, _settings.Editor.FixedWidthTabs,
             _settings.Editor.WordWrap, _settings.Editor.WordWrapAtWords, _settings.Editor.WordWrapIndent,
             _settings.Editor.IndentGuides, _settings.Application.CommandPalettePosition,
+            _settings.Editor.Explorer.FileIcons, _settings.Editor.Explorer.RevealActiveFile,
             _keyBindingManager.GetAllBindings(),
             _settings.Editor.TerminalShellPath, _settings.Editor.TerminalShellArgs, _settings.Editor.TerminalScrollbackLines);
         var dlg = new SettingsWindow(ThemeManager, snapshot) { Owner = this };
@@ -2058,6 +2062,8 @@ public partial class MainWindow
         _settings.Editor.WordWrapAtWords = dlg.WordWrapAtWords;
         _settings.Editor.WordWrapIndent = dlg.WordWrapIndent;
         _settings.Editor.IndentGuides = dlg.IndentGuides;
+        _settings.Editor.Explorer.FileIcons = dlg.ExplorerFileIcons;
+        _settings.Editor.Explorer.RevealActiveFile = dlg.ExplorerRevealActiveFile;
         _settings.Editor.TerminalShellPath = dlg.TerminalShellPath;
         _settings.Editor.TerminalShellArgs = dlg.TerminalShellArgs;
         _settings.Editor.TerminalScrollbackLines = dlg.TerminalScrollbackLines;

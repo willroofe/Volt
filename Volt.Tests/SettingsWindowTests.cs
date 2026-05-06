@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Markup;
@@ -15,6 +16,75 @@ public sealed class WpfApplicationCollection;
 public class SettingsWindowTests
 {
     private static readonly object AppGate = new();
+
+    [StaFact]
+    public void ExplorerSettings_DefaultToFullIconsAndRevealOff()
+    {
+        var settings = new AppSettings();
+
+        Assert.Equal("Full", settings.Editor.Explorer.FileIcons);
+        Assert.False(settings.Editor.Explorer.RevealActiveFile);
+    }
+
+    [StaFact]
+    public void SearchExplorerIcons_FiltersToExplorerIconSetting()
+    {
+        var window = CreateWindow();
+        try
+        {
+            Field<TextBox>(window, "SettingsSearchInput").Text = "file icons";
+
+            Assert.Equal(Visibility.Visible, Field<FrameworkElement>(window, "ExplorerSection").Visibility);
+            Assert.Equal(Visibility.Visible, Field<FrameworkElement>(window, "ExplorerFileIconsRow").Visibility);
+            Assert.Equal(Visibility.Collapsed, Field<FrameworkElement>(window, "ExplorerRevealActiveFileRow").Visibility);
+            Assert.Equal(Visibility.Collapsed, Field<FrameworkElement>(window, "TerminalSection").Visibility);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [StaFact]
+    public void ExplorerSettings_RoundTripFromControls()
+    {
+        var window = CreateWindow();
+        try
+        {
+            var fileIconsBox = Field<ComboBox>(window, "ExplorerFileIconsBox");
+            Assert.Equal(["Full", "Basic", "Off"], fileIconsBox.Items.Cast<string>().ToArray());
+
+            fileIconsBox.SelectedIndex = 2;
+            Field<ComboBox>(window, "ExplorerRevealActiveFileBox").SelectedIndex = 0;
+
+            Field<Button>(window, "ApplyButton").RaiseEvent(
+                new RoutedEventArgs(Button.ClickEvent));
+
+            Assert.Equal("Off", window.ExplorerFileIcons);
+            Assert.True(window.ExplorerRevealActiveFile);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [StaFact]
+    public void ExplorerSelectByPath_CentersSelectedRowWhenRequested()
+    {
+        var tree = new ExplorerTreeControl();
+        var items = new ObservableCollection<FileTreeItem>(
+            Enumerable.Range(0, 30)
+                .Select(i => new FileTreeItem($@"C:\project\file{i}.txt", isDirectory: false)));
+
+        tree.SetRootItems(items);
+        tree.Measure(new Size(300, 120));
+        tree.Arrange(new Rect(0, 0, 300, 120));
+
+        tree.SelectByPath(@"C:\project\file10.txt", center: true);
+
+        Assert.InRange(tree.VerticalOffset, 188, 196);
+    }
 
     [StaFact]
     public void OpeningWindow_FocusesSearchBox()
@@ -182,6 +252,8 @@ public class SettingsWindowTests
             WordWrapIndent: true,
             IndentGuides: true,
             CommandPalettePosition: "Top",
+            ExplorerFileIcons: "Full",
+            ExplorerRevealActiveFile: false,
             KeyBindings: new Dictionary<VoltCommand, KeyCombo>(KeyBindingManager.Defaults),
             TerminalShellPath: null,
             TerminalShellArgs: null,

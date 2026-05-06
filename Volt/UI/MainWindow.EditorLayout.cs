@@ -187,7 +187,8 @@ public partial class MainWindow
         RefreshEditorHostsAndVisibility();
         UpdateAllTabHeaders();
         tab.HeaderElement.BringIntoView();
-        _explorerPanel.SelectFile(tab.FilePath);
+        if (_settings.Editor.Explorer.RevealActiveFile)
+            _explorerPanel.SelectFile(tab.FilePath);
         Keyboard.Focus(tab.Editor);
     }
 

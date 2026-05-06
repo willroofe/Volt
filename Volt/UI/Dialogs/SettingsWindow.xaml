@@ -576,6 +576,23 @@
                         <!-- Explorer section -->
                         <StackPanel x:Name="ExplorerSection" Style="{StaticResource SectionPanel}">
                             <TextBlock Text="Explorer" Style="{StaticResource SectionHeader}"/>
+
+                            <StackPanel x:Name="ExplorerFileIconsRow" Style="{StaticResource SettingRow}">
+                                <TextBlock Text="File icons" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                                <ComboBox x:Name="ExplorerFileIconsBox" Width="100" Height="26"
+                                          HorizontalAlignment="Left"
+                                          VerticalContentAlignment="Center" FontSize="13"/>
+                            </StackPanel>
+
+                            <StackPanel x:Name="ExplorerRevealActiveFileRow" Style="{StaticResource SettingRow}">
+                                <TextBlock Text="Reveal active file" Style="{StaticResource SettingLabel}" Margin="0,0,0,4"/>
+                                <ComboBox x:Name="ExplorerRevealActiveFileBox" Width="100" Height="26"
+                                          HorizontalAlignment="Left"
+                                          VerticalContentAlignment="Center" FontSize="13">
+                                    <ComboBoxItem Content="On"/>
+                                    <ComboBoxItem Content="Off"/>
+                                </ComboBox>
+                            </StackPanel>
                         </StackPanel>
 
                         <!-- Terminal section -->
@@ -622,7 +639,7 @@
                 <Border Grid.Row="3" Background="{DynamicResource ThemeBorderBrush}"/>
                 <StackPanel Grid.Row="4" Orientation="Horizontal"
                             HorizontalAlignment="Right" Margin="16,12">
-                    <Button Content="Apply" Width="75" Height="28" Margin="0,0,8,0"
+                    <Button x:Name="ApplyButton" Content="Apply" Width="75" Height="28" Margin="0,0,8,0"
                             Style="{StaticResource ActionButton}"
                             Click="OnApply"/>
                     <Button Content="OK" Width="75" Height="28" Margin="0,0,8,0"

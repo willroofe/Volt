@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Windows.Threading;
 
 namespace Volt;
@@ -44,6 +45,11 @@ public class ExplorerSettings
 {
     public string? OpenFolderPath { get; set; }
     public List<string> ExpandedPaths { get; set; } = [];
+    public string FileIcons { get; set; } = "Full";
+    public bool RevealActiveFile { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? ShowFileTypeIcons { get; set; }
 }
 
 /// <summary>Per–session-context terminal UI state (global session, folder, or workspace).</summary>
@@ -229,9 +235,27 @@ public class AppSettings
     public static readonly int[] TabSizeOptions = [2, 4, 8];
     public static readonly string[] FontWeightOptions = ["Thin", "ExtraLight", "Light", "Normal", "Medium", "SemiBold", "Bold", "ExtraBold", "Black"];
     public static readonly double[] LineHeightOptions = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2.0];
+    public static readonly string[] ExplorerFileIconOptions = ["Full", "Basic", "Off"];
+
+    public void Normalize()
+    {
+        Editor.Explorer.FileIcons = NormalizeExplorerFileIcons(Editor.Explorer.FileIcons);
+        if (Editor.Explorer.ShowFileTypeIcons is { } legacyShowFileTypeIcons)
+        {
+            Editor.Explorer.FileIcons = legacyShowFileTypeIcons ? "Full" : "Off";
+            Editor.Explorer.ShowFileTypeIcons = null;
+        }
+    }
+
+    public static string NormalizeExplorerFileIcons(string? value)
+    {
+        return ExplorerFileIconOptions.FirstOrDefault(option =>
+            string.Equals(option, value, StringComparison.OrdinalIgnoreCase)) ?? "Full";
+    }
 
     public void Save()
     {
+        Normalize();
         _saveTimer?.Stop();
         var dir = Path.GetDirectoryName(SettingsPath)!;
         Directory.CreateDirectory(dir);
@@ -273,7 +297,9 @@ public class AppSettings
             if (root.TryGetProperty("TabSize", out _))
                 return MigrateOldFormat(root);
 
-            return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+            var settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+            settings.Normalize();
+            return settings;
         }
         catch (Exception)
         {

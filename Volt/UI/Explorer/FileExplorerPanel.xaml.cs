@@ -230,7 +230,23 @@ public partial class FileExplorerPanel : UserControl, IPanel
         SearchBorder.Visibility = Visibility.Collapsed;
     }
 
-    public void SelectFile(string? path) => ExplorerTree.SelectByPath(path);
+    public string FileIcons
+    {
+        get => ExplorerTree.FileIcons;
+        set => ExplorerTree.FileIcons = value;
+    }
+
+    public async void SelectFile(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            ExplorerTree.SelectByPath(null);
+            return;
+        }
+
+        await RevealPathInTree(path);
+        ExplorerTree.SelectByPath(path, center: true);
+    }
 
     public void RefreshWorkspaceTree()
     {
@@ -239,6 +255,95 @@ public partial class FileExplorerPanel : UserControl, IPanel
     }
 
     public string? OpenFolderPath => _openFolderPath;
+
+    private async Task RevealPathInTree(string path)
+    {
+        if (_currentRootItems == null)
+            return;
+
+        string fullPath;
+        try
+        {
+            fullPath = Path.GetFullPath(path);
+        }
+        catch
+        {
+            return;
+        }
+
+        foreach (var root in _currentRootItems)
+        {
+            if (!root.IsDirectory || !PathContains(root.FullPath, fullPath))
+                continue;
+
+            await ExpandDirectoryIfNeeded(root);
+
+            string? parentDir = Directory.Exists(fullPath)
+                ? fullPath
+                : Path.GetDirectoryName(fullPath);
+            if (string.IsNullOrEmpty(parentDir))
+                return;
+
+            var ancestorPaths = GetAncestorDirectories(root.FullPath, parentDir);
+            var current = root;
+            foreach (var ancestorPath in ancestorPaths)
+            {
+                var next = current.Children.FirstOrDefault(child =>
+                    child.IsDirectory &&
+                    string.Equals(NormalizePath(child.FullPath), NormalizePath(ancestorPath),
+                        StringComparison.OrdinalIgnoreCase));
+
+                if (next == null)
+                    return;
+
+                await ExpandDirectoryIfNeeded(next);
+                current = next;
+            }
+
+            ExplorerTree.RefreshFlatList();
+            return;
+        }
+    }
+
+    private static async Task ExpandDirectoryIfNeeded(FileTreeItem item)
+    {
+        if (!item.IsDirectory)
+            return;
+
+        if (item.IsExpanded)
+            await item.EnsureChildrenLoaded();
+        else
+            await item.ExpandAsync();
+    }
+
+    private static List<string> GetAncestorDirectories(string rootPath, string targetDirectory)
+    {
+        string root = NormalizePath(rootPath);
+        string? current = NormalizePath(targetDirectory);
+        var ancestors = new List<string>();
+
+        while (!string.IsNullOrEmpty(current) &&
+               !string.Equals(current, root, StringComparison.OrdinalIgnoreCase) &&
+               PathContains(root, current))
+        {
+            ancestors.Add(current);
+            current = Path.GetDirectoryName(current);
+        }
+
+        ancestors.Reverse();
+        return ancestors;
+    }
+
+    private static bool PathContains(string rootPath, string candidatePath)
+    {
+        string root = NormalizePath(rootPath);
+        string candidate = NormalizePath(candidatePath);
+        return string.Equals(root, candidate, StringComparison.OrdinalIgnoreCase) ||
+               candidate.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizePath(string path)
+        => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
 
     public List<string> GetExpandedPaths()
     {

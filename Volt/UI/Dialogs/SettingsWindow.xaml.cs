@@ -13,6 +13,7 @@ public record SettingsSnapshot(
     bool FindSeedWithSelection, bool FixedWidthTabs,
     bool WordWrap, bool WordWrapAtWords, bool WordWrapIndent,
     bool IndentGuides, string CommandPalettePosition,
+    string ExplorerFileIcons, bool ExplorerRevealActiveFile,
     Dictionary<VoltCommand, KeyCombo> KeyBindings,
     string? TerminalShellPath, string? TerminalShellArgs, int TerminalScrollbackLines);
 
@@ -34,6 +35,8 @@ public partial class SettingsWindow : Window
     public bool WordWrapIndent { get; private set; }
     public bool IndentGuides { get; private set; }
     public string CommandPalettePosition { get; private set; }
+    public string ExplorerFileIcons { get; private set; }
+    public bool ExplorerRevealActiveFile { get; private set; }
     public Dictionary<VoltCommand, KeyCombo> KeyBindings => new(_pendingBindings);
     public string? TerminalShellPath { get; private set; }
     public string? TerminalShellArgs { get; private set; }
@@ -85,6 +88,8 @@ public partial class SettingsWindow : Window
         ColorThemeName = snapshot.ColorTheme;
         FindBarPosition = snapshot.FindBarPosition;
         CommandPalettePosition = snapshot.CommandPalettePosition;
+        ExplorerFileIcons = AppSettings.NormalizeExplorerFileIcons(snapshot.ExplorerFileIcons);
+        ExplorerRevealActiveFile = snapshot.ExplorerRevealActiveFile;
 
         foreach (var (cmd, combo) in snapshot.KeyBindings)
             _pendingBindings[cmd] = combo;
@@ -115,6 +120,11 @@ public partial class SettingsWindow : Window
         WordWrapIndentBox.SelectedIndex = snapshot.WordWrapIndent ? 0 : 1;
         IndentGuides = snapshot.IndentGuides;
         IndentGuidesBox.SelectedIndex = snapshot.IndentGuides ? 0 : 1;
+        foreach (var option in AppSettings.ExplorerFileIconOptions)
+            ExplorerFileIconsBox.Items.Add(option);
+        int fileIconsIndex = Array.IndexOf(AppSettings.ExplorerFileIconOptions, ExplorerFileIcons);
+        ExplorerFileIconsBox.SelectedIndex = fileIconsIndex >= 0 ? fileIconsIndex : 0;
+        ExplorerRevealActiveFileBox.SelectedIndex = snapshot.ExplorerRevealActiveFile ? 0 : 1;
 
         // Populate font family dropdown
         _fontNames = FontManager.GetMonospaceFonts();
@@ -430,6 +440,8 @@ public partial class SettingsWindow : Window
         new(SettingsSection.WordWrap, WordWrapEnabledRow, ["word wrap", "wrap", "line wrapping"]),
         new(SettingsSection.WordWrap, WordWrapAtWordsRow, ["word wrap", "word boundaries", "break at word boundaries"]),
         new(SettingsSection.WordWrap, WordWrapIndentRow, ["word wrap", "indent wrapped lines", "wrapped line indent"]),
+        new(SettingsSection.Explorer, ExplorerFileIconsRow, ["explorer", "file icons", "file type icons", "icons", "types", "full", "basic"]),
+        new(SettingsSection.Explorer, ExplorerRevealActiveFileRow, ["explorer", "reveal active file", "active file", "follow active file", "select active file"]),
         new(SettingsSection.Terminal, TerminalShellRow, ["terminal", "shell", "powershell", "command prompt"]),
         new(SettingsSection.Terminal, TerminalShellArgsRow, ["terminal", "shell arguments", "arguments", "args"]),
         new(SettingsSection.Terminal, TerminalScrollbackRow, ["terminal", "scrollback", "scrollback lines", "history"]),
@@ -667,6 +679,8 @@ public partial class SettingsWindow : Window
         WordWrapAtWords = WordWrapAtWordsBox.SelectedIndex == 0;
         WordWrapIndent = WordWrapIndentBox.SelectedIndex == 0;
         IndentGuides = IndentGuidesBox.SelectedIndex == 0;
+        ExplorerFileIcons = AppSettings.ExplorerFileIconOptions[Math.Max(0, ExplorerFileIconsBox.SelectedIndex)];
+        ExplorerRevealActiveFile = ExplorerRevealActiveFileBox.SelectedIndex == 0;
 
         var shellChoice = (TerminalPanel.TerminalShellPreference)Math.Clamp(TerminalShellBox.SelectedIndex, 0, 1);
         TerminalShellPath = TerminalPanel.ResolveShellPath(shellChoice);
