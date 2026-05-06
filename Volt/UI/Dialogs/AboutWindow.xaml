@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="About Volt"
-        Width="360" Height="280"
+        Width="360" Height="320"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         ShowInTaskbar="False">
@@ -40,7 +40,7 @@
             <StackPanel Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center">
                 <Viewbox Width="48" Height="48" HorizontalAlignment="Center">
                     <Canvas Width="400" Height="360">
-                        <Path Style="{StaticResource IconStrokeSecondary}" StrokeThickness="16"
+                        <Path Style="{StaticResource IconStrokePrimary}" StrokeThickness="16"
                               StrokeLineJoin="Miter" StrokeMiterLimit="10"
                               StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                               Data="M200,50.192 L350,310 L50,310 Z"/>
@@ -64,6 +64,7 @@
                            Foreground="{DynamicResource ThemeTextFgMuted}"/>
 
                 <TextBlock HorizontalAlignment="Center" Margin="8,10,8,0"
+                           MaxWidth="296"
                            TextWrapping="Wrap" TextAlignment="Center"
                            FontFamily="Segoe UI" FontSize="10"
                            Foreground="{DynamicResource ThemeTextFgMuted}">
@@ -72,18 +73,20 @@
             </StackPanel>
 
             <!-- Update status + progress -->
-            <StackPanel Grid.Row="1">
+            <StackPanel Grid.Row="1" Margin="0,16,0,0">
                 <TextBlock x:Name="UpdateStatusText" HorizontalAlignment="Center"
+                           MaxWidth="296"
+                           TextWrapping="Wrap" TextAlignment="Center"
                            FontFamily="Segoe UI" FontSize="12"
                            Foreground="{DynamicResource ThemeTextFgMuted}"
-                           Visibility="Hidden"/>
+                           Visibility="Collapsed"/>
 
                 <ProgressBar x:Name="UpdateProgress" Height="4" Margin="0,6,0,0"
                              Minimum="0" Maximum="100"
                              Foreground="{DynamicResource ThemeTextFg}"
                              Background="{DynamicResource ThemeBorderBrush}"
                              BorderThickness="0"
-                             Visibility="Hidden"/>
+                             Visibility="Collapsed"/>
 
                 <!-- Buttons -->
                 <StackPanel Orientation="Horizontal"
