@@ -9,6 +9,7 @@ namespace Volt.Benchmarks;
 public class FindBenchmarks
 {
     private const long ExpectedTest1GbMatchCount = 3_146_467;
+    private const long ExpectedSmallRegexMatchCount = 50_000;
 
     private TextBuffer _buffer = null!;
     private TextBuffer? _largeFileBuffer;
@@ -66,6 +67,42 @@ public class FindBenchmarks
     public void SearchCaseSensitive()
     {
         _find.Search(_buffer, "hello", true, 0, 0);
+    }
+
+    [Benchmark(Description = "Regex exact count identifiers (50K lines)")]
+    public async Task<long> SearchRegexIdentifierExactCount()
+    {
+        long count = await CountMatchesAsync(_buffer, @"var_\d+", matchCase: true, useRegex: true)
+            .ConfigureAwait(false);
+        if (count != ExpectedSmallRegexMatchCount)
+            throw new InvalidOperationException(
+                $"Expected {ExpectedSmallRegexMatchCount:N0} regex matches, but found {count:N0}.");
+
+        return count;
+    }
+
+    [Benchmark(Description = "Regex exact count quoted strings ignore case (50K lines)")]
+    public async Task<long> SearchRegexQuotedStringIgnoreCaseExactCount()
+    {
+        long count = await CountMatchesAsync(_buffer, "\"HELLO WORLD \\d+\"", matchCase: false, useRegex: true)
+            .ConfigureAwait(false);
+        if (count != ExpectedSmallRegexMatchCount)
+            throw new InvalidOperationException(
+                $"Expected {ExpectedSmallRegexMatchCount:N0} regex matches, but found {count:N0}.");
+
+        return count;
+    }
+
+    [Benchmark(Description = "Regex exact count anchored lines (50K lines)")]
+    public async Task<long> SearchRegexAnchoredLineExactCount()
+    {
+        long count = await CountMatchesAsync(_buffer, @"^my \$var_\d+", matchCase: true, useRegex: true)
+            .ConfigureAwait(false);
+        if (count != ExpectedSmallRegexMatchCount)
+            throw new InvalidOperationException(
+                $"Expected {ExpectedSmallRegexMatchCount:N0} regex matches, but found {count:N0}.");
+
+        return count;
     }
 
     [Benchmark(Description = "Large file literal exact count (test-1gb.json, 'test')")]
@@ -164,8 +201,20 @@ public class FindBenchmarks
         bool wholeWord = false,
         (int startLine, int startCol, int endLine, int endCol)? selectionBounds = null)
     {
+        return await CountMatchesAsync(buffer, query, matchCase, useRegex: false, wholeWord, selectionBounds)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task<long> CountMatchesAsync(
+        TextBuffer buffer,
+        string query,
+        bool matchCase,
+        bool useRegex = false,
+        bool wholeWord = false,
+        (int startLine, int startCol, int endLine, int endCol)? selectionBounds = null)
+    {
         var find = new FindManager();
-        find.StartSearch(buffer, query, matchCase, caretLine: 0, caretCol: 0, wholeWord: wholeWord,
+        find.StartSearch(buffer, query, matchCase, caretLine: 0, caretCol: 0, useRegex: useRegex, wholeWord: wholeWord,
             selectionBounds: selectionBounds);
         await WaitForExactCountAsync(find).ConfigureAwait(false);
         return find.KnownMatchCount;

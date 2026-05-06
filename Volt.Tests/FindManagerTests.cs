@@ -417,6 +417,40 @@ public class FindManagerTests
     }
 
     [Fact]
+    public async Task StartSearch_RegexCountSkipsZeroLengthMatches()
+    {
+        var buffer = TestHelpers.MakeBuffer("bbb\naba");
+        var find = new FindManager();
+
+        find.StartSearch(buffer, "a*", matchCase: true, caretLine: 0, caretCol: 0, useRegex: true);
+        await WaitUntil(() => find.HasExactMatchCount);
+
+        Assert.Equal(2, find.KnownMatchCount);
+        Assert.Equal([(1, 0, 1), (1, 2, 1)], find.GetMatchesInRange(0, 1));
+        find.Clear();
+    }
+
+    [Fact]
+    public async Task StartSearch_RegexSelectionPreservesInputAnchorsAndLookbehind()
+    {
+        var buffer = TestHelpers.MakeBuffer("alpha test");
+        var find = new FindManager();
+
+        find.StartSearch(buffer, @"\Atest", matchCase: true, caretLine: 0, caretCol: 0, useRegex: true,
+            selectionBounds: (0, "alpha ".Length, 0, "alpha test".Length));
+        await WaitUntil(() => find.HasExactMatchCount);
+        Assert.Equal(0, find.KnownMatchCount);
+
+        find.Clear();
+        find.StartSearch(buffer, @"(?<=alpha )test", matchCase: true, caretLine: 0, caretCol: 0, useRegex: true,
+            selectionBounds: (0, "alpha ".Length, 0, "alpha test".Length));
+        await WaitUntil(() => find.HasExactMatchCount);
+        Assert.Equal(1, find.KnownMatchCount);
+        Assert.Equal([(0, "alpha ".Length, "test".Length)], find.GetMatchesInRange(0, 0));
+        find.Clear();
+    }
+
+    [Fact]
     public async Task StartSearch_FileBackedNonAsciiCaseInsensitiveFallsBackCorrectly()
     {
         string path = WriteTempFile("mañana\nMAÑANA\nmanana");
