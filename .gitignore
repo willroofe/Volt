@@ -9,6 +9,9 @@ riderModule.iml
 BenchmarkDotNet.Artifacts/
 *.DotSettings.user
 
+# Generated large-file editor fixtures
+test-files/
+
 # Velopack / release build output (Setup.exe, nupkg, portable zip, metadata)
 Releases/
 publish/
