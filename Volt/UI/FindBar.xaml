@@ -49,12 +49,9 @@
                                 Style="{StaticResource MatchCaseButton}"
                                 Width="24" Height="22"
                                 Margin="0,2,2,2" Padding="0"
-                                BorderThickness="0"
                                 Cursor="Hand"
                                 Focusable="False"
                                 ToolTip="Find in selection"
-                                Background="Transparent"
-                                Foreground="{DynamicResource ThemeTextFgMuted}"
                                 Click="OnFindInSelectionClick">
                             <TextBlock Text="&#xEBCC;" FontFamily="{x:Static local:Codicons.Font}" FontSize="13"/>
                         </Button>
@@ -63,12 +60,9 @@
                                 Style="{StaticResource MatchCaseButton}"
                                 Width="24" Height="22"
                                 Margin="0,2,2,2" Padding="0"
-                                BorderThickness="0"
                                 Cursor="Hand"
                                 Focusable="False"
                                 ToolTip="Use regular expression"
-                                Background="Transparent"
-                                Foreground="{DynamicResource ThemeTextFgMuted}"
                                 Click="OnRegexClick">
                             <TextBlock Text=".*" FontFamily="Segoe UI" FontSize="12" FontWeight="SemiBold"/>
                         </Button>
@@ -77,12 +71,9 @@
                                 Style="{StaticResource MatchCaseButton}"
                                 Width="24" Height="22"
                                 Margin="0,2,2,2" Padding="0"
-                                BorderThickness="0"
                                 Cursor="Hand"
                                 Focusable="False"
                                 ToolTip="Match whole word"
-                                Background="Transparent"
-                                Foreground="{DynamicResource ThemeTextFgMuted}"
                                 Click="OnWholeWordClick">
                             <TextBlock Text="ab" FontFamily="Segoe UI" FontSize="12" FontWeight="SemiBold"
                                        TextDecorations="Underline"/>
@@ -92,12 +83,9 @@
                                 Style="{StaticResource MatchCaseButton}"
                                 Width="24" Height="22"
                                 Margin="0,2,2,2" Padding="0"
-                                BorderThickness="0"
                                 Cursor="Hand"
                                 Focusable="False"
                                 ToolTip="Match case"
-                                Background="Transparent"
-                                Foreground="{DynamicResource ThemeTextFgMuted}"
                                 Click="OnMatchCaseClick">
                             <TextBlock Text="Aa" FontFamily="Segoe UI" FontSize="12" FontWeight="SemiBold"/>
                         </Button>

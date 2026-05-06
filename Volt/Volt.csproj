@@ -41,6 +41,7 @@
 
     <ItemGroup>
         <InternalsVisibleTo Include="Volt.Tests" />
+        <InternalsVisibleTo Include="Volt.Benchmarks" />
     </ItemGroup>
 
     <ItemGroup>
