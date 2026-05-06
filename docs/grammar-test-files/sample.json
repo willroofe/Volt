@@ -1,0 +1,6 @@
+{
+  "name": "JSON",
+  "enabled": true,
+  "score": 42,
+  "items": ["string", null, false]
+}

@@ -1,0 +1,49 @@
+{
+  "name": "C",
+  "extensions": [".c", ".h"],
+  "blockComments": [
+    {
+      "start": "^\\s*/\\*(?!.*\\*/)",
+      "end": "\\*/",
+      "scope": "comment"
+    }
+  ],
+  "rules": [
+    {
+      "pattern": "\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])'",
+      "scope": "string"
+    },
+    {
+      "pattern": "/\\*.*?\\*/",
+      "scope": "comment"
+    },
+    {
+      "pattern": "//.*$",
+      "scope": "comment"
+    },
+    {
+      "pattern": "^\\s*#\\s*\\w+.*$",
+      "scope": "keyword"
+    },
+    {
+      "pattern": "\\b(?:auto|break|case|const|continue|default|do|else|enum|extern|for|goto|if|inline|register|restrict|return|sizeof|static|struct|switch|typedef|union|volatile|while)\\b",
+      "scope": "keyword"
+    },
+    {
+      "pattern": "\\b(?:_Bool|_Complex|_Imaginary|char|double|float|int|long|short|signed|unsigned|void)\\b",
+      "scope": "type"
+    },
+    {
+      "pattern": "\\b[A-Za-z_][\\w]*(?=\\s*\\()",
+      "scope": "function"
+    },
+    {
+      "pattern": "\\b(?:0[xX][0-9a-fA-F]+|\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?[uUlLfF]*)\\b",
+      "scope": "number"
+    },
+    {
+      "pattern": "->|\\+\\+|--|==|!=|<=|>=|&&|\\|\\||<<|>>|[+\\-*/%=&|^~!<>?:.]",
+      "scope": "operator"
+    }
+  ]
+}

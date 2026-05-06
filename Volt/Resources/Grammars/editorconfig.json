@@ -1,0 +1,30 @@
+{
+  "name": "EditorConfig",
+  "extensions": [".editorconfig"],
+  "rules": [
+    {
+      "pattern": "[#;].*$",
+      "scope": "comment"
+    },
+    {
+      "pattern": "^\\s*\\[[^\\]]+\\]",
+      "scope": "keyword"
+    },
+    {
+      "pattern": "^[A-Za-z0-9_.-]+(?=\\s*=)",
+      "scope": "hashkey"
+    },
+    {
+      "pattern": "\\b(?:true|false|unset|tab|space|lf|crlf|cr)\\b",
+      "scope": "keyword"
+    },
+    {
+      "pattern": "\\b\\d+\\b",
+      "scope": "number"
+    },
+    {
+      "pattern": "=",
+      "scope": "operator"
+    }
+  ]
+}

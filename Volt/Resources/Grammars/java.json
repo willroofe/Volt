@@ -1,0 +1,49 @@
+{
+  "name": "Java",
+  "extensions": [".java"],
+  "blockComments": [
+    {
+      "start": "^\\s*/\\*(?!.*\\*/)",
+      "end": "\\*/",
+      "scope": "comment"
+    }
+  ],
+  "rules": [
+    {
+      "pattern": "\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])'",
+      "scope": "string"
+    },
+    {
+      "pattern": "/\\*.*?\\*/",
+      "scope": "comment"
+    },
+    {
+      "pattern": "//.*$",
+      "scope": "comment"
+    },
+    {
+      "pattern": "\\b(?:abstract|assert|break|case|catch|class|const|continue|default|do|else|enum|exports|extends|final|finally|for|if|implements|import|instanceof|interface|module|native|new|null|open|opens|package|permits|private|protected|provides|public|record|requires|return|sealed|static|strictfp|super|switch|synchronized|this|throw|throws|to|transient|transitive|try|uses|var|volatile|while|with|yield)\\b",
+      "scope": "keyword"
+    },
+    {
+      "pattern": "\\b(?:boolean|byte|char|double|false|float|int|long|short|true|void)\\b",
+      "scope": "type"
+    },
+    {
+      "pattern": "\\b[A-Z][A-Za-z0-9_]*(?=\\s*[<\\w]*\\s*[\\),;=])",
+      "scope": "type"
+    },
+    {
+      "pattern": "\\b[A-Za-z_][\\w]*(?=\\s*\\()",
+      "scope": "function"
+    },
+    {
+      "pattern": "\\b(?:0[xX][0-9a-fA-F_]+|0[bB][01_]+|\\d[\\d_]*(?:\\.\\d[\\d_]*)?(?:[eE][+-]?\\d[\\d_]*)?[fFdDlL]?)\\b",
+      "scope": "number"
+    },
+    {
+      "pattern": "->|::|\\+\\+|--|==|!=|<=|>=|&&|\\|\\||<<|>>|>>>|[+\\-*/%=&|^~!<>?:.]",
+      "scope": "operator"
+    }
+  ]
+}
