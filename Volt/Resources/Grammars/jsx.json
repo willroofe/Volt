@@ -1,0 +1,58 @@
+{
+  "name": "JSX",
+  "extensions": [".jsx"],
+  "blockComments": [
+    {
+      "start": "^\\s*/\\*(?!.*\\*/)",
+      "end": "\\*/",
+      "scope": "comment"
+    }
+  ],
+  "interpolation": {
+    "quotes": "`",
+    "variablePattern": "\\$\\{[^}]*\\}",
+    "escapePattern": "\\\\(?:[bfnrtv0\\\\'\"`]|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|u\\{[0-9a-fA-F]+\\}|.)"
+  },
+  "rules": [
+    {
+      "pattern": "(?:`(?:\\\\.|[^`\\\\])*`|\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*')",
+      "scope": "string"
+    },
+    {
+      "pattern": "/\\*.*?\\*/|\\{\\s*/\\*.*?\\*/\\s*\\}",
+      "scope": "comment"
+    },
+    {
+      "pattern": "//.*$",
+      "scope": "comment"
+    },
+    {
+      "pattern": "</?\\s*[A-Za-z][\\w.:-]*",
+      "scope": "keyword"
+    },
+    {
+      "pattern": "\\b[A-Za-z_:][-\\w:.]*(?=\\s*=)",
+      "scope": "hashkey"
+    },
+    {
+      "pattern": "\\b(?:async|await|break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|finally|for|from|function|if|import|in|instanceof|let|new|of|return|static|super|switch|this|throw|try|typeof|var|void|while|with|yield)\\b",
+      "scope": "keyword"
+    },
+    {
+      "pattern": "\\b(?:Array|Boolean|Date|Error|Function|Map|Math|Number|Object|Promise|React|RegExp|Set|String|Symbol|console|document|window)\\b",
+      "scope": "type"
+    },
+    {
+      "pattern": "\\b[$A-Za-z_][\\w$]*(?=\\s*=>|\\s*\\()",
+      "scope": "function"
+    },
+    {
+      "pattern": "\\b(?:0[xX][0-9a-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|\\d[\\d_]*(?:\\.\\d[\\d_]*)?(?:[eE][+-]?\\d[\\d_]*)?n?)\\b",
+      "scope": "number"
+    },
+    {
+      "pattern": "</?|/?>|=>|===|!==|==|!=|<=|>=|&&|\\|\\||\\?\\?|\\?\\.|[+\\-*/%=&|^~!<>?:.]",
+      "scope": "operator"
+    }
+  ]
+}
