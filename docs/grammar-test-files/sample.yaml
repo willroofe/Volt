@@ -1,0 +1,8 @@
+# YAML grammar sample
+editor:
+  name: Volt
+  enabled: true
+  tab_size: 4
+  languages:
+    - yaml
+    - json

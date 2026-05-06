@@ -1,0 +1,54 @@
+{
+  "name": "Swift",
+  "extensions": [".swift"],
+  "blockComments": [
+    {
+      "start": "^\\s*/\\*(?!.*\\*/)",
+      "end": "\\*/",
+      "scope": "comment"
+    }
+  ],
+  "interpolation": {
+    "quotes": "\"",
+    "variablePattern": "\\\\\\([^)]*\\)",
+    "escapePattern": "\\\\(?:[0\\\\tnr\"']|u\\{[0-9a-fA-F]+\\}|.)"
+  },
+  "rules": [
+    {
+      "pattern": "\"\"\".*?\"\"\"|\"(?:\\\\.|[^\"\\\\])*\"",
+      "scope": "string"
+    },
+    {
+      "pattern": "/\\*.*?\\*/",
+      "scope": "comment"
+    },
+    {
+      "pattern": "//.*$",
+      "scope": "comment"
+    },
+    {
+      "pattern": "\\b(?:Any|as|associatedtype|associativity|async|await|break|case|catch|class|continue|convenience|default|defer|deinit|didSet|do|dynamic|else|enum|extension|fallthrough|false|fileprivate|final|for|func|get|guard|if|import|in|indirect|infix|init|inout|internal|is|lazy|left|let|mutating|nil|none|nonmutating|open|operator|optional|override|postfix|precedence|prefix|private|protocol|public|repeat|required|rethrows|return|right|self|Self|set|some|static|struct|subscript|super|switch|throw|throws|true|try|typealias|unowned|var|weak|where|while|willSet)\\b",
+      "scope": "keyword"
+    },
+    {
+      "pattern": "\\b(?:Array|Bool|Character|Dictionary|Double|Float|Int|Never|Optional|Set|String|UInt|Void)\\b",
+      "scope": "type"
+    },
+    {
+      "pattern": "(?<=\\bfunc\\s)[A-Za-z_][\\w]*",
+      "scope": "function"
+    },
+    {
+      "pattern": "\\b[A-Za-z_][\\w]*(?=\\s*\\()",
+      "scope": "function"
+    },
+    {
+      "pattern": "\\b(?:0[xX][0-9a-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|\\d[\\d_]*(?:\\.\\d[\\d_]*)?(?:[eE][+-]?\\d[\\d_]*)?)\\b",
+      "scope": "number"
+    },
+    {
+      "pattern": "->|=>|\\.\\.|\\.\\.\\.|==|!=|<=|>=|&&|\\|\\||[+\\-*/%=&|^~!<>?:.]",
+      "scope": "operator"
+    }
+  ]
+}

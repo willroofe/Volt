@@ -1,0 +1,18 @@
+{
+  "name": "CSV",
+  "extensions": [".csv", ".tsv"],
+  "rules": [
+    {
+      "pattern": "\"(?:\"\"|[^\"])*\"",
+      "scope": "string"
+    },
+    {
+      "pattern": "(?<=^|,|\\t)-?(?:\\d+\\.\\d+|\\d+)(?:[eE][+-]?\\d+)?(?=,|\\t|$)",
+      "scope": "number"
+    },
+    {
+      "pattern": ",|\\t",
+      "scope": "operator"
+    }
+  ]
+}
