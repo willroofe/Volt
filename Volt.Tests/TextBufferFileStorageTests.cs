@@ -74,6 +74,56 @@ public class TextBufferFileStorageTests : IDisposable
     }
 
     [Fact]
+    public void PrepareContentFromFile_ReportsMonotonicUtf8Progress()
+    {
+        string path = Write("progress.txt", string.Join("\n", Enumerable.Range(0, 25_000)
+            .Select(i => $"line {i:D5} with content")));
+        var progress = new RecordingProgress();
+
+        TextBuffer.PreparedContent prepared = TextBuffer.PrepareContentFromFile(
+            path,
+            new UTF8Encoding(false),
+            4,
+            progress);
+
+        Assert.Equal(25_000, prepared.Source.LineCount);
+        Assert.NotEmpty(progress.Reports);
+        List<FileLoadProgress> byteReports = progress.Reports.Where(p => p.TotalBytes > 0).ToList();
+        Assert.NotEmpty(byteReports);
+
+        long previousBytes = -1;
+        foreach (FileLoadProgress report in byteReports)
+        {
+            Assert.True(report.BytesProcessed >= previousBytes);
+            Assert.InRange(report.Percent.GetValueOrDefault(-1), 0, 100);
+            previousBytes = report.BytesProcessed;
+        }
+
+        Assert.Contains(progress.Reports, p => p.IsComplete);
+        Assert.Equal(100, progress.Reports[^1].Percent.GetValueOrDefault());
+    }
+
+    [Fact]
+    public void PrepareContentFromFile_CancellationDuringIndexingDoesNotReportCompletion()
+    {
+        string path = Write("cancel-during-index.txt", string.Join("\n", Enumerable.Range(0, 150_000)
+            .Select(i => $"line {i:D6} with enough content to span several read chunks")));
+        using var cts = new CancellationTokenSource();
+        var progress = new RecordingProgress
+        {
+            OnReport = report =>
+            {
+                if (report.TotalBytes > 0 && report.BytesProcessed > 0 && !report.IsComplete)
+                    cts.Cancel();
+            }
+        };
+
+        Assert.Throws<OperationCanceledException>(() =>
+            TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), 4, progress, cts.Token));
+        Assert.DoesNotContain(progress.Reports, p => p.IsComplete);
+    }
+
+    [Fact]
     public void FileBackedBuffer_ReadsAcrossSparseCheckpoints()
     {
         string text = string.Join("\n", Enumerable.Range(0, LargeFileLineIndex.CheckpointInterval + 25)
@@ -85,6 +135,63 @@ public class TextBufferFileStorageTests : IDisposable
 
         Assert.Equal(LargeFileLineIndex.CheckpointInterval + 25, buffer.Count);
         Assert.Equal($"line {LargeFileLineIndex.CheckpointInterval + 12}", buffer[LargeFileLineIndex.CheckpointInterval + 12]);
+    }
+
+    [Fact]
+    public void PrepareContentFromFile_IndexesCrlfSplitAcrossReadBufferBoundary()
+    {
+        string path = Write(
+            "split-crlf.txt",
+            new string('a', LargeFileLineIndex.ReadBufferSize - 1) + "\r\nsecond");
+
+        TextBuffer.PreparedContent prepared = TextBuffer.PrepareContentFromFile(
+            path,
+            new UTF8Encoding(false),
+            tabSize: 4);
+        var buffer = new TextBuffer();
+        buffer.SetPreparedContent(prepared);
+
+        Assert.Equal(2, prepared.Source.LineCount);
+        Assert.Equal(LargeFileLineIndex.ReadBufferSize - 1, prepared.Source.MaxLineLength);
+        Assert.Equal("second", buffer[1]);
+        Assert.Equal("CRLF", buffer.LineEndingDisplay);
+    }
+
+    [Fact]
+    public void PrepareContentFromFile_StoresCheckpointAtReadBufferBoundary()
+    {
+        int lineLength = LargeFileLineIndex.ReadBufferSize / LargeFileLineIndex.CheckpointInterval - 1;
+        string line = new('x', lineLength);
+        var builder = new StringBuilder(LargeFileLineIndex.ReadBufferSize + 16);
+        for (int i = 0; i < LargeFileLineIndex.CheckpointInterval; i++)
+        {
+            builder.Append(line);
+            builder.Append('\n');
+        }
+
+        builder.Append("after-boundary");
+        string path = Write("checkpoint-boundary.txt", builder.ToString());
+
+        LargeFileLineIndex index = LargeFileLineIndex.Build(path, new UTF8Encoding(false));
+        var buffer = new TextBuffer();
+        buffer.SetPreparedContent(TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), tabSize: 4));
+
+        var (checkpointLine, checkpointOffset) = index.GetCheckpointForLine(LargeFileLineIndex.CheckpointInterval);
+        Assert.Equal(LargeFileLineIndex.CheckpointInterval, checkpointLine);
+        Assert.Equal(LargeFileLineIndex.ReadBufferSize, checkpointOffset);
+        Assert.Equal("after-boundary", buffer[LargeFileLineIndex.CheckpointInterval]);
+    }
+
+    [Fact]
+    public void LargeFileLineIndex_DetectsTabsAndNonAscii()
+    {
+        string path = Write("metadata.txt", "alpha\tbeta\ncafe\u00e9\nomega");
+
+        LargeFileLineIndex index = LargeFileLineIndex.Build(path, new UTF8Encoding(false));
+
+        Assert.True(index.HasTabs);
+        Assert.True(index.HasNonAscii);
+        Assert.Equal(3, index.LineCount);
     }
 
     [Fact]
@@ -239,5 +346,17 @@ public class TextBufferFileStorageTests : IDisposable
         string path = Path.Combine(_dir, name);
         File.WriteAllText(path, content, new UTF8Encoding(false));
         return path;
+    }
+
+    private sealed class RecordingProgress : IProgress<FileLoadProgress>
+    {
+        public List<FileLoadProgress> Reports { get; } = [];
+        public Action<FileLoadProgress>? OnReport { get; init; }
+
+        public void Report(FileLoadProgress value)
+        {
+            Reports.Add(value);
+            OnReport?.Invoke(value);
+        }
     }
 }

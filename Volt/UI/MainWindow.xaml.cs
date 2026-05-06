@@ -62,17 +62,21 @@ public partial class MainWindow
     private static Task<FileLoadResult> LoadFileDataAsync(
         string path,
         int tabSize,
-        CancellationToken cancellationToken) => Task.Run(() =>
+        CancellationToken cancellationToken,
+        IProgress<FileLoadProgress>? progress = null) => Task.Run(() =>
     {
         cancellationToken.ThrowIfCancellationRequested();
+        progress?.Report(FileLoadProgress.Indeterminate("Detecting encoding"));
         var enc = FileHelper.DetectEncoding(path);
         cancellationToken.ThrowIfCancellationRequested();
-        var prep = TextBuffer.PrepareContentFromFile(path, enc, tabSize, cancellationToken);
+        var prep = TextBuffer.PrepareContentFromFile(path, enc, tabSize, progress, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         var info = new FileInfo(path);
         var size = info.Length;
+        progress?.Report(FileLoadProgress.ForBytes("Finalizing", size, size));
         var tail = FileHelper.ReadTailVerifyBytes(path, size);
         cancellationToken.ThrowIfCancellationRequested();
+        progress?.Report(FileLoadProgress.Complete("Loaded file", size));
         return new FileLoadResult(enc, prep, size, tail, info.LastWriteTimeUtc);
     }, cancellationToken);
 
@@ -388,6 +392,36 @@ public partial class MainWindow
             tab.Editor.SetBusy(false);
             tab.ScrollHost.IsHitTestVisible = true;
         }
+    }
+
+    private static IProgress<FileLoadProgress> CreateLoadProgress(TabInfo tab, TabInfo.LoadOperation load)
+    {
+        long lastProgressUpdateTicks = 0;
+        return new Progress<FileLoadProgress>(progress =>
+        {
+            if (!tab.IsCurrentLoad(load) || load.CancellationToken.IsCancellationRequested)
+                return;
+
+            long nowTicks = Environment.TickCount64;
+            if (!progress.IsComplete && nowTicks - lastProgressUpdateTicks < 90)
+                return;
+
+            lastProgressUpdateTicks = nowTicks;
+            tab.Editor.SetBusy(true, FormatLoadProgress(progress), progress.Percent);
+        });
+    }
+
+    private static string FormatLoadProgress(FileLoadProgress progress)
+    {
+        string phase = string.IsNullOrWhiteSpace(progress.Phase)
+            ? "Loading file"
+            : progress.Phase;
+        if (progress.Percent is { } percent)
+            return $"{phase}... {Math.Clamp(percent, 0, 100):0.0}%";
+
+        return phase.EndsWith("...", StringComparison.Ordinal)
+            ? phase
+            : $"{phase}...";
     }
 
     private static void ShowTabSpinner(TabInfo tab, string label)
@@ -819,7 +853,8 @@ public partial class MainWindow
         FileLoadResult result;
         try
         {
-            result = await LoadFileDataAsync(path, tab.Editor.TabSize, load.CancellationToken);
+            result = await LoadFileDataAsync(path, tab.Editor.TabSize, load.CancellationToken,
+                CreateLoadProgress(tab, load));
         }
         catch (OperationCanceledException) when (load.CancellationToken.IsCancellationRequested)
         {
@@ -1129,7 +1164,8 @@ public partial class MainWindow
         FileLoadResult result;
         try
         {
-            result = await LoadFileDataAsync(rt.FilePath!, tab.Editor.TabSize, load.CancellationToken);
+            result = await LoadFileDataAsync(rt.FilePath!, tab.Editor.TabSize, load.CancellationToken,
+                CreateLoadProgress(tab, load));
         }
         catch (OperationCanceledException) when (load.CancellationToken.IsCancellationRequested)
         {
@@ -2470,7 +2506,8 @@ public partial class MainWindow
         FileLoadResult result;
         try
         {
-            result = await LoadFileDataAsync(st.FilePath!, tab.Editor.TabSize, load.CancellationToken);
+            result = await LoadFileDataAsync(st.FilePath!, tab.Editor.TabSize, load.CancellationToken,
+                CreateLoadProgress(tab, load));
         }
         catch (OperationCanceledException) when (load.CancellationToken.IsCancellationRequested)
         {
