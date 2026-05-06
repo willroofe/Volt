@@ -1542,25 +1542,7 @@ public class FindManager
             if (!TryCreateMatcher(query, out Regex? regex, out _) || regex == null)
                 return 0;
 
-            int searchStart = Math.Clamp(minCol, 0, text.Length);
-            long regexCount = 0;
-            Match match = regex.Match(text, searchStart);
-            while (match.Success)
-            {
-                token.ThrowIfCancellationRequested();
-                if (match.Index >= maxCol)
-                    break;
-
-                if (match.Length > 0 && match.Index >= minCol && match.Index + match.Length <= maxCol)
-                    regexCount++;
-
-                int nextIndex = match.Length == 0 ? match.Index + 1 : match.Index + Math.Max(1, match.Length);
-                if (nextIndex > text.Length)
-                    break;
-                match = regex.Match(text, nextIndex);
-            }
-
-            return regexCount;
+            return CountRegexLineMatches(text, minCol, maxCol, regex, token);
         }
 
         int pos = Math.Clamp(minCol, 0, text.Length);
@@ -1599,6 +1581,68 @@ public class FindManager
             if (idx + query.Text.Length <= maxCol)
                 count++;
             pos = idx + 1;
+        }
+
+        return count;
+    }
+
+    private static long CountRegexLineMatches(
+        string text,
+        int minCol,
+        int maxCol,
+        Regex regex,
+        CancellationToken token)
+    {
+        int searchStart = Math.Clamp(minCol, 0, text.Length);
+        if (searchStart >= text.Length || searchStart >= maxCol)
+            return 0;
+
+        if (searchStart > 0)
+            return CountRegexLineMatchesFromStart(text, searchStart, minCol, maxCol, regex, token);
+
+        long count = 0;
+        int cancellationCheck = 0;
+        foreach (ValueMatch match in regex.EnumerateMatches(text.AsSpan()))
+        {
+            if ((cancellationCheck++ & 0x3F) == 0)
+                token.ThrowIfCancellationRequested();
+
+            if (match.Index >= maxCol)
+                break;
+
+            if (match.Length > 0 && match.Index + match.Length <= maxCol)
+                count++;
+        }
+
+        return count;
+    }
+
+    private static long CountRegexLineMatchesFromStart(
+        string text,
+        int searchStart,
+        int minCol,
+        int maxCol,
+        Regex regex,
+        CancellationToken token)
+    {
+        long count = 0;
+        int cancellationCheck = 0;
+        Match match = regex.Match(text, searchStart);
+        while (match.Success)
+        {
+            if ((cancellationCheck++ & 0x3F) == 0)
+                token.ThrowIfCancellationRequested();
+
+            if (match.Index >= maxCol)
+                break;
+
+            if (match.Length > 0 && match.Index >= minCol && match.Index + match.Length <= maxCol)
+                count++;
+
+            int nextIndex = match.Length == 0 ? match.Index + 1 : match.Index + Math.Max(1, match.Length);
+            if (nextIndex > text.Length)
+                break;
+            match = regex.Match(text, nextIndex);
         }
 
         return count;
