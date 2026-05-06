@@ -48,6 +48,61 @@ public class FindBarSelectionTests
         Assert.True(shouldApply);
     }
 
+    [Fact]
+    public void ResolveMatchCountLabel_KeepsCurrentTextForBlankStatus()
+    {
+        string resolved = FindBar.ResolveMatchCountLabel(
+            currentText: "1 of 12",
+            statusText: "",
+            hasQuery: true);
+
+        Assert.Equal("1 of 12", resolved);
+    }
+
+    [Fact]
+    public void ResolveMatchCountLabel_KeepsCurrentTextForSearchingStatus()
+    {
+        string resolved = FindBar.ResolveMatchCountLabel(
+            currentText: "1 of 12",
+            statusText: "Searching...",
+            hasQuery: true);
+
+        Assert.Equal("1 of 12", resolved);
+    }
+
+    [Fact]
+    public void ResolveMatchCountLabel_KeepsCurrentTextForPlaceholderCountStatus()
+    {
+        string resolved = FindBar.ResolveMatchCountLabel(
+            currentText: "1 of 12",
+            statusText: "... of ...",
+            hasQuery: true);
+
+        Assert.Equal("1 of 12", resolved);
+    }
+
+    [Fact]
+    public void ResolveMatchCountLabel_ClearsBlankStatusWithoutQuery()
+    {
+        string resolved = FindBar.ResolveMatchCountLabel(
+            currentText: "1 of 12",
+            statusText: "",
+            hasQuery: false);
+
+        Assert.Equal("", resolved);
+    }
+
+    [Fact]
+    public void ResolveMatchCountLabel_UsesNonEmptyStatus()
+    {
+        string resolved = FindBar.ResolveMatchCountLabel(
+            currentText: "1 of 12",
+            statusText: "No results",
+            hasQuery: true);
+
+        Assert.Equal("No results", resolved);
+    }
+
     [StaFact]
     public void ModeButtonActiveState_RoundTripsThroughSingleVisualFlag()
     {

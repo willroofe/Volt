@@ -280,6 +280,19 @@ public partial class FindBar : UserControl
     internal static bool IsModeButtonActive(Button button) =>
         string.Equals(button.Tag as string, "Active", StringComparison.Ordinal);
 
+    internal static string ResolveMatchCountLabel(
+        string currentText,
+        string statusText,
+        bool hasQuery) =>
+        hasQuery && !IsReadyMatchCountStatus(statusText)
+            ? currentText
+            : statusText;
+
+    internal static bool IsReadyMatchCountStatus(string statusText) =>
+        !string.IsNullOrEmpty(statusText) &&
+        !statusText.StartsWith("Searching...", StringComparison.Ordinal) &&
+        !statusText.Contains("...", StringComparison.Ordinal);
+
     private void OnToggleReplaceClick(object sender, RoutedEventArgs e)
     {
         bool show = _replaceRow.Visibility != Visibility.Visible;
@@ -393,10 +406,10 @@ public partial class FindBar : UserControl
             return;
         }
 
-        string status = _editor.FindStatusText;
-        _matchCount.Text = string.IsNullOrEmpty(status) && _input.Text.Length > 0
-            ? "Searching..."
-            : status;
+        _matchCount.Text = ResolveMatchCountLabel(
+            _matchCount.Text,
+            _editor.FindStatusText,
+            _input.Text.Length > 0);
     }
 
     private void DoReplace()

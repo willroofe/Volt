@@ -637,6 +637,20 @@ public class FindManagerTests
     }
 
     [Fact]
+    public async Task StartSearch_DoesNotReportNoResultsBeforeInitialMatchSelection()
+    {
+        var buf = TestHelpers.MakeBuffer("alpha beta\nbeta gamma\nalpha beta");
+        var find = new FindManager();
+
+        find.StartSearch(buf, "beta", matchCase: false, caretLine: 0, caretCol: 0);
+        await WaitUntil(() => find.HasExactMatchCount);
+
+        Assert.Equal(3, find.KnownMatchCount);
+        Assert.Null(find.GetCurrentMatch());
+        Assert.Equal("", find.StatusText);
+    }
+
+    [Fact]
     public void GetMatchesInRange_ReturnsOnlyViewportMatches()
     {
         var buf = TestHelpers.MakeBuffer(string.Join('\n', Enumerable.Range(0, 100)
@@ -840,10 +854,10 @@ public class FindManagerTests
     }
 
     [Fact]
-    public void StartSearch_ReturnsBeforeSlowFullScanCompletes()
+    public void StartSearch_ReturnsBeforeSlowLargeFullScanCompletes()
     {
         using var release = new ManualResetEventSlim();
-        var source = new BlockingTextSource(lineCount: 1_000, release);
+        var source = new BlockingTextSource(lineCount: 2_000_000, release);
         var buffer = new TextBuffer();
         buffer.SetPreparedContent(new TextBuffer.PreparedContent
         {
@@ -863,8 +877,37 @@ public class FindManagerTests
         }
         finally
         {
-            release.Set();
             find.Clear();
+            release.Set();
+        }
+    }
+
+    [Fact]
+    public async Task StartSearch_DelaysProgressPercentForSmallSlowFullScan()
+    {
+        using var release = new ManualResetEventSlim();
+        var source = new BlockingTextSource(lineCount: 1_000, release);
+        var buffer = new TextBuffer();
+        buffer.SetPreparedContent(new TextBuffer.PreparedContent
+        {
+            Source = source,
+            LineEnding = "\n"
+        });
+        var find = new FindManager();
+
+        try
+        {
+            find.StartSearch(buffer, "needle", matchCase: false, caretLine: 0, caretCol: 0);
+
+            Assert.True(find.IsSearching);
+            Assert.Equal("", find.StatusText);
+
+            await WaitUntil(() => find.StatusText.Contains("% searched", StringComparison.Ordinal));
+        }
+        finally
+        {
+            find.Clear();
+            release.Set();
         }
     }
 
