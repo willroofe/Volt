@@ -24,6 +24,40 @@ public class EditorControlLargeFileTests
     }
 
     [StaFact]
+    public void SetBusy_WithProgressClampsAndClearsProgress()
+    {
+        var editor = new EditorControl(new ThemeManager(), new SyntaxManager());
+
+        editor.SetBusy(true, "Loading file...", 125);
+
+        Assert.True(editor.IsBusy);
+        Assert.Equal(100, editor.BusyProgressPercent);
+
+        editor.SetBusy(false);
+
+        Assert.False(editor.IsBusy);
+        Assert.Null(editor.BusyProgressPercent);
+    }
+
+    [StaFact]
+    public void SetBusy_WithProgressRendersOverlay()
+    {
+        var editor = new EditorControl(new ThemeManager(), new SyntaxManager());
+        var size = new Size(640, 360);
+
+        editor.SetBusy(true, "Indexing file...", 42.5);
+        editor.Measure(size);
+        editor.Arrange(new Rect(size));
+        editor.UpdateLayout();
+
+        var bitmap = new RenderTargetBitmap(640, 360, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(editor);
+
+        Assert.True(editor.IsBusy);
+        Assert.Equal(42.5, editor.BusyProgressPercent);
+    }
+
+    [StaFact]
     public void SetPreparedContent_SuppressesWordWrapForVeryManyLines()
     {
         var editor = new EditorControl(new ThemeManager(), new SyntaxManager())

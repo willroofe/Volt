@@ -385,10 +385,23 @@ public class TextBuffer
     public static PreparedContent PrepareContentFromFile(string path, Encoding encoding, int tabSize,
         CancellationToken cancellationToken = default)
     {
+        return PrepareContentFromFile(path, encoding, tabSize, progress: null, cancellationToken);
+    }
+
+    internal static PreparedContent PrepareContentFromFile(
+        string path,
+        Encoding encoding,
+        int tabSize,
+        IProgress<FileLoadProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
         cancellationToken.ThrowIfCancellationRequested();
+        long fileSize = new FileInfo(path).Length;
         if (FileTextSource.SupportsEncoding(encoding))
         {
-            LargeFileLineIndex index = LargeFileLineIndex.Build(path, encoding, cancellationToken);
+            progress?.Report(FileLoadProgress.ForBytes("Indexing file", 0, fileSize));
+            LargeFileLineIndex index = LargeFileLineIndex.Build(path, encoding, progress, cancellationToken);
+            progress?.Report(FileLoadProgress.Complete("File indexed", fileSize));
             return new PreparedContent
             {
                 Source = new FileTextSource(path, encoding, tabSize, index),
@@ -396,12 +409,15 @@ public class TextBuffer
             };
         }
 
+        progress?.Report(FileLoadProgress.Indeterminate("Reading file"));
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
             FileShare.ReadWrite | FileShare.Delete, bufferSize: 1 << 20, FileOptions.SequentialScan);
         using var reader = new StreamReader(stream, encoding, detectEncodingFromByteOrderMarks: false, bufferSize: 1 << 20);
         string text = reader.ReadToEnd();
         cancellationToken.ThrowIfCancellationRequested();
-        return PrepareContent(text, tabSize, cancellationToken);
+        PreparedContent prepared = PrepareContent(text, tabSize, cancellationToken);
+        progress?.Report(FileLoadProgress.Complete("File loaded", fileSize));
+        return prepared;
     }
 
     /// <summary>Apply prepared content to the buffer. Must be called on the UI thread.</summary>

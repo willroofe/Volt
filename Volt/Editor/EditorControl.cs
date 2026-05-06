@@ -268,8 +268,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ── Busy/read-only operation state ───────────────────────────────
     private bool _isBusy;
     private string _busyMessage = "";
+    private double? _busyProgressPercent;
     private bool _busySpinnerAnimating;
     public bool IsBusy => _isBusy;
+    internal double? BusyProgressPercent => _busyProgressPercent;
 
     // ── Word wrap state ──────────────────────────────────────────────
     private readonly WrapLayout _wrap = new();
@@ -456,14 +458,20 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
     }
 
-    public void SetBusy(bool isBusy, string? message = null)
+    public void SetBusy(bool isBusy, string? message = null, double? progressPercent = null)
     {
         string nextMessage = isBusy ? message ?? _busyMessage : "";
-        if (_isBusy == isBusy && string.Equals(_busyMessage, nextMessage, StringComparison.Ordinal))
+        double? nextProgressPercent = isBusy && progressPercent.HasValue
+            ? Math.Clamp(progressPercent.Value, 0, 100)
+            : null;
+        if (_isBusy == isBusy
+            && string.Equals(_busyMessage, nextMessage, StringComparison.Ordinal)
+            && Nullable.Equals(_busyProgressPercent, nextProgressPercent))
             return;
 
         _isBusy = isBusy;
         _busyMessage = nextMessage;
+        _busyProgressPercent = nextProgressPercent;
 
         if (_isBusy)
         {
@@ -504,6 +512,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         string message = string.IsNullOrWhiteSpace(_busyMessage) ? "Working..." : _busyMessage;
         double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        string progressText = _busyProgressPercent is { } percent
+            ? $"{Math.Clamp(percent, 0, 100):0.0}%"
+            : "";
+        string displayMessage = progressText.Length > 0 && !message.EndsWith(progressText, StringComparison.Ordinal)
+            ? $"{message} {progressText}"
+            : message;
         var icon = new FormattedText(
             Codicons.Loading,
             CultureInfo.CurrentCulture,
@@ -513,7 +527,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
             ThemeManager.EditorFg,
             dpi);
         var text = new FormattedText(
-            message,
+            displayMessage,
             CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight,
             new Typeface("Segoe UI"),
@@ -521,17 +535,20 @@ public class EditorControl : FrameworkElement, IScrollInfo
             ThemeManager.EditorFg,
             dpi);
 
-        double width = Math.Min(Math.Max(icon.WidthIncludingTrailingWhitespace + text.WidthIncludingTrailingWhitespace + 48, 220),
+        bool hasProgress = _busyProgressPercent.HasValue;
+        double width = Math.Min(Math.Max(icon.WidthIncludingTrailingWhitespace + text.WidthIncludingTrailingWhitespace + 48,
+                hasProgress ? 300 : 220),
             Math.Max(220, ActualWidth - 32));
-        double height = 48;
+        double height = hasProgress ? 72 : 48;
         double left = Math.Max(16, (ActualWidth - width) / 2);
         double top = Math.Max(16, (ActualHeight - height) / 2);
         var panel = new Rect(left, top, width, height);
 
         double contentWidth = icon.WidthIncludingTrailingWhitespace + 10 + text.WidthIncludingTrailingWhitespace;
         double x = left + Math.Max(16, (width - contentWidth) / 2);
-        double iconY = top + (height - icon.Height) / 2;
-        double textY = top + (height - text.Height) / 2;
+        double rowHeight = hasProgress ? 44 : height;
+        double iconY = top + (rowHeight - icon.Height) / 2;
+        double textY = top + (rowHeight - text.Height) / 2;
         double iconCenterX = x + icon.WidthIncludingTrailingWhitespace / 2;
         double iconCenterY = iconY + icon.Height / 2;
         _busySpinnerTransform.CenterX = iconCenterX;
@@ -542,6 +559,21 @@ public class EditorControl : FrameworkElement, IScrollInfo
             dc.DrawRectangle(overlayBrush, null, new Rect(0, 0, ActualWidth, ActualHeight));
             dc.DrawRoundedRectangle(panelBrush, borderPen, panel, 6, 6);
             dc.DrawText(text, new Point(x + icon.WidthIncludingTrailingWhitespace + 10, textY));
+
+            if (hasProgress)
+            {
+                double trackLeft = left + 18;
+                double trackTop = top + height - 19;
+                double trackWidth = Math.Max(1, width - 36);
+                var track = new Rect(trackLeft, trackTop, trackWidth, 5);
+                var fill = new Rect(trackLeft, trackTop,
+                    trackWidth * Math.Clamp(_busyProgressPercent!.Value, 0, 100) / 100.0,
+                    track.Height);
+                Brush trackBrush = CloneWithOpacity(ThemeManager.GutterFg, 0.28);
+                Brush fillBrush = CloneWithOpacity(ThemeManager.SelectionBrush, 0.85);
+                dc.DrawRoundedRectangle(trackBrush, null, track, 2.5, 2.5);
+                dc.DrawRoundedRectangle(fillBrush, null, fill, 2.5, 2.5);
+            }
         }
 
         using (var dc = _busySpinnerVisual.RenderOpen())

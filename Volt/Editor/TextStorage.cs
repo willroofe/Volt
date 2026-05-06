@@ -1,4 +1,6 @@
+using System.Buffers;
 using System.IO;
+using System.Numerics;
 using System.Text;
 
 namespace Volt;
@@ -740,6 +742,7 @@ internal sealed class FileTextSource : ITextSource, IFastLiteralMatchCounter
 internal sealed class LargeFileLineIndex
 {
     public const int CheckpointInterval = 4096;
+    internal const int ReadBufferSize = 8 * 1024 * 1024;
 
     private readonly List<long> _checkpoints;
     private readonly List<long> _checkpointCharCounts;
@@ -776,50 +779,78 @@ internal sealed class LargeFileLineIndex
     public long ContentStartOffset => _bomLength;
 
     public static LargeFileLineIndex Build(string path, Encoding encoding,
+        CancellationToken cancellationToken = default) =>
+        Build(path, encoding, progress: null, cancellationToken);
+
+    internal static LargeFileLineIndex Build(
+        string path,
+        Encoding encoding,
+        IProgress<FileLoadProgress>? progress,
         CancellationToken cancellationToken = default)
     {
         if (!FileTextSource.SupportsEncoding(encoding))
             throw new NotSupportedException("File-backed indexing currently supports UTF-8 text.");
 
         cancellationToken.ThrowIfCancellationRequested();
-        int bomLength = DetectUtf8BomLength(path);
-        var checkpoints = new List<long> { bomLength };
-        var checkpointCharCounts = new List<long> { 0 };
-
-        long lineCount = 1;
-        long currentLineLength = 0;
-        long charCountWithoutLineEndings = 0;
-        int maxLineLength = 0;
-        int lfCount = 0;
-        int crlfCount = 0;
-        bool hasTabs = false;
-        bool hasNonAscii = false;
-        bool previousWasCr = false;
-        long absoluteOffset = bomLength;
 
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
-            FileShare.ReadWrite | FileShare.Delete, bufferSize: 1 << 20, FileOptions.SequentialScan);
-        stream.Seek(bomLength, SeekOrigin.Begin);
-
-        byte[] buffer = new byte[1 << 20];
-        int read;
-        while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+            FileShare.ReadWrite | FileShare.Delete, bufferSize: ReadBufferSize, FileOptions.SequentialScan);
+        long totalBytes = stream.Length;
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(ReadBufferSize);
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            for (int i = 0; i < read; i++)
+            int read = stream.Read(buffer, 0, ReadBufferSize);
+            int bomLength = DetectUtf8BomLength(buffer.AsSpan(0, read));
+            var checkpoints = new List<long> { bomLength };
+            var checkpointCharCounts = new List<long> { 0 };
+
+            long lineCount = 1;
+            long currentLineLength = 0;
+            long charCountWithoutLineEndings = 0;
+            int maxLineLength = 0;
+            int lfCount = 0;
+            int crlfCount = 0;
+            bool hasTabs = false;
+            bool hasNonAscii = false;
+            bool previousWasCr = false;
+            long absoluteOffset = 0;
+
+            progress?.Report(FileLoadProgress.ForBytes("Indexing file", bomLength, totalBytes));
+            while (read > 0)
             {
-                byte b = buffer[i];
-                if (b == (byte)'\t')
-                    hasTabs = true;
-                if (b >= 0x80)
+                cancellationToken.ThrowIfCancellationRequested();
+
+                int contentStart = absoluteOffset == 0 ? bomLength : 0;
+                var span = buffer.AsSpan(contentStart, read - contentStart);
+                if (!hasNonAscii && ContainsNonAscii(span))
                     hasNonAscii = true;
 
-                if (b == (byte)'\n')
+                int position = 0;
+                while (position < span.Length)
                 {
-                    long contentLength = previousWasCr ? Math.Max(0, currentLineLength - 1) : currentLineLength;
+                    int relativeIndex = span[position..].IndexOfAny((byte)'\n', (byte)'\t');
+                    if (relativeIndex < 0)
+                        break;
+
+                    int index = position + relativeIndex;
+                    byte value = span[index];
+                    if (value == (byte)'\t')
+                    {
+                        hasTabs = true;
+                        currentLineLength += index - position + 1L;
+                        previousWasCr = false;
+                        position = index + 1;
+                        continue;
+                    }
+
+                    long lineLength = currentLineLength + index - position;
+                    bool isCrLf = index > position
+                        ? span[index - 1] == (byte)'\r'
+                        : previousWasCr;
+                    long contentLength = isCrLf ? Math.Max(0, lineLength - 1) : lineLength;
                     charCountWithoutLineEndings += contentLength;
                     maxLineLength = (int)Math.Max(maxLineLength, Math.Min(contentLength, int.MaxValue));
-                    if (previousWasCr)
+                    if (isCrLf)
                         crlfCount++;
                     else
                         lfCount++;
@@ -828,40 +859,50 @@ internal sealed class LargeFileLineIndex
                     lineCount++;
                     if (nextLineIndex % CheckpointInterval == 0)
                     {
-                        checkpoints.Add(absoluteOffset + i + 1);
+                        checkpoints.Add(absoluteOffset + contentStart + index + 1);
                         checkpointCharCounts.Add(charCountWithoutLineEndings);
                     }
 
                     currentLineLength = 0;
                     previousWasCr = false;
-                    continue;
+                    position = index + 1;
                 }
 
-                currentLineLength++;
-                previousWasCr = b == (byte)'\r';
+                int remaining = span.Length - position;
+                if (remaining > 0)
+                {
+                    currentLineLength += remaining;
+                    previousWasCr = span[^1] == (byte)'\r';
+                }
+
+                absoluteOffset += read;
+                progress?.Report(FileLoadProgress.ForBytes("Indexing file", absoluteOffset, totalBytes));
+                read = stream.Read(buffer, 0, ReadBufferSize);
             }
 
-            absoluteOffset += read;
+            cancellationToken.ThrowIfCancellationRequested();
+            charCountWithoutLineEndings += currentLineLength;
+            maxLineLength = (int)Math.Max(maxLineLength, Math.Min(currentLineLength, int.MaxValue));
+
+            if (lineCount > int.MaxValue)
+                throw new NotSupportedException($"Volt indexed {lineCount:N0} lines, which exceeds the current editor line-addressing limit.");
+
+            string lineEnding = lfCount > crlfCount ? "\n" : "\r\n";
+            return new LargeFileLineIndex(
+                checkpoints,
+                checkpointCharCounts,
+                bomLength,
+                (int)lineCount,
+                charCountWithoutLineEndings,
+                maxLineLength,
+                lineEnding,
+                hasTabs,
+                hasNonAscii);
         }
-
-        cancellationToken.ThrowIfCancellationRequested();
-        charCountWithoutLineEndings += currentLineLength;
-        maxLineLength = (int)Math.Max(maxLineLength, Math.Min(currentLineLength, int.MaxValue));
-
-        if (lineCount > int.MaxValue)
-            throw new NotSupportedException($"Volt indexed {lineCount:N0} lines, which exceeds the current editor line-addressing limit.");
-
-        string lineEnding = lfCount > crlfCount ? "\n" : "\r\n";
-        return new LargeFileLineIndex(
-            checkpoints,
-            checkpointCharCounts,
-            bomLength,
-            (int)lineCount,
-            charCountWithoutLineEndings,
-            maxLineLength,
-            lineEnding,
-            hasTabs,
-            hasNonAscii);
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     public (int line, long offset) GetCheckpointForLine(int line)
@@ -877,13 +918,39 @@ internal sealed class LargeFileLineIndex
             _checkpointCharCounts[checkpointIndex]);
     }
 
-    private static int DetectUtf8BomLength(string path)
+    private static bool ContainsNonAscii(ReadOnlySpan<byte> span)
     {
-        Span<byte> bom = stackalloc byte[3];
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
-            FileShare.ReadWrite | FileShare.Delete);
-        int read = stream.Read(bom);
-        return read >= 3 && bom[0] == 0xEF && bom[1] == 0xBB && bom[2] == 0xBF ? 3 : 0;
+        if (span.IsEmpty)
+            return false;
+
+        if (Vector.IsHardwareAccelerated && span.Length >= Vector<byte>.Count)
+        {
+            var highBit = new Vector<byte>(0x80);
+            int vectorWidth = Vector<byte>.Count;
+            int vectorEnd = span.Length - vectorWidth;
+            int i = 0;
+            for (; i <= vectorEnd; i += vectorWidth)
+            {
+                var value = new Vector<byte>(span.Slice(i, vectorWidth));
+                if (!Vector.EqualsAll(Vector.BitwiseAnd(value, highBit), Vector<byte>.Zero))
+                    return true;
+            }
+
+            span = span[i..];
+        }
+
+        foreach (byte value in span)
+        {
+            if (value >= 0x80)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static int DetectUtf8BomLength(ReadOnlySpan<byte> bytes)
+    {
+        return bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? 3 : 0;
     }
 }
 
