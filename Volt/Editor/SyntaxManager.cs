@@ -7,12 +7,13 @@ namespace Volt;
 
 public record SyntaxToken(int Start, int Length, string Scope);
 
-/// <summary>Tracks whether a line ends inside an unclosed string, block comment, heredoc, or regex.</summary>
+/// <summary>Tracks whether a line ends inside an unclosed string, block comment, heredoc, regex, or embedded region.</summary>
 /// <param name="BlockCommentIndex">Index into grammar's BlockComments list, or -1 if not in a block comment.</param>
 public record LineState(char? OpenQuote, int BlockCommentIndex = -1,
     string? HeredocDelimiter = null, bool HeredocInterpolate = true,
     char? OpenRegexDelimiter = null, int RegexClosesNeeded = 0,
-    bool HeredocIndented = false);
+    bool HeredocIndented = false,
+    int EmbeddedRegionIndex = -1, LineState? EmbeddedState = null);
 
 public class SyntaxManager
 {
@@ -65,6 +66,9 @@ public class SyntaxManager
         var result = TryTokenizeHeredocContinuation(line, grammar, inState, ref outState);
         if (result != null) return result;
 
+        result = TryTokenizeEmbeddedContinuation(line, grammar, inState, ref outState);
+        if (result != null) return result;
+
         _claimedBuf ??= new bool[Math.Max(line.Length, 256)];
         if (_claimedBuf!.Length < line.Length)
             _claimedBuf = new bool[Math.Max(line.Length, 256)];
@@ -97,15 +101,56 @@ public class SyntaxManager
         // Apply grammar rules and claim tokens
         ApplyGrammarRules(line, grammar, ruleStart, tokens, claimed);
 
-        // Post-rule detection: heredocs, unclaimed regexes, unclosed strings
+        // Post-rule detection: heredocs, unclaimed regexes, embedded regions, unclosed strings
         DetectHeredocMarker(line, grammar, tokens, claimed, ref outState);
         DetectRegexPatterns(line, tokens, claimed, ref outState);
-        DetectUnclosedStringAtEOL(line, tokens, claimed, ref outState);
 
         if (grammar.Interpolation != null)
             tokens = ExpandInterpolation(tokens, line, grammar.Interpolation);
+        tokens = ExpandEmbeddedRegions(tokens, line, grammar, ref outState);
+        DetectUnclosedStringAtEOL(line, tokens, claimed, ref outState);
         tokens.Sort((a, b) => a.Start.CompareTo(b.Start));
         return tokens;
+    }
+
+    private List<SyntaxToken>? TryTokenizeEmbeddedContinuation(string line, SyntaxDefinition grammar,
+        LineState inState, ref LineState outState)
+    {
+        var regions = grammar.EmbeddedRegions;
+        if (inState.EmbeddedRegionIndex < 0 || regions == null || inState.EmbeddedRegionIndex >= regions.Count)
+            return null;
+
+        var region = regions[inState.EmbeddedRegionIndex];
+        var embeddedGrammar = GetDefinition(region.Extension);
+        if (embeddedGrammar == null || region.EndRegex == null)
+            return [];
+
+        var endMatch = region.EndRegex.Match(line);
+        if (!endMatch.Success)
+        {
+            var tokens = TokenizeEmbeddedSegment(line, embeddedGrammar,
+                inState.EmbeddedState ?? DefaultState,
+                out var embeddedOutState, 0);
+            outState = inState with { EmbeddedState = embeddedOutState };
+            return tokens;
+        }
+
+        string embeddedText = line[..endMatch.Index];
+        var result = TokenizeEmbeddedSegment(embeddedText, embeddedGrammar,
+            inState.EmbeddedState ?? DefaultState, out _, 0);
+
+        string tail = line[endMatch.Index..];
+        if (tail.Length > 0)
+        {
+            var tailTokens = Tokenize(tail, grammar, DefaultState, out outState);
+            result.AddRange(ShiftTokens(tailTokens, endMatch.Index));
+        }
+        else
+        {
+            outState = DefaultState;
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -342,6 +387,7 @@ public class SyntaxManager
     private void DetectUnclosedStringAtEOL(string line,
         List<SyntaxToken> tokens, bool[] claimed, ref LineState outState)
     {
+        if (outState != DefaultState) return;
         if (outState.HeredocDelimiter != null || outState.OpenRegexDelimiter != null) return;
 
         outState = DetectUnclosedString(line, claimed);
@@ -350,6 +396,56 @@ public class SyntaxManager
         int openPos = FindOpeningQuote(line, claimed, outState.OpenQuote.Value);
         if (openPos >= 0)
             tokens.Add(new SyntaxToken(openPos, line.Length - openPos, "string"));
+    }
+
+    private List<SyntaxToken> ExpandEmbeddedRegions(List<SyntaxToken> tokens, string line,
+        SyntaxDefinition grammar, ref LineState outState)
+    {
+        var regions = grammar.EmbeddedRegions;
+        if (regions == null || outState != DefaultState) return tokens;
+
+        for (int i = 0; i < regions.Count; i++)
+        {
+            var region = regions[i];
+            if (region.StartRegex == null || region.EndRegex == null) continue;
+
+            var startMatch = region.StartRegex.Match(line);
+            if (!startMatch.Success) continue;
+
+            int contentStart = startMatch.Index + startMatch.Length;
+            var embeddedGrammar = GetDefinition(region.Extension);
+            if (embeddedGrammar == null) continue;
+
+            var endMatch = region.EndRegex.Match(line, contentStart);
+            int contentEnd = endMatch.Success ? endMatch.Index : line.Length;
+            string embeddedText = line[contentStart..contentEnd];
+            var embeddedTokens = TokenizeEmbeddedSegment(embeddedText, embeddedGrammar, DefaultState,
+                out var embeddedOutState, contentStart);
+
+            tokens.RemoveAll(t => t.Start >= contentStart && t.Start < contentEnd);
+            tokens.AddRange(embeddedTokens);
+
+            if (!endMatch.Success)
+                outState = new LineState(null, EmbeddedRegionIndex: i, EmbeddedState: embeddedOutState);
+
+            return tokens;
+        }
+
+        return tokens;
+    }
+
+    private List<SyntaxToken> TokenizeEmbeddedSegment(string text, SyntaxDefinition embeddedGrammar,
+        LineState inState, out LineState outState, int offset)
+        => ShiftTokens(Tokenize(text, embeddedGrammar, inState, out outState), offset);
+
+    private static List<SyntaxToken> ShiftTokens(List<SyntaxToken> tokens, int offset)
+    {
+        if (offset == 0) return tokens;
+
+        var shifted = new List<SyntaxToken>(tokens.Count);
+        foreach (var token in tokens)
+            shifted.Add(token with { Start = token.Start + offset });
+        return shifted;
     }
 
     /// <summary>Find closing quote in line, respecting backslash escapes.</summary>
