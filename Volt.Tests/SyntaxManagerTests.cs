@@ -80,4 +80,39 @@ public class SyntaxManagerTests
 
         Assert.Null(endState.OpenQuote);
     }
+
+    [Fact]
+    public void Tokenize_HtmlStyle_UsesCssGrammarInsideTag()
+    {
+        var mgr = CreateInitialized();
+        var grammar = mgr.GetDefinition(".html")!;
+
+        var tokens = mgr.Tokenize("<style>:root { --accent-color: #3b82f6; }</style>", grammar);
+
+        Assert.Contains(tokens, t => t.Scope == "hashkey");
+        Assert.Contains(tokens, t => t.Scope == "number");
+        Assert.Contains(tokens, t => t.Scope == "operator");
+    }
+
+    [Fact]
+    public void Tokenize_HtmlScript_CarriesJavaScriptStateAcrossLines()
+    {
+        var mgr = CreateInitialized();
+        var grammar = mgr.GetDefinition(".html")!;
+
+        mgr.Tokenize("<script>", grammar, mgr.DefaultState, out var scriptState);
+
+        Assert.Equal(1, scriptState.EmbeddedRegionIndex);
+
+        var scriptTokens = mgr.Tokenize("const message = `hello ${name}`;", grammar, scriptState, out var nextState);
+
+        Assert.Contains(scriptTokens, t => t.Scope == "keyword");
+        Assert.Contains(scriptTokens, t => t.Scope == "variable");
+        Assert.Equal(1, nextState.EmbeddedRegionIndex);
+
+        var closingTokens = mgr.Tokenize("</script>", grammar, nextState, out var endState);
+
+        Assert.Contains(closingTokens, t => t.Scope == "keyword");
+        Assert.Equal(mgr.DefaultState, endState);
+    }
 }

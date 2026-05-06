@@ -10,6 +10,8 @@ public class TabInfo
 {
     private const int DebounceMsec = 200;
 
+    public readonly record struct LoadOperation(long Generation, CancellationToken CancellationToken);
+
     public string? FilePath { get; set; }
     public Encoding FileEncoding { get; set; } = new UTF8Encoding(false);
     public EditorControl Editor { get; }
@@ -33,6 +35,14 @@ public class TabInfo
     /// <summary>True while file content is being loaded asynchronously.</summary>
     public bool IsLoading { get; set; }
 
+    /// <summary>True while file content is being saved asynchronously.</summary>
+    public bool IsSaving { get; set; }
+
+    public bool IsBusy => IsLoading || IsSaving;
+
+    private CancellationTokenSource? _loadCancellation;
+    private long _loadGeneration;
+
     /// <summary>Manually chosen language name, overriding extension-based detection. Null = auto-detect.</summary>
     public string? LanguageOverride { get; set; }
 
@@ -53,6 +63,45 @@ public class TabInfo
             Content = Editor,
             Template = (ControlTemplate)Application.Current.FindResource("ThemedScrollViewer")
         };
+    }
+
+    public LoadOperation BeginLoad()
+    {
+        _loadCancellation?.Cancel();
+        _loadCancellation?.Dispose();
+        _loadCancellation = new CancellationTokenSource();
+        IsLoading = true;
+
+        long generation = ++_loadGeneration;
+        return new LoadOperation(generation, _loadCancellation.Token);
+    }
+
+    public bool IsCurrentLoad(LoadOperation operation) =>
+        IsLoading && _loadGeneration == operation.Generation;
+
+    public bool EndLoad(LoadOperation operation)
+    {
+        if (!IsCurrentLoad(operation))
+            return false;
+
+        _loadCancellation?.Dispose();
+        _loadCancellation = null;
+        IsLoading = false;
+        return true;
+    }
+
+    public bool CancelLoad()
+    {
+        bool hadLoad = IsLoading || _loadCancellation != null;
+        if (!hadLoad)
+            return false;
+
+        _loadCancellation?.Cancel();
+        _loadCancellation?.Dispose();
+        _loadCancellation = null;
+        IsLoading = false;
+        _loadGeneration++;
+        return true;
     }
 
     public void StartWatching()

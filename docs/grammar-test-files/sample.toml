@@ -1,0 +1,6 @@
+# TOML grammar sample
+[editor]
+name = "Volt"
+enabled = true
+tab_size = 4
+released = 2026-05-06

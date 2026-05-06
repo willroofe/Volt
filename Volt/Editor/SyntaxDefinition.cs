@@ -67,6 +67,24 @@ public class HeredocDef
     public Regex? CompiledRegex { get; set; }
 }
 
+public class EmbeddedRegionDef
+{
+    [JsonPropertyName("start")]
+    public string Start { get; set; } = "";
+
+    [JsonPropertyName("end")]
+    public string End { get; set; } = "";
+
+    [JsonPropertyName("extension")]
+    public string Extension { get; set; } = "";
+
+    [JsonIgnore]
+    public Regex? StartRegex { get; set; }
+
+    [JsonIgnore]
+    public Regex? EndRegex { get; set; }
+}
+
 public class SyntaxDefinition
 {
     [JsonPropertyName("name")]
@@ -86,6 +104,9 @@ public class SyntaxDefinition
 
     [JsonPropertyName("heredoc")]
     public HeredocDef? Heredoc { get; set; }
+
+    [JsonPropertyName("embeddedRegions")]
+    public List<EmbeddedRegionDef>? EmbeddedRegions { get; set; }
 
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(50);
 
@@ -150,6 +171,24 @@ public class SyntaxDefinition
             catch (Exception)
             {
                 Heredoc = null;
+            }
+        }
+
+        if (EmbeddedRegions != null)
+        {
+            for (int i = EmbeddedRegions.Count - 1; i >= 0; i--)
+            {
+                try
+                {
+                    EmbeddedRegions[i].StartRegex = new Regex(EmbeddedRegions[i].Start,
+                        RegexOptions.Compiled | RegexOptions.IgnoreCase, RegexTimeout);
+                    EmbeddedRegions[i].EndRegex = new Regex(EmbeddedRegions[i].End,
+                        RegexOptions.Compiled | RegexOptions.IgnoreCase, RegexTimeout);
+                }
+                catch (Exception)
+                {
+                    EmbeddedRegions.RemoveAt(i);
+                }
             }
         }
     }
