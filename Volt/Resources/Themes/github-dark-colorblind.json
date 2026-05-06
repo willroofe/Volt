@@ -1,5 +1,5 @@
 {
-  "name": "Forge Dark Default",
+  "name": "GitHub Dark Colorblind",
   "editor": {
     "background": "#0D1117",
     "foreground": "#E6EDF3",
@@ -8,7 +8,7 @@
     "caret": "#2F81F7",
     "selection": "#2F81F733",
     "currentLine": "#6E76811A",
-    "matchingBracket": "#3FB95040",
+    "matchingBracket": "#39C5CF40",
     "matchingBracketBorder": "#2F81F7",
     "findMatch": "#9E6A03",
     "findMatchCurrent": "#D29922AA",
@@ -56,10 +56,10 @@
     "variable": "#FFA657",
     "number": "#79C0FF",
     "operator": "#E6EDF3",
-    "regex": "#7EE787",
-    "type": "#7EE787",
+    "regex": "#39C5CF",
+    "type": "#39C5CF",
     "function": "#D2A8FF",
-    "hashkey": "#7EE787",
+    "hashkey": "#39C5CF",
     "escape": "#79C0FF"
   },
   "terminal": {
@@ -68,7 +68,7 @@
     "ansi": [
       "#484F58",
       "#FF7B72",
-      "#3FB950",
+      "#39C5CF",
       "#D29922",
       "#58A6FF",
       "#BC8CFF",
@@ -76,7 +76,7 @@
       "#B1BAC4",
       "#6E7681",
       "#FFA198",
-      "#56D364",
+      "#56D4DD",
       "#E3B341",
       "#79C0FF",
       "#D2A8FF",

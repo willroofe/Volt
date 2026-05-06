@@ -1,5 +1,5 @@
 {
-  "name": "Forge Light Colorblind",
+  "name": "GitHub Light Default",
   "editor": {
     "background": "#FFFFFF",
     "foreground": "#1F2328",
@@ -52,12 +52,12 @@
   "scopes": {
     "comment": "#6E7781",
     "string": "#0A3069",
-    "keyword": "#A40E26",
+    "keyword": "#CF222E",
     "variable": "#953800",
     "number": "#0550AE",
     "operator": "#24292F",
-    "regex": "#1B7C83",
-    "type": "#1B7C83",
+    "regex": "#116329",
+    "type": "#116329",
     "function": "#8250DF",
     "hashkey": "#0550AE",
     "escape": "#0550AE"
@@ -67,16 +67,16 @@
     "foreground": "#1F2328",
     "ansi": [
       "#24292F",
-      "#A40E26",
-      "#1B7C83",
+      "#CF222E",
+      "#116329",
       "#4D2D00",
       "#0969DA",
       "#8250DF",
       "#1B7C83",
       "#6E7781",
       "#57606A",
-      "#BC4C00",
-      "#3192AA",
+      "#A40E26",
+      "#1A7F37",
       "#633C01",
       "#218BFF",
       "#8250DF",

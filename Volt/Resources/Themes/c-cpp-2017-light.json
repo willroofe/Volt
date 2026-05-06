@@ -1,5 +1,5 @@
 {
-  "name": "C Family Light Theme",
+  "name": "C/C++ 2017 Light Theme",
   "editor": {
     "background": "#FFFFFF",
     "foreground": "#000000",
@@ -7,7 +7,7 @@
     "activeLineNumber": "#2B91AF",
     "caret": "#007ACC",
     "selection": "#ADD6FF80",
-    "currentLine": "#F3F8FF",
+    "currentLine": "#F5F9FF",
     "matchingBracket": "#E5EBF1",
     "matchingBracketBorder": "#007ACC",
     "findMatch": "#FFE79299",
@@ -20,7 +20,7 @@
     "contentBackground": "#FFFFFF",
     "textForeground": "#1F1F1F",
     "textForegroundStrong": "#000000",
-    "textForegroundMuted": "#767676",
+    "textForegroundMuted": "#808080",
     "buttonForeground": "#1F1F1F",
     "buttonHover": "#E8E8E8",
     "menuPopupBackground": "#F9F9F9",
@@ -40,27 +40,27 @@
     "tabBorder": "#CECECE",
     "explorerBackground": "#FFFFFF",
     "explorerHeaderBackground": "#F3F3F3",
-    "explorerHeaderForeground": "#767676",
+    "explorerHeaderForeground": "#808080",
     "explorerItemHover": "#E8E8E8",
     "explorerItemSelected": "#E5EBF1",
     "explorerDropTarget": "#C8DDF150",
     "inputSelection": "#ADD6FF80",
     "iconPrimary": "#000000",
-    "iconSecondary": "#767676",
+    "iconSecondary": "#808080",
     "iconAccent": "#007ACC"
   },
   "scopes": {
     "comment": "#008000",
     "string": "#A31515",
     "keyword": "#0000FF",
-    "variable": "#1F377F",
+    "variable": "#000000",
     "number": "#098658",
-    "operator": "#000000",
+    "operator": "#008080",
     "regex": "#811F3F",
     "type": "#2B91AF",
-    "function": "#74531F",
+    "function": "#000000",
     "hashkey": "#0451A5",
-    "escape": "#B776FB"
+    "escape": "#EE0000"
   },
   "terminal": {
     "background": "#FFFFFF",
@@ -71,8 +71,8 @@
       "#008000",
       "#795E26",
       "#0451A5",
-      "#8F08C4",
-      "#2B91AF",
+      "#BD63C5",
+      "#008080",
       "#D4D4D4",
       "#808080",
       "#CD3131",
@@ -80,7 +80,7 @@
       "#B57614",
       "#0000FF",
       "#AF00DB",
-      "#0070C1",
+      "#2B91AF",
       "#FFFFFF"
     ]
   }
