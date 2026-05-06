@@ -1,70 +1,71 @@
-# Volt releases (Velopack + GitHub)
+# Volt Releases
 
-Authoritative instructions for building, packaging, and publishing a release. Point assistants here with `@docs/RELEASE.md` when asking for a release.
+Authoritative workflow for building, packaging, and publishing Volt releases with Velopack and GitHub Releases.
 
-## Velopack workflow
+Volt's updater reads package metadata from Velopack, while users can open the GitHub release page for the full release. Keep the same Markdown notes in both places:
 
-Volt uses [Velopack](https://github.com/velopack/velopack) for installer packaging and auto-updates, hosted on GitHub Releases.
+- `vpk pack --releaseNotes <file>` embeds notes into the package so the in-app update dialog can display `NotesMarkdown`.
+- `gh release create --notes-file <file>` publishes the same notes on GitHub.
 
-### Commands (bash)
+## Release Steps
 
-```bash
-# 1. Build
-dotnet publish Volt/Volt.csproj -c Release -r win-x64 -o publish
-vpk pack --packId Volt --packVersion <VERSION> --packDir publish --mainExe Volt.exe --icon Volt/Resources/Volt.ico -o Volt/Releases
-
-# 2. Create GitHub release with proper notes (vpk auto-generates poor notes from last commit)
-gh release create v<VERSION> --title "Volt <VERSION>" --notes "<release notes>"
-
-# 3. Upload assets to the existing release using --merge (must use the same -o as pack; see Checklist)
-GH_TOKEN=$(gh auth token) && vpk upload github --repoUrl https://github.com/willroofe/Volt --tag v<VERSION> --token "$GH_TOKEN" --merge --publish -o Volt/Releases
-```
-
-### Commands (PowerShell)
+Run these from the repository root on `master` after merging `develop`.
 
 ```powershell
+$version = "1.5.0"
+$tag = "v$version"
+$notes = "docs/release-notes/$tag.md"
+
+dotnet test Volt.Tests/Volt.Tests.csproj
 dotnet publish Volt/Volt.csproj -c Release -r win-x64 -o publish
-vpk pack --packId Volt --packVersion <VERSION> --packDir publish --mainExe Volt.exe --icon Volt/Resources/Volt.ico -o Volt/Releases
-gh release create v<VERSION> --title "Volt <VERSION>" --notes "<release notes>"
-$env:GH_TOKEN = (gh auth token); vpk upload github --repoUrl https://github.com/willroofe/Volt --tag v<VERSION> --token $env:GH_TOKEN --merge --publish -o Volt/Releases
+
+vpk pack `
+  --packId Volt `
+  --packVersion $version `
+  --packDir publish `
+  --mainExe Volt.exe `
+  --icon Volt/Resources/Volt.ico `
+  --releaseNotes $notes `
+  -o Volt/Releases
+
+gh release create $tag `
+  --target master `
+  --title "Volt $version" `
+  --notes-file $notes
+
+$env:GH_TOKEN = (gh auth token)
+vpk upload github `
+  --repoUrl https://github.com/willroofe/Volt `
+  --tag $tag `
+  --token $env:GH_TOKEN `
+  --merge `
+  --publish `
+  -o Volt/Releases
 ```
 
-### Why this order
+## Important Details
 
-Velopack’s default release creation only uses the last commit message, which produces poor notes. Creating the release first with `gh` gives full control over the body; `--merge` uploads assets to that existing release.
+- Use a three-part SemVer version for Velopack, such as `1.5.0`. A short version like `1.5` is not accepted by `vpk pack`.
+- Always pass `--releaseNotes`; otherwise Volt's update dialog can show "Release notes are not available" even when the GitHub release page has notes.
+- Use the same `-o` / `--outputDir` for `vpk pack` and `vpk upload github`. Volt uses `Volt/Releases`.
+- Velopack generates delta packages when the previous `.nupkg` is still present in `Volt/Releases`.
+- The upload step publishes `Volt-win-Setup.exe`, `Volt-win-Portable.zip`, `.nupkg` packages, `releases.win.json`, and legacy `RELEASES`.
+- If `vpk` fails because it targets an older .NET runtime, run commands with `$env:DOTNET_ROLL_FORWARD = "Major"` or reinstall the tool for an available runtime.
+- If you must repack an already-published tag, delete the existing release assets before re-uploading files with the same names.
 
-### Checklist
+## Release Notes
 
-- Bump `--packVersion` and `--tag` for each release.
-- Write human-readable release notes summarizing all changes since the **last published** release, not just the last commit.
-- Use the **same** `-o` / `--outputDir` for `vpk pack` and `vpk upload github` (for example `-o Volt/Releases`). `vpk upload` defaults to `./Releases` at the repo root; if that folder still holds older `.nupkg` or installers from past experiments, Velopack can upload the wrong files to the new GitHub release.
-- Velopack auto-generates delta packages when a previous version’s `.nupkg` is in `Volt/Releases/`.
-- Release artifacts land in `Volt/Releases/` (Setup.exe, `.nupkg`, Portable.zip).
-- The app checks for updates on startup (silent) and via “Check for Updates” in the command palette.
-- Install the Velopack CLI with `dotnet tool install -g vpk --framework net8.0` when the machine has .NET 8 and 10 but not 9 (adjust if your SDK layout differs).
+Release notes are for users, not developers. Describe what feels better or what users can now do. Avoid internal wording such as IPC, UI thread, framework-dependent, or implementation names unless users see them directly.
 
-## Release notes style
+Only mention fixes for bugs that existed in the previous published release. Omit regressions that were introduced and fixed entirely inside the same development cycle.
 
-Release notes are for **end users**, not developers. Keep language non-technical and user-facing: describe what the user experiences, not internal implementation details. Avoid jargon like “IPC”, “UI thread”, “framework-dependent”, “status bar encoding” — say what improved from the user’s perspective instead.
-
-**Regression-only bug fixes:** Do not list a bug fix if the bug was introduced and fixed within the same dev cycle. Users never saw those bugs. Only mention bugs that existed in a **prior published** release. When writing notes, cross-reference fixes against what shipped in the last release; omit fixes for bugs introduced after that release.
-
-Each bullet should read as a user-visible change, not a code change.
-
-### GitHub release body format
-
-Match recent published releases (for example **v1.3.0** and **v1.3.2** on GitHub). The body is Markdown with this shape:
-
-1. A single heading: `## What's new` (do not rely on Velopack’s auto-generated notes).
-2. One bullet per user-facing change, each on its own line, using an em dash after a short bold lead-in:
-   - `- **Short label** — Plain-language sentence about what the user can do or what feels better.`
-3. Optional keyboard shortcuts in **bold** when they are part of the feature (for example **Ctrl+Shift+T**).
-
-Example:
+Use this Markdown shape:
 
 ```markdown
 ## What's new
 
-- **Feature name** — What the user gains in everyday use.
-- **Another area** — A specific improvement users will notice.
+- **Short label** — Plain-language sentence about the user-visible change.
+- **Another area** — Another concrete improvement users will notice.
 ```
+
+Use optional keyboard shortcuts in bold, such as **Ctrl+Shift+T**, when they are part of the feature.
