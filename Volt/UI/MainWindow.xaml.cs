@@ -342,11 +342,21 @@ public partial class MainWindow
     }
 
     private const string SpinnerTag = "LoadingSpinner";
+    private const long ImmediateLoadIndicatorThresholdBytes = 8L * 1024 * 1024;
+    private const int DeferredLoadIndicatorDelayMilliseconds = 160;
 
-    private static TabInfo.LoadOperation BeginTabLoad(TabInfo tab)
+    private sealed class LoadIndicatorState
+    {
+        public bool IsVisible { get; set; }
+        public bool IsComplete { get; set; }
+    }
+
+    private static TabInfo.LoadOperation BeginTabLoad(TabInfo tab, bool showIndicatorImmediately)
     {
         TabInfo.LoadOperation load = tab.BeginLoad();
-        ApplyTabBusyState(tab, "Loading", "Loading file...");
+        if (showIndicatorImmediately)
+            ApplyTabBusyState(tab, "Loading", "Loading file...");
+
         return load;
     }
 
@@ -394,12 +404,82 @@ public partial class MainWindow
         }
     }
 
-    private static IProgress<FileLoadProgress> CreateLoadProgress(TabInfo tab, TabInfo.LoadOperation load)
+    private static bool ShouldShowLoadIndicatorImmediately(string? path)
     {
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        try
+        {
+            return new FileInfo(path).Length >= ImmediateLoadIndicatorThresholdBytes;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    private static async Task ShowDeferredLoadIndicatorAsync(
+        TabInfo tab,
+        TabInfo.LoadOperation load,
+        LoadIndicatorState indicatorState)
+    {
+        try
+        {
+            await Task.Delay(DeferredLoadIndicatorDelayMilliseconds, load.CancellationToken);
+            await tab.Editor.Dispatcher.InvokeAsync(() =>
+            {
+                if (indicatorState.IsVisible ||
+                    indicatorState.IsComplete ||
+                    !tab.IsCurrentLoad(load) ||
+                    load.CancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                ApplyTabBusyState(tab, "Loading", "Loading file...");
+                indicatorState.IsVisible = true;
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private static IProgress<FileLoadProgress> CreateLoadProgress(
+        TabInfo tab,
+        TabInfo.LoadOperation load,
+        bool showIndicatorImmediately)
+    {
+        var indicatorState = new LoadIndicatorState { IsVisible = showIndicatorImmediately };
+        if (!showIndicatorImmediately)
+            _ = ShowDeferredLoadIndicatorAsync(tab, load, indicatorState);
+
         long lastProgressUpdateTicks = 0;
         return new Progress<FileLoadProgress>(progress =>
         {
             if (!tab.IsCurrentLoad(load) || load.CancellationToken.IsCancellationRequested)
+                return;
+
+            if (progress.IsComplete)
+                indicatorState.IsComplete = true;
+
+            if (!indicatorState.IsVisible)
                 return;
 
             long nowTicks = Environment.TickCount64;
@@ -845,16 +925,20 @@ public partial class MainWindow
         else
             tab = CreateTab();
 
+        TabInfo? activeTabBeforeOpen = _activeTab;
+        bool wasActiveTab = tab == activeTabBeforeOpen;
         tab.FilePath = path;
-        TabInfo.LoadOperation load = BeginTabLoad(tab);
+        bool showLoadIndicatorImmediately = ShouldShowLoadIndicatorImmediately(path);
+        bool deferActivationUntilLoaded = activate && !showLoadIndicatorImmediately && !wasActiveTab;
+        TabInfo.LoadOperation load = BeginTabLoad(tab, showLoadIndicatorImmediately);
         UpdateTabHeader(tab);
-        if (activate) ActivateTab(tab);
+        if (activate && !deferActivationUntilLoaded) ActivateTab(tab);
 
         FileLoadResult result;
         try
         {
             result = await LoadFileDataAsync(path, tab.Editor.TabSize, load.CancellationToken,
-                CreateLoadProgress(tab, load));
+                CreateLoadProgress(tab, load, showLoadIndicatorImmediately));
         }
         catch (OperationCanceledException) when (load.CancellationToken.IsCancellationRequested)
         {
@@ -881,6 +965,12 @@ public partial class MainWindow
         if (!TabExistsInAnyPane(tab) || !tab.IsCurrentLoad(load)) return null;
 
         ApplyFileLoadResult(tab, result, load);
+        if (deferActivationUntilLoaded && TabExistsInAnyPane(tab) &&
+            (_activeTab == activeTabBeforeOpen || _activeTab == tab))
+        {
+            ActivateTab(tab);
+        }
+
         return tab;
     }
 
@@ -1111,7 +1201,9 @@ public partial class MainWindow
                 else
                 {
                     // File needs reading from disk — defer to async
-                    TabInfo.LoadOperation load = BeginTabLoad(tab);
+                    TabInfo.LoadOperation load = BeginTabLoad(
+                        tab,
+                        ShouldShowLoadIndicatorImmediately(rt.FilePath));
                     asyncLoads.Add((tab, rt, load));
                 }
             }
@@ -1165,7 +1257,7 @@ public partial class MainWindow
         try
         {
             result = await LoadFileDataAsync(rt.FilePath!, tab.Editor.TabSize, load.CancellationToken,
-                CreateLoadProgress(tab, load));
+                CreateLoadProgress(tab, load, ShouldShowLoadIndicatorImmediately(rt.FilePath)));
         }
         catch (OperationCanceledException) when (load.CancellationToken.IsCancellationRequested)
         {
@@ -2474,7 +2566,9 @@ public partial class MainWindow
             if (st.FilePath != null)
             {
                 tab.FilePath = st.FilePath;
-                TabInfo.LoadOperation load = BeginTabLoad(tab);
+                TabInfo.LoadOperation load = BeginTabLoad(
+                    tab,
+                    ShouldShowLoadIndicatorImmediately(st.FilePath));
                 asyncLoads.Add((tab, st, load));
             }
 
@@ -2507,7 +2601,7 @@ public partial class MainWindow
         try
         {
             result = await LoadFileDataAsync(st.FilePath!, tab.Editor.TabSize, load.CancellationToken,
-                CreateLoadProgress(tab, load));
+                CreateLoadProgress(tab, load, ShouldShowLoadIndicatorImmediately(st.FilePath)));
         }
         catch (OperationCanceledException) when (load.CancellationToken.IsCancellationRequested)
         {
