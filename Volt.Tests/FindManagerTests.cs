@@ -105,6 +105,252 @@ public class FindManagerTests
     }
 
     [Fact]
+    public async Task MoveNextAndPrevious_FileBackedFastCountUpdatesCurrentOrdinal()
+    {
+        string path = WriteTempFile("test test test");
+        try
+        {
+            var buffer = new TextBuffer();
+            buffer.SetPreparedContent(TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), tabSize: 4));
+            var find = new FindManager();
+
+            find.StartSearch(buffer, "test", matchCase: true, caretLine: 0, caretCol: 0);
+            await WaitUntil(() => find.HasExactMatchCount);
+
+            Assert.True(await find.FindNearestAsync(0, 0));
+            await WaitUntil(() => find.StatusText == "1 of 3");
+            Assert.Equal(0, find.CurrentIndex);
+            Assert.Equal("1 of 3", find.StatusText);
+
+            Assert.True(await find.MoveNextAsync(0, 0));
+            await WaitUntil(() => find.StatusText == "2 of 3");
+            Assert.Equal((0, 5, 4), find.GetCurrentMatch());
+            Assert.Equal(1, find.CurrentIndex);
+            Assert.Equal("2 of 3", find.StatusText);
+
+            Assert.True(await find.MovePreviousAsync(0, 0));
+            await WaitUntil(() => find.StatusText == "1 of 3");
+            Assert.Equal((0, 0, 4), find.GetCurrentMatch());
+            Assert.Equal(0, find.CurrentIndex);
+            Assert.Equal("1 of 3", find.StatusText);
+            find.Clear();
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public async Task MoveNextAndPrevious_FileBackedFastCountSeedsOrdinalFromFirstButtonClick()
+    {
+        string path = WriteTempFile("test test test");
+        try
+        {
+            var buffer = new TextBuffer();
+            buffer.SetPreparedContent(TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), tabSize: 4));
+            var find = new FindManager();
+
+            find.StartSearch(buffer, "test", matchCase: true, caretLine: 0, caretCol: 0);
+            await WaitUntil(() => find.HasExactMatchCount);
+
+            Assert.True(await find.MoveNextAsync(0, 0));
+            await WaitUntil(() => find.StatusText == "1 of 3");
+            Assert.Equal((0, 0, 4), find.GetCurrentMatch());
+            Assert.Equal("1 of 3", find.StatusText);
+
+            Assert.True(await find.MoveNextAsync(0, 0));
+            await WaitUntil(() => find.StatusText == "2 of 3");
+            Assert.Equal((0, 5, 4), find.GetCurrentMatch());
+            Assert.Equal("2 of 3", find.StatusText);
+
+            find.Clear();
+            find.StartSearch(buffer, "test", matchCase: true, caretLine: 0, caretCol: 0);
+            await WaitUntil(() => find.HasExactMatchCount);
+
+            Assert.True(await find.MovePreviousAsync(0, 0));
+            await WaitUntil(() => find.StatusText == "3 of 3");
+            Assert.Equal((0, 10, 4), find.GetCurrentMatch());
+            Assert.Equal("3 of 3", find.StatusText);
+
+            Assert.True(await find.MovePreviousAsync(0, 0));
+            await WaitUntil(() => find.StatusText == "2 of 3");
+            Assert.Equal((0, 5, 4), find.GetCurrentMatch());
+            Assert.Equal("2 of 3", find.StatusText);
+            find.Clear();
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public async Task MoveNext_FileBackedFastCountAdvancesOrdinalAfterInitialSearchAwayFromStart()
+    {
+        string path = WriteTempFile("test test test");
+        try
+        {
+            var buffer = new TextBuffer();
+            buffer.SetPreparedContent(TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), tabSize: 4));
+            var find = new FindManager();
+
+            find.StartSearch(buffer, "test", matchCase: true, caretLine: 0, caretCol: 6);
+            await WaitUntil(() => find.HasExactMatchCount);
+
+            Assert.True(await find.FindNearestAsync(0, 6));
+            await WaitUntil(() => find.StatusText == "3 of 3");
+            Assert.Equal((0, 10, 4), find.GetCurrentMatch());
+            Assert.Equal("3 of 3", find.StatusText);
+
+            Assert.True(await find.MoveNextAsync(0, 10));
+            await WaitUntil(() => find.StatusText == "1 of 3");
+            Assert.Equal((0, 0, 4), find.GetCurrentMatch());
+            Assert.Equal("1 of 3", find.StatusText);
+
+            Assert.True(await find.MoveNextAsync(0, 0));
+            await WaitUntil(() => find.StatusText == "2 of 3");
+            Assert.Equal((0, 5, 4), find.GetCurrentMatch());
+            Assert.Equal("2 of 3", find.StatusText);
+            find.Clear();
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public async Task MoveNext_FastCountDoesNotScanPrefixForDeepOrdinal()
+    {
+        var source = new FastCountingGuardedTextSource(
+            lineCount: 20_000,
+            allowedStartLine: 10_000,
+            "needle");
+        var buffer = new TextBuffer();
+        buffer.SetPreparedContent(new TextBuffer.PreparedContent
+        {
+            Source = source,
+            LineEnding = "\n"
+        });
+        var find = new FindManager();
+
+        find.StartSearch(buffer, "needle", matchCase: false, caretLine: 0, caretCol: 0);
+        await WaitUntil(() => find.HasExactMatchCount);
+
+        Assert.True(await find.MoveNextAsync(10_000, 0));
+
+        Assert.Equal((10_000, 0, 6), find.GetCurrentMatch());
+        find.Clear();
+    }
+
+    [Fact]
+    public async Task StartSearch_FileBackedAsciiCaseInsensitiveCountMatchesLineScanner()
+    {
+        string text = "test alpha\nTEST beta\nTeSt gamma\nattest";
+        string path = WriteTempFile(text);
+        try
+        {
+            var fileBuffer = new TextBuffer();
+            fileBuffer.SetPreparedContent(TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), tabSize: 4));
+            var memoryBuffer = TestHelpers.MakeBuffer(text);
+            var expected = new FindManager();
+            expected.Search(memoryBuffer, "TEST", matchCase: false, caretLine: 0, caretCol: 0);
+            var find = new FindManager();
+
+            find.StartSearch(fileBuffer, "TEST", matchCase: false, caretLine: 0, caretCol: 0);
+            await WaitUntil(() => find.HasExactMatchCount);
+
+            Assert.Equal(expected.MatchCount, find.KnownMatchCount);
+            find.Clear();
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public async Task StartSearch_FileBackedAsciiWholeWordCountMatchesLineScanner()
+    {
+        string text = "test contest\n(test) _test test1\nend test";
+        string path = WriteTempFile(text);
+        try
+        {
+            var fileBuffer = new TextBuffer();
+            fileBuffer.SetPreparedContent(TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), tabSize: 4));
+            var memoryBuffer = TestHelpers.MakeBuffer(text);
+            var expected = new FindManager();
+            expected.Search(memoryBuffer, "test", matchCase: true, caretLine: 0, caretCol: 0, wholeWord: true);
+            var find = new FindManager();
+
+            find.StartSearch(fileBuffer, "test", matchCase: true, caretLine: 0, caretCol: 0, wholeWord: true);
+            await WaitUntil(() => find.HasExactMatchCount);
+
+            Assert.Equal(expected.MatchCount, find.KnownMatchCount);
+            Assert.Equal(3, find.KnownMatchCount);
+            find.Clear();
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public async Task StartSearch_FileBackedFullLineSelectionUsesSelectedLineRange()
+    {
+        string text = "test outside\ntest one\nplain\ntest two\ntest outside";
+        string path = WriteTempFile(text);
+        var selection = (1, 0, 3, "test two".Length);
+        try
+        {
+            var fileBuffer = new TextBuffer();
+            fileBuffer.SetPreparedContent(TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), tabSize: 4));
+            var memoryBuffer = TestHelpers.MakeBuffer(text);
+            var expected = new FindManager();
+            expected.Search(memoryBuffer, "test", matchCase: true, caretLine: 0, caretCol: 0,
+                selectionBounds: selection);
+            var find = new FindManager();
+
+            find.StartSearch(fileBuffer, "test", matchCase: true, caretLine: 0, caretCol: 0,
+                selectionBounds: selection);
+            await WaitUntil(() => find.HasExactMatchCount);
+
+            Assert.Equal(expected.MatchCount, find.KnownMatchCount);
+            Assert.Equal(2, find.KnownMatchCount);
+            find.Clear();
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public async Task StartSearch_MixedFileBackedAndEditedPiecesAggregatesCounts()
+    {
+        string path = WriteTempFile("test file\nplain file\ntest file two");
+        try
+        {
+            var buffer = new TextBuffer();
+            buffer.SetPreparedContent(TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), tabSize: 4));
+            buffer.InsertLine(1, "TEST edit test");
+            var find = new FindManager();
+
+            find.StartSearch(buffer, "test", matchCase: false, caretLine: 0, caretCol: 0);
+            await WaitUntil(() => find.HasExactMatchCount);
+
+            Assert.Equal(4, find.KnownMatchCount);
+            find.Clear();
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
     public async Task StartSearch_FileBackedLiteralFallsBackWhenTabsNeedExpansion()
     {
         string path = WriteTempFile("a\tb\n    ");
@@ -127,7 +373,7 @@ public class FindManagerTests
     }
 
     [Fact]
-    public async Task StartSearch_FileBackedLiteralFallsBackAfterEdits()
+    public async Task StartSearch_FileBackedLiteralCountsAfterEdits()
     {
         string path = WriteTempFile("test\nplain");
         try
@@ -150,7 +396,7 @@ public class FindManagerTests
     }
 
     [Fact]
-    public async Task StartSearch_FileBackedRegexAndWholeWordUseExistingScanner()
+    public async Task StartSearch_FileBackedRegexUsesExistingScanner()
     {
         string path = WriteTempFile("test contest\ntest");
         try
@@ -162,9 +408,50 @@ public class FindManagerTests
             find.StartSearch(buffer, "t.st", matchCase: true, caretLine: 0, caretCol: 0, useRegex: true);
             await WaitUntil(() => find.HasExactMatchCount);
             Assert.Equal(3, find.KnownMatchCount);
+            find.Clear();
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
 
-            find.StartSearch(buffer, "test", matchCase: true, caretLine: 0, caretCol: 0, wholeWord: true);
+    [Fact]
+    public async Task StartSearch_FileBackedNonAsciiCaseInsensitiveFallsBackCorrectly()
+    {
+        string path = WriteTempFile("mañana\nMAÑANA\nmanana");
+        try
+        {
+            var buffer = new TextBuffer();
+            buffer.SetPreparedContent(TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), tabSize: 4));
+            var find = new FindManager();
+
+            find.StartSearch(buffer, "mañana", matchCase: false, caretLine: 0, caretCol: 0);
             await WaitUntil(() => find.HasExactMatchCount);
+
+            Assert.Equal(2, find.KnownMatchCount);
+            find.Clear();
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public async Task StartSearch_TransformedFileBackedSourceFallsBackCorrectly()
+    {
+        string path = WriteTempFile("test\nplain");
+        try
+        {
+            var buffer = new TextBuffer();
+            buffer.SetPreparedContent(TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), tabSize: 4));
+            buffer.AddPrefixToLines(0, buffer.Count, "pre ");
+            var find = new FindManager();
+
+            find.StartSearch(buffer, "pre", matchCase: true, caretLine: 0, caretCol: 0);
+            await WaitUntil(() => find.HasExactMatchCount);
+
             Assert.Equal(2, find.KnownMatchCount);
             find.Clear();
         }
@@ -204,6 +491,45 @@ public class FindManagerTests
                 Encoding.UTF8.GetBytes("a"),
                 CancellationToken.None,
                 chunkByteCount: 4));
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    [Fact]
+    public void FileLiteralCounter_SupportsAsciiCaseInsensitiveWholeWordRangesAndChunkBoundaries()
+    {
+        string prefix = "xx TEST\n";
+        string selected = "atest test\n_test test1\n";
+        string suffix = "end test";
+        string path = WriteTempFile(prefix + selected + suffix);
+        try
+        {
+            byte[] needle = Encoding.UTF8.GetBytes("TEST");
+            long fullLength = new FileInfo(path).Length;
+            Assert.Equal(3, FileTextSource.CountLiteralMatchesInFile(
+                path,
+                startOffset: 0,
+                endOffset: fullLength,
+                needle,
+                matchCase: false,
+                wholeWord: true,
+                cancellationToken: CancellationToken.None,
+                chunkByteCount: 5));
+
+            long rangeStart = Encoding.UTF8.GetByteCount(prefix);
+            long rangeEnd = Encoding.UTF8.GetByteCount(prefix + selected);
+            Assert.Equal(1, FileTextSource.CountLiteralMatchesInFile(
+                path,
+                rangeStart,
+                rangeEnd,
+                needle,
+                matchCase: false,
+                wholeWord: true,
+                cancellationToken: CancellationToken.None,
+                chunkByteCount: 5));
         }
         finally
         {
@@ -638,6 +964,62 @@ public class FindManagerTests
             int endLine = startLine + Math.Max(0, count) - 1;
             if (startLine < _allowedStartLine || endLine > _allowedEndLine)
                 throw new InvalidOperationException($"Unexpected read outside selected range: {startLine}-{endLine}.");
+        }
+    }
+
+    private sealed class FastCountingGuardedTextSource : ITextSource, IFastLiteralMatchCounter
+    {
+        private readonly int _allowedStartLine;
+        private readonly string _line;
+
+        public FastCountingGuardedTextSource(int lineCount, int allowedStartLine, string line)
+        {
+            LineCount = lineCount;
+            _allowedStartLine = allowedStartLine;
+            _line = line;
+        }
+
+        public int LineCount { get; }
+        public long CharCountWithoutLineEndings => (long)LineCount * _line.Length;
+        public int MaxLineLength => _line.Length;
+
+        public bool TryCountLiteralMatches(
+            FastLiteralMatchRequest request,
+            CancellationToken cancellationToken,
+            out long count)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            count = request.Text.Equals(_line, StringComparison.OrdinalIgnoreCase)
+                ? request.LineCount
+                : 0;
+            request.Progress?.Invoke(new FastLiteralMatchProgress(request.LineCount, request.LineCount, count));
+            return true;
+        }
+
+        public string GetLine(int line)
+        {
+            EnsureAllowed(line);
+            return _line;
+        }
+
+        public int GetLineLength(int line) => _line.Length;
+        public string GetLineSegment(int line, int startColumn, int length) =>
+            startColumn >= _line.Length ? "" : _line.Substring(startColumn, Math.Min(length, _line.Length - startColumn));
+
+        public IEnumerable<string> EnumerateLines(int startLine, int count, bool cache = true)
+        {
+            EnsureAllowed(startLine);
+            for (int i = 0; i < count && startLine + i < LineCount; i++)
+                yield return _line;
+        }
+
+        public int GetMaxLineLength(int startLine, int count) => _line.Length;
+        public long GetCharCountWithoutLineEndings(int startLine, int count) => (long)count * _line.Length;
+
+        private void EnsureAllowed(int line)
+        {
+            if (line < _allowedStartLine)
+                throw new InvalidOperationException($"Unexpected prefix read before line {_allowedStartLine}: {line}.");
         }
     }
 

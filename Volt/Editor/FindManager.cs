@@ -114,7 +114,7 @@ public class FindManager
                 {
                     string ordinal = _session.CurrentOrdinal is { } value && value > 0
                         ? value.ToString("N0")
-                        : "1";
+                        : "...";
                     string total = _session.IsComplete
                         ? _session.KnownMatchCount.ToString("N0")
                         : _session.KnownMatchCount > 0
@@ -276,8 +276,14 @@ public class FindManager
             return false;
 
         (int Line, int Col, int Length)? current;
+        long? currentOrdinal;
+        long knownMatchCount;
         lock (session.Gate)
+        {
             current = session.CurrentMatch;
+            currentOrdinal = session.CurrentOrdinal;
+            knownMatchCount = session.KnownMatchCount;
+        }
 
         int startLine = current?.Line ?? caretLine;
         int startCol = current == null ? caretCol : current.Value.Col + 1;
@@ -293,7 +299,8 @@ public class FindManager
         if (match == null)
             return false;
 
-        return SetCurrentMatch(session, match.Value);
+        long? ordinalHint = GetNextOrdinalHint(current, currentOrdinal, knownMatchCount, match.Value);
+        return SetCurrentMatch(session, match.Value, ordinalHint);
     }
 
     public async Task<bool> MovePreviousAsync(int caretLine, int caretCol)
@@ -303,8 +310,14 @@ public class FindManager
             return false;
 
         (int Line, int Col, int Length)? current;
+        long? currentOrdinal;
+        long knownMatchCount;
         lock (session.Gate)
+        {
             current = session.CurrentMatch;
+            currentOrdinal = session.CurrentOrdinal;
+            knownMatchCount = session.KnownMatchCount;
+        }
 
         int startLine = current?.Line ?? caretLine;
         int startCol = current == null ? caretCol : current.Value.Col - 1;
@@ -320,7 +333,8 @@ public class FindManager
         if (match == null)
             return false;
 
-        return SetCurrentMatch(session, match.Value);
+        long? ordinalHint = GetPreviousOrdinalHint(current, currentOrdinal, knownMatchCount, match.Value);
+        return SetCurrentMatch(session, match.Value, ordinalHint);
     }
 
     public IReadOnlyList<(int Line, int Col, int Length)> GetMatchesInRange(
@@ -557,15 +571,14 @@ public class FindManager
             if (TryCountFastLiteralMatches(session, progress =>
                 {
                     long nowTicks = Environment.TickCount64;
-                    if (progress.BytesRead < progress.TotalBytes && nowTicks - lastRaisedTicks < 80)
+                    if (progress.SearchedLineCount < session.SearchLineCount && nowTicks - lastRaisedTicks < 80)
                         return;
 
                     lastRaisedTicks = nowTicks;
-                    int searchedLines = EstimateSearchedLines(session.SearchLineCount, progress.BytesRead, progress.TotalBytes);
                     lock (session.Gate)
                     {
                         session.KnownMatchCount = progress.MatchCount;
-                        session.SearchedLineCount = searchedLines;
+                        session.SearchedLineCount = Math.Clamp(progress.SearchedLineCount, 0, session.SearchLineCount);
                         UpdateCurrentOrdinalNoLock(session);
                     }
                     RaiseChanged();
@@ -852,7 +865,7 @@ public class FindManager
             return _session;
     }
 
-    private bool SetCurrentMatch(FindSession session, (int Line, int Col, int Length) match)
+    private bool SetCurrentMatch(FindSession session, (int Line, int Col, int Length) match, long? ordinalHint = null)
     {
         lock (_gate)
         {
@@ -860,15 +873,140 @@ public class FindManager
                 return false;
         }
 
+        bool resolveOrdinal;
+        int ordinalVersion;
         lock (session.Gate)
         {
             session.CurrentMatch = match;
-            session.CurrentOrdinal = null;
-            UpdateCurrentOrdinalNoLock(session);
+            session.CurrentOrdinal = ordinalHint;
+            if (session.CurrentOrdinal == null)
+                UpdateCurrentOrdinalNoLock(session);
+            resolveOrdinal = session.CurrentOrdinal == null;
+            ordinalVersion = resolveOrdinal ? ++session.OrdinalResolutionVersion : session.OrdinalResolutionVersion;
         }
+
+        if (resolveOrdinal)
+            ResolveCurrentOrdinalInBackground(session, match, ordinalVersion);
 
         RaiseChanged();
         return true;
+    }
+
+    private void ResolveCurrentOrdinalInBackground(
+        FindSession session,
+        (int Line, int Col, int Length) match,
+        int ordinalVersion)
+    {
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                long ordinal = CountOrdinalForMatch(session, match, session.Cancellation.Token);
+                lock (_gate)
+                {
+                    if (!ReferenceEquals(_session, session) || session.Cancellation.IsCancellationRequested)
+                        return;
+                }
+
+                lock (session.Gate)
+                {
+                    if (session.OrdinalResolutionVersion != ordinalVersion || session.CurrentMatch != match)
+                        return;
+
+                    session.CurrentOrdinal = ordinal;
+                }
+
+                RaiseChanged();
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (RegexMatchTimeoutException)
+            {
+            }
+            catch
+            {
+            }
+        });
+    }
+
+    private static long CountOrdinalForMatch(
+        FindSession session,
+        (int Line, int Col, int Length) match,
+        CancellationToken token)
+    {
+        if (session.SearchLineCount <= 0 || match.Line < session.SearchStartLine || match.Line > session.SearchEndLine)
+            return 0;
+
+        long beforeLine = CountSnapshotRangeFastOrFallback(
+            session,
+            session.SearchStartLine,
+            match.Line - session.SearchStartLine,
+            token);
+        return beforeLine + CountLineMatchesThrough(session, match, token);
+    }
+
+    private static long CountLineMatchesThrough(
+        FindSession session,
+        (int Line, int Col, int Length) target,
+        CancellationToken token)
+    {
+        string text = GetSnapshotLine(session.Snapshot, target.Line);
+        long count = 0;
+        foreach (var match in FindLineMatches(text, target.Line, session.Query, token))
+        {
+            count++;
+            if (match.Line == target.Line && match.Col == target.Col && match.Length == target.Length)
+                return count;
+        }
+
+        return count;
+    }
+
+    private static long? GetNextOrdinalHint(
+        (int Line, int Col, int Length)? current,
+        long? currentOrdinal,
+        long knownMatchCount,
+        (int Line, int Col, int Length) next)
+    {
+        if (knownMatchCount <= 0)
+            return null;
+
+        if (current == null || currentOrdinal is not { } ordinal)
+            return null;
+
+        return CompareMatches(next, current.Value) <= 0
+            ? 1
+            : Math.Min(knownMatchCount, ordinal + 1);
+    }
+
+    private static long? GetPreviousOrdinalHint(
+        (int Line, int Col, int Length)? current,
+        long? currentOrdinal,
+        long knownMatchCount,
+        (int Line, int Col, int Length) previous)
+    {
+        if (knownMatchCount <= 0)
+            return null;
+
+        if (current == null || currentOrdinal is not { } ordinal)
+            return null;
+
+        return CompareMatches(previous, current.Value) >= 0
+            ? knownMatchCount
+            : Math.Max(1, ordinal - 1);
+    }
+
+    private static int CompareMatches(
+        (int Line, int Col, int Length) left,
+        (int Line, int Col, int Length) right)
+    {
+        int line = left.Line.CompareTo(right.Line);
+        if (line != 0)
+            return line;
+
+        int col = left.Col.CompareTo(right.Col);
+        return col != 0 ? col : left.Length.CompareTo(right.Length);
     }
 
     private void UpdateCurrentOrdinalNoLock(FindSession session)
@@ -1126,34 +1264,142 @@ public class FindManager
 
     private static bool TryCountFastLiteralMatches(
         FindSession session,
-        Action<FastLiteralMatchProgress>? progress,
+        Action<FastCountProgress>? progress,
+        out long count)
+    {
+        return TryCountFastLiteralMatches(
+            session,
+            session.SearchStartLine,
+            session.SearchLineCount,
+            progress,
+            out count);
+    }
+
+    private static bool TryCountFastLiteralMatches(
+        FindSession session,
+        int startLine,
+        int lineCount,
+        Action<FastCountProgress>? progress,
         out long count)
     {
         count = 0;
+        if (lineCount <= 0)
+            return true;
+
         FindQuery query = session.Query;
-        if (query.UseRegex
-            || query.WholeWord
-            || query.SelectionBounds != null
-            || !query.MatchCase
-            || query.Text.Length == 0)
+        if (query.UseRegex || query.Text.Length == 0 || !CanFastCountSelection(session))
         {
             return false;
         }
 
-        if (session.SearchStartLine != 0 || session.SearchLineCount != session.Snapshot.Count)
+        if (!SearchRangeContainsFastCounter(session, startLine, lineCount))
             return false;
 
-        if (session.Snapshot.Pieces.Count != 1)
+        int firstLine = startLine;
+        int endLine = startLine + lineCount;
+        int globalLine = 0;
+        int processedLines = 0;
+        long total = 0;
+
+        foreach (TextBuffer.LinePiece piece in session.Snapshot.Pieces)
+        {
+            session.Cancellation.Token.ThrowIfCancellationRequested();
+
+            int pieceStart = globalLine;
+            int pieceEnd = globalLine + piece.LineCount;
+            if (pieceEnd <= firstLine)
+            {
+                globalLine = pieceEnd;
+                continue;
+            }
+            if (pieceStart >= endLine)
+                break;
+
+            int overlapStart = Math.Max(firstLine, pieceStart);
+            int overlapEnd = Math.Min(endLine, pieceEnd);
+            int sourceStart = piece.StartLine + overlapStart - pieceStart;
+            int take = overlapEnd - overlapStart;
+            long totalBeforePiece = total;
+            int processedBeforePiece = processedLines;
+
+            if (piece.Source is IFastLiteralMatchCounter counter)
+            {
+                var request = new FastLiteralMatchRequest(
+                    query.Text,
+                    query.MatchCase,
+                    query.WholeWord,
+                    sourceStart,
+                    take,
+                    pieceProgress =>
+                    {
+                        int pieceLines = EstimateSearchedLines(take, pieceProgress.BytesRead, pieceProgress.TotalBytes);
+                        progress?.Invoke(new FastCountProgress(
+                            processedBeforePiece + pieceLines,
+                            totalBeforePiece + pieceProgress.MatchCount));
+                    });
+
+                if (counter.TryCountLiteralMatches(request, session.Cancellation.Token, out long pieceCount))
+                {
+                    total += pieceCount;
+                    processedLines += take;
+                    progress?.Invoke(new FastCountProgress(processedLines, total));
+                    globalLine = pieceEnd;
+                    continue;
+                }
+            }
+
+            total += CountSourceRange(
+                piece.Source,
+                sourceStart,
+                take,
+                overlapStart,
+                query,
+                session.Cancellation.Token);
+            processedLines += take;
+            progress?.Invoke(new FastCountProgress(processedLines, total));
+            globalLine = pieceEnd;
+        }
+
+        count = total;
+        return true;
+    }
+
+    private static bool SearchRangeContainsFastCounter(FindSession session, int startLine, int lineCount)
+    {
+        int firstLine = startLine;
+        int endLine = startLine + lineCount;
+        int globalLine = 0;
+        foreach (TextBuffer.LinePiece piece in session.Snapshot.Pieces)
+        {
+            int pieceStart = globalLine;
+            int pieceEnd = globalLine + piece.LineCount;
+            if (pieceEnd <= firstLine)
+            {
+                globalLine = pieceEnd;
+                continue;
+            }
+            if (pieceStart >= endLine)
+                break;
+
+            if (piece.Source is IFastLiteralMatchCounter)
+                return true;
+
+            globalLine = pieceEnd;
+        }
+
+        return false;
+    }
+
+    private static bool CanFastCountSelection(FindSession session)
+    {
+        if (session.Query.SelectionBounds is not { } selection)
+            return true;
+
+        if (selection.startCol != 0)
             return false;
 
-        TextBuffer.LinePiece piece = session.Snapshot.Pieces[0];
-        if (piece.StartLine != 0 || piece.LineCount != piece.Source.LineCount)
-            return false;
-
-        if (piece.Source is not IFastLiteralMatchCounter counter)
-            return false;
-
-        return counter.TryCountLiteralMatches(query.Text, query.MatchCase, session.Cancellation.Token, progress, out count);
+        string endLine = GetSnapshotLine(session.Snapshot, selection.endLine);
+        return selection.endCol >= endLine.Length;
     }
 
     private static int EstimateSearchedLines(int searchLineCount, long bytesRead, long totalBytes)
@@ -1178,6 +1424,41 @@ public class FindManager
         long total = 0;
         foreach (var (lineNumber, text) in EnumerateSnapshotLines(snapshot, startLine, count, token))
             total += CountLineMatches(text, lineNumber, query, token);
+        return total;
+    }
+
+    private static long CountSnapshotRangeFastOrFallback(
+        FindSession session,
+        int startLine,
+        int count,
+        CancellationToken token)
+    {
+        if (count <= 0)
+            return 0;
+
+        if (TryCountFastLiteralMatches(session, startLine, count, progress: null, out long fastCount))
+            return fastCount;
+
+        return CountSnapshotRange(session.Snapshot, session.Query, startLine, count, token);
+    }
+
+    private static long CountSourceRange(
+        ITextSource source,
+        int sourceStartLine,
+        int count,
+        int globalStartLine,
+        FindQuery query,
+        CancellationToken token)
+    {
+        long total = 0;
+        int localLine = 0;
+        foreach (string text in source.EnumerateLines(sourceStartLine, count, cache: false))
+        {
+            token.ThrowIfCancellationRequested();
+            total += CountLineMatches(text, globalStartLine + localLine, query, token);
+            localLine++;
+        }
+
         return total;
     }
 
@@ -1520,6 +1801,8 @@ public class FindManager
         (int startLine, int startCol, int endLine, int endCol)? SelectionBounds,
         Regex? Regex);
 
+    private readonly record struct FastCountProgress(int SearchedLineCount, long MatchCount);
+
     private sealed record ReplacementChunkAnalysis(
         int[] LineDeltas,
         long CharDelta,
@@ -1656,6 +1939,7 @@ public class FindManager
         public string? Error { get; set; }
         public (int Line, int Col, int Length)? CurrentMatch { get; set; }
         public long? CurrentOrdinal { get; set; }
+        public int OrdinalResolutionVersion { get; set; }
 
         public void Cancel()
         {
