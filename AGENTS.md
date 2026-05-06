@@ -26,7 +26,24 @@ Tests use xUnit with `Microsoft.NET.Test.Sdk` and `Xunit.StaFact` for WPF/STA-se
 
 ## Commit & Pull Request Guidelines
 
-Recent history uses short imperative subjects, sometimes scoped, for example `docs(release): embed Velopack release notes`, `docs: remove Claude instructions`, or `Editor split drag: half-pane drop`. Keep commits focused and describe the user-visible or technical effect. Pull requests should include a concise summary, test results, linked issues when applicable, and screenshots or recordings for visible UI changes.
+Use the [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) format for every commit message:
+
+```text
+<type>[optional scope]: <description>
+```
+
+Keep the description imperative, lowercase where natural, and focused on the user-visible or technical effect. Use a body when context is helpful, separated from the subject by a blank line. Mark breaking changes with `!` after the type/scope or with a `BREAKING CHANGE:` footer.
+
+Preferred types are `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `style`, `build`, `ci`, `chore`, `revert`, and `bench`. Use concise noun scopes when helpful, such as `editor`, `explorer`, `terminal`, `theme`, `grammar`, `settings`, `release`, or `panels`.
+
+Examples:
+
+- `feat(editor): add split drag preview`
+- `fix(terminal): preserve scrollback after resize`
+- `docs(release): clarify Velopack upload command`
+- `chore: ignore generated release artifacts`
+
+Pull requests should include a concise summary, test results, linked issues when applicable, and screenshots or recordings for visible UI changes.
 
 `master` is the default/release branch and `develop` is the integration branch. When merging `develop` into `master` for a release, push the merge commit before creating the GitHub release, then return to the branch requested by the task.
 
