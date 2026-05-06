@@ -5,7 +5,7 @@ A lightweight text editor for Windows, built from scratch with WPF and .NET 10. 
 ## Features
 
 - **Custom rendering engine** -- three-layer DrawingVisual architecture (text, gutter, caret) with GlyphRun-based rendering for sharp ClearType text and smooth scrolling
-- **Syntax highlighting** -- regex-based tokenizer with multi-line string state tracking, interpolation/escape highlighting, and background precomputation for large files. Ships with Perl; add languages by dropping a grammar JSON file into `%AppData%/Volt/Grammars/`
+- **Syntax highlighting** -- regex-based tokenizer with multi-line string state tracking, interpolation/escape highlighting, embedded CSS/JavaScript in HTML, and background precomputation for large files. Ships with grammars for Batch, C, C++, C#, CSS, CSV, EditorConfig, HTML, INI, Java, JavaScript, JSON, JSX, Lua, Markdown, Perl, PHP, PowerShell, Python, Ruby, Rust, shell scripts, SQL, Swift, TOML, TypeScript, XML, and YAML. Add languages by dropping a grammar JSON file into `%AppData%/Volt/Grammars/`
 - **JSON theming** -- one file controls editor, chrome, and syntax colours. Ships with Default Dark, Default Light, and Gruvbox Dark. Add themes by dropping a JSON file into `%AppData%/Volt/Themes/`
 - **Command palette** (Ctrl+Shift+P) -- VS Code-style palette with live preview for theme, font, and editor settings
 - **Find and replace** (Ctrl+F) -- match highlighting, case sensitivity toggle, match count, keyboard navigation
