@@ -439,7 +439,20 @@ public class SyntaxManager
 
     private List<SyntaxToken> TokenizeEmbeddedSegment(string text, SyntaxDefinition embeddedGrammar,
         LineState inState, out LineState outState, int offset)
-        => ShiftTokens(Tokenize(text, embeddedGrammar, inState, out outState), offset);
+    {
+        var savedClaimedBuf = _claimedBuf;
+        try
+        {
+            // Force nested tokenization to use an isolated claimed buffer so it
+            // cannot clear or reuse the outer pass's claimed state.
+            _claimedBuf = null;
+            return ShiftTokens(Tokenize(text, embeddedGrammar, inState, out outState), offset);
+        }
+        finally
+        {
+            _claimedBuf = savedClaimedBuf;
+        }
+    }
 
     private static List<SyntaxToken> ShiftTokens(List<SyntaxToken> tokens, int offset)
     {
