@@ -15,19 +15,8 @@ public class UndoManager
 
     public record UndoEntry(
         int StartLine,
-        List<string> Before,
-        List<string> After,
-        int CaretLineBefore, int CaretColBefore,
-        int CaretLineAfter, int CaretColAfter)
-        : UndoEntryBase(CaretLineBefore, CaretColBefore, CaretLineAfter, CaretColAfter);
-
-    /// <summary>
-    /// Compact undo entry for multi-line indent/unindent.
-    /// Stores only the number of spaces added/removed per line instead of full line copies.
-    /// </summary>
-    public record IndentEntry(
-        int StartLine, int LineCount,
-        int[] SpacesPerLine, bool IsIndent,
+        TextBuffer.LineSnapshot Before,
+        TextBuffer.LineSnapshot After,
         int CaretLineBefore, int CaretColBefore,
         int CaretLineAfter, int CaretColAfter)
         : UndoEntryBase(CaretLineBefore, CaretColBefore, CaretLineAfter, CaretColAfter);
