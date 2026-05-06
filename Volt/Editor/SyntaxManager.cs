@@ -123,7 +123,10 @@ public class SyntaxManager
         var region = regions[inState.EmbeddedRegionIndex];
         var embeddedGrammar = GetDefinition(region.Extension);
         if (embeddedGrammar == null || region.EndRegex == null)
+        {
+            outState = inState;
             return [];
+        }
 
         var endMatch = region.EndRegex.Match(line);
         if (!endMatch.Success)
