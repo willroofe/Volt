@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- XML grammar sample -->
+<project name="Volt">
+  <file path="sample.xml" enabled="true">Hello &amp; welcome</file>
+</project>
