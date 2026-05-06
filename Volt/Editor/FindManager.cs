@@ -12,6 +12,10 @@ public class FindManager
     private const int PageLineCount = 512;
     private const int CachedPageLimit = 96;
     private const int ReplaceAllChunkLineCount = 65_536;
+    private const int ImmediateFindProgressThresholdLines = 8_192;
+    private const int DeferredFindProgressDelayMilliseconds = 160;
+    private const long ImmediateFindProgressThresholdChars = 8L * 1024 * 1024;
+    private const int SelectionProgressLengthProbeLimit = 512;
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
 
     private readonly object _gate = new();
@@ -120,19 +124,26 @@ public class FindManager
                         : _session.KnownMatchCount > 0
                             ? $"{_session.KnownMatchCount:N0}+"
                             : "...";
-                    string progress = _session.IsComplete ? "" : $" ({_session.ProgressPercent:0.0}% searched)";
+                    string progress = _session.IsComplete || !_session.ProgressTextVisible
+                        ? ""
+                        : $" ({_session.ProgressPercent:0.0}% searched)";
                     return $"{ordinal} of {total}{progress}";
                 }
 
                 if (_session.IsSearching)
                 {
-                    string progress = $" ({_session.ProgressPercent:0.0}% searched)";
+                    if (!_session.ProgressTextVisible)
+                        return "";
+
+                    string progress = _session.ProgressTextVisible
+                        ? $" ({_session.ProgressPercent:0.0}% searched)"
+                        : "";
                     return _session.KnownMatchCount > 0
                         ? $"Searching... {_session.KnownMatchCount:N0}+{progress}"
                         : $"Searching...{progress}";
                 }
 
-                return "No results";
+                return _session.KnownMatchCount > 0 ? "" : "No results";
             }
         }
     }
@@ -189,7 +200,8 @@ public class FindManager
             var invalidSession = new FindSession(
                 Interlocked.Increment(ref _nextSessionId),
                 buffer.SnapshotLines(0, buffer.Count),
-                findQuery);
+                findQuery,
+                showProgressImmediately: false);
             invalidSession.InvalidPattern = true;
             invalidSession.IsSearching = false;
             invalidSession.IsComplete = true;
@@ -201,11 +213,18 @@ public class FindManager
         findQuery = findQuery with { Regex = regex };
 
         TextBuffer.LineSnapshot snapshot = buffer.SnapshotLines(0, buffer.Count);
-        var session = new FindSession(Interlocked.Increment(ref _nextSessionId), snapshot, findQuery);
+        var session = new FindSession(
+            Interlocked.Increment(ref _nextSessionId),
+            snapshot,
+            findQuery,
+            ShouldShowFindProgressImmediately(buffer, normalizedSelection));
         lock (_gate)
             _session = session;
 
         RaiseChanged();
+        if (!session.ProgressTextVisible)
+            _ = ShowDeferredFindProgressTextAsync(session);
+
         _ = Task.Run(() => CountMatchesAsync(session));
     }
 
@@ -531,6 +550,38 @@ public class FindManager
     {
         lock (_gate)
             return _session?.Id == sessionId && !_session.Cancellation.IsCancellationRequested;
+    }
+
+    private async Task ShowDeferredFindProgressTextAsync(FindSession session)
+    {
+        try
+        {
+            await Task.Delay(DeferredFindProgressDelayMilliseconds, session.Cancellation.Token)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        bool changed = false;
+        lock (_gate)
+        {
+            if (!ReferenceEquals(_session, session) || session.Cancellation.IsCancellationRequested)
+                return;
+
+            lock (session.Gate)
+            {
+                if (!session.ProgressTextVisible && session.IsSearching && !session.IsComplete)
+                {
+                    session.ProgressTextVisible = true;
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed)
+            RaiseChanged();
     }
 
     private async Task CountMatchesAsync(FindSession session)
@@ -1769,6 +1820,40 @@ public class FindManager
         return (startLine, startCol, endLine, endCol);
     }
 
+    private static bool ShouldShowFindProgressImmediately(
+        TextBuffer buffer,
+        (int startLine, int startCol, int endLine, int endCol)? selectionBounds)
+    {
+        if (selectionBounds is not { } selection)
+        {
+            return buffer.Count >= ImmediateFindProgressThresholdLines ||
+                   buffer.CharCount >= ImmediateFindProgressThresholdChars;
+        }
+
+        int selectedLineCount = selection.endLine - selection.startLine + 1;
+        if (selectedLineCount >= ImmediateFindProgressThresholdLines)
+            return true;
+
+        if (selectedLineCount > SelectionProgressLengthProbeLimit)
+            return false;
+
+        long selectedChars = 0;
+        for (int line = selection.startLine; line <= selection.endLine; line++)
+        {
+            int lineLength = buffer.GetLineLength(line);
+            int startCol = line == selection.startLine ? Math.Min(selection.startCol, lineLength) : 0;
+            int endCol = line == selection.endLine ? Math.Min(selection.endCol, lineLength) : lineLength;
+            selectedChars += Math.Max(0, endCol - startCol);
+            if (line < selection.endLine)
+                selectedChars++;
+
+            if (selectedChars >= ImmediateFindProgressThresholdChars)
+                return true;
+        }
+
+        return false;
+    }
+
     private static (int StartLine, int LineCount) GetSearchLineRange(int lineCount, FindQuery query)
     {
         if (lineCount <= 0)
@@ -1952,11 +2037,16 @@ public class FindManager
 
     private sealed class FindSession
     {
-        public FindSession(int id, TextBuffer.LineSnapshot snapshot, FindQuery query)
+        public FindSession(
+            int id,
+            TextBuffer.LineSnapshot snapshot,
+            FindQuery query,
+            bool showProgressImmediately)
         {
             Id = id;
             Snapshot = snapshot;
             Query = query;
+            ProgressTextVisible = showProgressImmediately;
             (SearchStartLine, SearchLineCount) = GetSearchLineRange(snapshot.Count, query);
         }
 
@@ -1977,6 +2067,7 @@ public class FindManager
         public double ProgressPercent => SearchLineCount <= 0
             ? 100
             : Math.Clamp(SearchedLineCount * 100.0 / SearchLineCount, 0, 100);
+        public bool ProgressTextVisible { get; set; }
         public bool IsSearching { get; set; } = true;
         public bool IsComplete { get; set; }
         public bool InvalidPattern { get; set; }
