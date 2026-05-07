@@ -56,6 +56,28 @@ public static class EditorLayoutTree
         return null;
     }
 
+    public static List<TabInfo> GetPaneTabCloseTargets(EditorLayoutNode root, TabInfo clickedTab,
+        TabCloseCommand command)
+    {
+        var leaf = FindLeafForTab(root, clickedTab);
+        if (leaf == null)
+            return [];
+
+        int index = leaf.Tabs.IndexOf(clickedTab);
+        if (index < 0)
+            return [];
+
+        return command switch
+        {
+            TabCloseCommand.Close => [clickedTab],
+            TabCloseCommand.CloseAll => [.. leaf.Tabs],
+            TabCloseCommand.CloseOthers => leaf.Tabs.Where(tab => !ReferenceEquals(tab, clickedTab)).ToList(),
+            TabCloseCommand.CloseAllToLeft => leaf.Tabs.Take(index).ToList(),
+            TabCloseCommand.CloseAllToRight => leaf.Tabs.Skip(index + 1).ToList(),
+            _ => []
+        };
+    }
+
     public static EditorLeafNode? FindLeafById(EditorLayoutNode root, string leafId)
     {
         foreach (var leaf in EnumerateLeaves(root))

@@ -55,6 +55,7 @@ internal class TabHeaderFactory
 
     public event Action<TabInfo>? TabActivated;
     public event Action<TabInfo>? TabClosed;
+    public event Action<TabInfo, TabCloseCommand>? TabCloseCommandRequested;
     public event Action<TabInfo, int>? TabReordered;
     public event Action<TabInfo, string, int>? TabMovedToOtherLeaf;
 
@@ -241,13 +242,25 @@ internal class TabHeaderFactory
         header.MouseRightButtonUp += (_, e) =>
         {
             var menu = ContextMenuHelper.Create();
+
+            menu.Items.Add(ContextMenuHelper.Item("Close", Codicons.Close,
+                () => TabCloseCommandRequested?.Invoke(tab, TabCloseCommand.Close)));
+            menu.Items.Add(ContextMenuHelper.Item("Close All",
+                () => TabCloseCommandRequested?.Invoke(tab, TabCloseCommand.CloseAll)));
+            menu.Items.Add(ContextMenuHelper.Item("Close Others",
+                () => TabCloseCommandRequested?.Invoke(tab, TabCloseCommand.CloseOthers)));
+            menu.Items.Add(ContextMenuHelper.Item("Close All to Left",
+                () => TabCloseCommandRequested?.Invoke(tab, TabCloseCommand.CloseAllToLeft)));
+            menu.Items.Add(ContextMenuHelper.Item("Close All to Right",
+                () => TabCloseCommandRequested?.Invoke(tab, TabCloseCommand.CloseAllToRight)));
+
             var canReveal = tab.FilePath != null && (File.Exists(tab.FilePath) || Directory.Exists(tab.FilePath));
             if (canReveal)
+            {
+                menu.Items.Add(ContextMenuHelper.Separator());
                 menu.Items.Add(ContextMenuHelper.Item("Reveal in File Explorer", Codicons.FolderOpened,
                     () => FileHelper.RevealInFileExplorer(tab.FilePath!)));
-
-            if (menu.Items.Count == 0)
-                return;
+            }
 
             header.ContextMenu = menu;
             menu.IsOpen = true;
