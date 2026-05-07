@@ -149,6 +149,7 @@ public partial class MainWindow
 
         _tabHeaderFactory.TabActivated += tab => ActivateTab(tab);
         _tabHeaderFactory.TabClosed += tab => CloseTab(tab);
+        _tabHeaderFactory.TabCloseCommandRequested += (tab, command) => _ = ClosePaneTabsAsync(tab, command);
         _tabHeaderFactory.TabReordered += CommitTabReorder;
         _tabHeaderFactory.TabMovedToOtherLeaf += CommitTabMoveToLeaf;
         _tabHeaderFactory.TabEditorSplitDrop += CommitTabEditorSplitDrop;
@@ -296,19 +297,43 @@ public partial class MainWindow
         UpdateCaretPos();
     }
 
-    private async void CloseTab(TabInfo tab)
+    private async void CloseTab(TabInfo tab) => await CloseTabAsync(tab);
+
+    private async Task CloseTabAsync(TabInfo tab)
     {
-        if (tab.IsSaving) return;
+        await CloseTabFromBatchAsync(tab);
+    }
+
+    private async Task ClosePaneTabsAsync(TabInfo clickedTab, TabCloseCommand command)
+    {
+        var targets = EditorLayoutTree.GetPaneTabCloseTargets(_editorLayoutRoot, clickedTab, command);
+        foreach (var tab in targets)
+        {
+            if (!await CloseTabFromBatchAsync(tab))
+                return;
+        }
+    }
+
+    private async Task<bool> CloseTabFromBatchAsync(TabInfo tab)
+    {
+        if (tab.IsSaving)
+        {
+            if (TabExistsInAnyPane(tab))
+                ActivateTab(tab);
+            return false;
+        }
+
         if (tab.IsLoading)
         {
             if (TabExistsInAnyPane(tab))
                 RemoveTab(tab);
-            return;
+            return true;
         }
 
-        if (tab.Editor.IsDirty && !await PromptSaveTabAsync(tab)) return;
-        if (!TabExistsInAnyPane(tab)) return;
+        if (tab.Editor.IsDirty && !await PromptSaveTabAsync(tab)) return false;
+        if (!TabExistsInAnyPane(tab)) return true;
         RemoveTab(tab);
+        return true;
     }
 
     private void ClearClosedTabHistory() => _closedTabPaths.Clear();

@@ -308,6 +308,49 @@ public class EditorLayoutTreeTests
     }
 
     [StaFact]
+    public void GetPaneTabCloseTargets_UsesClickedPaneOnly()
+    {
+        EnsureWpfResourcesForTabInfo();
+        var tm = new ThemeManager();
+        var sm = new SyntaxManager();
+        var left1 = NewTab(tm, sm);
+        var left2 = NewTab(tm, sm);
+        var left3 = NewTab(tm, sm);
+        var right1 = NewTab(tm, sm);
+        var right2 = NewTab(tm, sm);
+        var (left, right, root) = SplitTwoTabs(left1, right1);
+        left.Tabs.Add(left2);
+        left.Tabs.Add(left3);
+        right.Tabs.Add(right2);
+
+        Assert.Equal([left1, left3], EditorLayoutTree.GetPaneTabCloseTargets(root, left2, TabCloseCommand.CloseOthers));
+        Assert.Equal([left1], EditorLayoutTree.GetPaneTabCloseTargets(root, left2, TabCloseCommand.CloseAllToLeft));
+        Assert.Equal([left3], EditorLayoutTree.GetPaneTabCloseTargets(root, left2, TabCloseCommand.CloseAllToRight));
+        Assert.Equal([left1, left2, left3], EditorLayoutTree.GetPaneTabCloseTargets(root, left2, TabCloseCommand.CloseAll));
+        Assert.Equal([right1, right2], right.Tabs);
+    }
+
+    [StaFact]
+    public void GetPaneTabCloseTargets_EdgeTabsReturnEmptyLeftOrRight()
+    {
+        EnsureWpfResourcesForTabInfo();
+        var tm = new ThemeManager();
+        var sm = new SyntaxManager();
+        var first = NewTab(tm, sm);
+        var middle = NewTab(tm, sm);
+        var last = NewTab(tm, sm);
+        var leaf = new EditorLeafNode();
+        leaf.Tabs.Add(first);
+        leaf.Tabs.Add(middle);
+        leaf.Tabs.Add(last);
+
+        Assert.Empty(EditorLayoutTree.GetPaneTabCloseTargets(leaf, first, TabCloseCommand.CloseAllToLeft));
+        Assert.Empty(EditorLayoutTree.GetPaneTabCloseTargets(leaf, last, TabCloseCommand.CloseAllToRight));
+        Assert.Equal([middle, last], EditorLayoutTree.GetPaneTabCloseTargets(leaf, first, TabCloseCommand.CloseAllToRight));
+        Assert.Equal([first, middle], EditorLayoutTree.GetPaneTabCloseTargets(leaf, last, TabCloseCommand.CloseAllToLeft));
+    }
+
+    [StaFact]
     public void EditorLayoutSnapshot_JsonRoundTrip_Polymorphic()
     {
         var snap = new EditorLayoutSnapshot

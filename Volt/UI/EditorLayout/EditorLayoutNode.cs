@@ -7,6 +7,15 @@ public enum EditorSplitOrientation
     Vertical
 }
 
+public enum TabCloseCommand
+{
+    Close,
+    CloseAll,
+    CloseOthers,
+    CloseAllToLeft,
+    CloseAllToRight
+}
+
 public abstract class EditorLayoutNode;
 
 public sealed class EditorLeafNode : EditorLayoutNode
