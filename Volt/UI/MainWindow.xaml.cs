@@ -1949,6 +1949,12 @@ public partial class MainWindow
                 break;
 
             case RecentItemKind.Workspace:
+                if (!File.Exists(path))
+                {
+                    ThemedMessageBox.Show(this, $"The workspace no longer exists:\n{path}", "Workspace Not Found");
+                    RemoveFromRecentLists(path, kind);
+                    return;
+                }
                 OpenWorkspaceFromPath(path);
                 break;
         }
@@ -1956,10 +1962,7 @@ public partial class MainWindow
 
     private void RemoveFromRecentLists(string path, RecentItemKind kind)
     {
-        bool Match(RecentItem r) =>
-            string.Equals(r.Path, path, StringComparison.OrdinalIgnoreCase) && r.Kind == kind;
-        _settings.Application.RecentItems.RemoveAll(Match);
-        _settings.Application.RecentHistory.RemoveAll(Match);
+        _settings.RemoveRecentItem(path, kind);
         _settings.Save();
     }
 
