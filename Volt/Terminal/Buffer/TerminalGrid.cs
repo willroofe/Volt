@@ -340,8 +340,9 @@ public sealed partial class TerminalGrid
         var newMain = AllocBlank(rows, cols);
         int copyRows = Math.Min(oldRows, rows);
         int copyCols = Math.Min(oldCols, cols);
-        // Shorter grid: keep bottom rows (prompt); taller: keep top.
-        int srcRow0 = rows < oldRows ? oldRows - copyRows : 0;
+        // Shorter grid: keep the cursor row visible. This preserves bottom rows when
+        // the prompt is at the bottom, but avoids dropping a top-row prompt during resize.
+        int srcRow0 = rows < oldRows ? Math.Clamp(oldCr - rows + 1, 0, oldRows - rows) : 0;
         for (int r = 0; r < copyRows; r++)
             for (int c = 0; c < copyCols; c++)
                 newMain[r, c] = _main[srcRow0 + r, c];
