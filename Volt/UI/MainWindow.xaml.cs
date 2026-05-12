@@ -36,6 +36,16 @@ public partial class MainWindow
     private readonly FileExplorerPanel _explorerPanel = new();
     private readonly TerminalPanel _terminalPanel = new();
     private readonly KeyBindingManager _keyBindingManager = new();
+    private static readonly VoltCommand[] TerminalAllowlistedCommands =
+    [
+        VoltCommand.CommandPalette,
+        VoltCommand.SwitchTabForward,
+        VoltCommand.SwitchTabBackward,
+        VoltCommand.ReopenClosedTab,
+        VoltCommand.Settings,
+        VoltCommand.ToggleLeftPanel,
+        VoltCommand.ToggleTerminal,
+    ];
 
     internal TerminalPanel TerminalPanel => _terminalPanel;
     internal string? _startupFilePath;
@@ -719,18 +729,8 @@ public partial class MainWindow
     /// </summary>
     internal void RegisterTerminalAllowlist(TerminalView view)
     {
-        // Command palette: Ctrl+Shift+P
-        view.AddAllowlistedShortcut(Key.P, ModifierKeys.Control | ModifierKeys.Shift);
-        // Switch editor tabs: Ctrl+Tab / Ctrl+Shift+Tab
-        view.AddAllowlistedShortcut(Key.Tab, ModifierKeys.Control);
-        view.AddAllowlistedShortcut(Key.Tab, ModifierKeys.Control | ModifierKeys.Shift);
-        view.AddAllowlistedShortcut(Key.T, ModifierKeys.Control | ModifierKeys.Shift);
-        // Settings: Ctrl+Alt+S (mapped to VoltCommand.Settings)
-        view.AddAllowlistedShortcut(Key.S, ModifierKeys.Control | ModifierKeys.Alt);
-        // Toggle explorer: Ctrl+B
-        view.AddAllowlistedShortcut(Key.B, ModifierKeys.Control);
-        // Toggle terminal panel itself: Ctrl+`
-        view.AddAllowlistedShortcut(Key.OemTilde, ModifierKeys.Control);
+        view.SetAllowlistedShortcuts(TerminalAllowlistedCommands
+            .Select(_keyBindingManager.GetBinding));
     }
 
     private void FocusExplorer()
@@ -2078,6 +2078,7 @@ public partial class MainWindow
         _settings.Editor.TerminalShellArgs = dlg.TerminalShellArgs;
         _settings.Editor.TerminalScrollbackLines = dlg.TerminalScrollbackLines;
         _keyBindingManager.SetAll(dlg.KeyBindings);
+        _terminalPanel.RefreshShortcutAllowlists();
         _settings.KeyBindings = _keyBindingManager.GetSaveState();
         _settings.Save();
         UpdateMenuGestureText();
@@ -2174,6 +2175,12 @@ public partial class MainWindow
 
     private void ToggleTerminalPanel()
     {
+        if (_terminalPanel.IsKeyboardFocusWithin)
+        {
+            FocusEditor();
+            return;
+        }
+
         Shell.ShowPanel("terminal");
         if (_terminalPanel.SessionCount == 0)
             _terminalPanel.NewSession();

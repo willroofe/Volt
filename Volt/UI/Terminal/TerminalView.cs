@@ -472,11 +472,20 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     private readonly HashSet<(Key key, ModifierKeys mods)> _allowlist = new();
 
     /// <summary>
-    /// Register a Volt-global shortcut that should bubble past the terminal
+    /// Register Volt-global shortcuts that should bubble past the terminal
     /// instead of being forwarded as VT input bytes to the shell.
-    /// Call from MainWindow during startup.
     /// </summary>
-    public void AddAllowlistedShortcut(Key key, ModifierKeys mods) => _allowlist.Add((key, mods));
+    internal void SetAllowlistedShortcuts(IEnumerable<KeyCombo> shortcuts)
+    {
+        _allowlist.Clear();
+        foreach (var shortcut in shortcuts)
+        {
+            if (!shortcut.IsNone)
+                _allowlist.Add((shortcut.Key, shortcut.Modifiers));
+        }
+    }
+
+    private static Key ShortcutKey(KeyEventArgs e) => e.Key == Key.System ? e.SystemKey : e.Key;
 
     /// <summary>After the user types or pastes, snap scroll to the live area so the shell cursor is visible.</summary>
     private void FollowCursorAfterUserInput()
@@ -523,10 +532,11 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         base.OnKeyDown(e);
         if (e.Handled) return;
 
+        var key = ShortcutKey(e);
         var mods = Keyboard.Modifiers;
 
         // Reserved Volt shortcuts — bubble up unhandled so MainWindow handles them
-        if (_allowlist.Contains((e.Key, mods))) return;
+        if (_allowlist.Contains((key, mods))) return;
 
         // Terminal-managed copy/paste
         if (mods == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.C)

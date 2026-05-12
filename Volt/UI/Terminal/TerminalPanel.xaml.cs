@@ -36,6 +36,15 @@ public partial class TerminalPanel : UserControl, IPanel
             s.View.SyncFromActiveEditor();
     }
 
+    internal void RefreshShortcutAllowlists()
+    {
+        if (Application.Current.MainWindow is not MainWindow mainWindow)
+            return;
+
+        foreach (var s in _sessions)
+            mainWindow.RegisterTerminalAllowlist(s.View);
+    }
+
     public int SessionCount => _sessions.Count;
 
     /// <summary>Closes all instance tabs and opens <paramref name="count"/> new ones using current shell settings.</summary>
@@ -118,8 +127,7 @@ public partial class TerminalPanel : UserControl, IPanel
         s.Exited += _ => Dispatcher.BeginInvoke(new Action(() => CloseSession(s)));
         _sessions.Add(s);
         SetActive(s);
-        if (Application.Current.MainWindow is MainWindow mw)
-            mw.RegisterTerminalAllowlist(s.View);
+        RefreshShortcutAllowlists();
         RebuildTabs();
     }
 
