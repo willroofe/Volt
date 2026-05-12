@@ -1929,24 +1929,15 @@ public partial class MainWindow
 
     private bool EnsureRecentItemExists(string path, RecentItemKind kind)
     {
-        bool exists = kind == RecentItemKind.Folder
-            ? Directory.Exists(path)
-            : File.Exists(path);
+        (bool exists, string itemName, string title) = kind switch
+        {
+            RecentItemKind.Folder => (Directory.Exists(path), "folder", "Folder Not Found"),
+            RecentItemKind.Workspace => (File.Exists(path), "workspace", "Workspace Not Found"),
+            _ => (File.Exists(path), "file", "File Not Found")
+        };
         if (exists)
             return true;
 
-        string itemName = kind switch
-        {
-            RecentItemKind.Folder => "folder",
-            RecentItemKind.Workspace => "workspace",
-            _ => "file"
-        };
-        string title = kind switch
-        {
-            RecentItemKind.Folder => "Folder Not Found",
-            RecentItemKind.Workspace => "Workspace Not Found",
-            _ => "File Not Found"
-        };
         ThemedMessageBox.Show(this, $"The {itemName} no longer exists:\n{path}", title);
         RemoveFromRecentLists(path, kind);
         return false;
