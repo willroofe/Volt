@@ -22,6 +22,7 @@ public partial class TerminalPanel : UserControl, IPanel
 #pragma warning disable CS0067 // Title is fixed; event required by IPanel for other panels
     public event Action? TitleChanged;
 #pragma warning restore CS0067
+    public event Action? LastSessionClosed;
 
     public TerminalPanel()
     {
@@ -42,7 +43,7 @@ public partial class TerminalPanel : UserControl, IPanel
     {
         count = Math.Max(0, count);
         foreach (var s in _sessions.ToList())
-            CloseSession(s);
+            CloseSession(s, notifyLastSessionClosed: false);
         for (int i = 0; i < count; i++)
             NewSession(prefs?.GetWorkingDirectoryForInstance(i));
     }
@@ -157,13 +158,16 @@ public partial class TerminalPanel : UserControl, IPanel
         if (_active != null) CloseSession(_active);
     }
 
-    private void CloseSession(TerminalSession s)
+    private void CloseSession(TerminalSession s, bool notifyLastSessionClosed = true)
     {
+        if (!_sessions.Remove(s)) return;
+
         try { s.Dispose(); } catch { }
-        _sessions.Remove(s);
         if (_active == s) _active = _sessions.Count > 0 ? _sessions[^1] : null;
         SetActive(_active);
         RebuildTabs();
+        if (_sessions.Count == 0 && notifyLastSessionClosed)
+            LastSessionClosed?.Invoke();
     }
 
     private void SetActive(TerminalSession? s)

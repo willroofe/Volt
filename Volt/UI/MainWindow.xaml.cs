@@ -173,6 +173,7 @@ public partial class MainWindow
         // Register explorer panel with shell
         Shell.RegisterPanel(_explorerPanel, PanelPlacement.Left, 250);
         Shell.RegisterPanel(_terminalPanel, PanelPlacement.Bottom, 240);
+        _terminalPanel.LastSessionClosed += OnTerminalLastSessionClosed;
         RestorePanelLayout();
         SyncViewMenuChecks();
 
@@ -2173,13 +2174,17 @@ public partial class MainWindow
 
     private void ToggleTerminalPanel()
     {
-        if (!Shell.IsPanelVisible("terminal"))
-            Shell.ShowPanel("terminal");
+        Shell.ShowPanel("terminal");
         if (_terminalPanel.SessionCount == 0)
             _terminalPanel.NewSession();
         else
             Dispatcher.BeginInvoke(new Action(() => _terminalPanel.TryFocusActiveSession()), System.Windows.Threading.DispatcherPriority.Input);
         SyncViewMenuChecks();
+    }
+
+    private void OnTerminalLastSessionClosed()
+    {
+        Shell.CollapseRegionIfOnlyVisiblePanel("terminal");
     }
 
     private void OpenGoToLine()

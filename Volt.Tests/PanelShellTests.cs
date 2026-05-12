@@ -205,6 +205,72 @@ public class PanelShellTests
     }
 
     [StaFact]
+    public void CollapseRegionIfOnlyVisiblePanel_CollapsesRegionButKeepsPanelVisible()
+    {
+        var shell = new PanelShell();
+        var panel = CreatePanel("a", "Panel A");
+        shell.RegisterPanel(panel, PanelPlacement.Left, 250);
+        shell.ShowPanel("a");
+
+        bool collapsed = shell.CollapseRegionIfOnlyVisiblePanel("a");
+
+        Assert.True(collapsed);
+        Assert.True(shell.IsPanelVisible("a"));
+        Assert.False(shell.IsRegionVisible(PanelPlacement.Left));
+        Assert.True(shell.GetCurrentLayout().Single().Visible);
+    }
+
+    [StaFact]
+    public void CollapseRegionIfOnlyVisiblePanel_WithAnotherVisiblePanel_DoesNotCollapseRegion()
+    {
+        var shell = new PanelShell();
+        var panel1 = CreatePanel("a", "Panel A");
+        var panel2 = CreatePanel("b", "Panel B");
+        shell.RegisterPanel(panel1, PanelPlacement.Left, 250);
+        shell.RegisterPanel(panel2, PanelPlacement.Left, 250);
+        shell.ShowPanel("a");
+        shell.ShowPanel("b");
+
+        bool collapsed = shell.CollapseRegionIfOnlyVisiblePanel("a");
+
+        Assert.False(collapsed);
+        Assert.True(shell.IsPanelVisible("a"));
+        Assert.True(shell.IsPanelVisible("b"));
+        Assert.True(shell.IsRegionVisible(PanelPlacement.Left));
+    }
+
+    [StaFact]
+    public void ShowPanel_AlreadyVisiblePanelInCollapsedRegion_ReopensRegion()
+    {
+        var shell = new PanelShell();
+        var panel = CreatePanel("a", "Panel A");
+        shell.RegisterPanel(panel, PanelPlacement.Left, 250);
+        shell.ShowPanel("a");
+        shell.CollapseRegionIfOnlyVisiblePanel("a");
+
+        shell.ShowPanel("a");
+
+        Assert.True(shell.IsPanelVisible("a"));
+        Assert.True(shell.IsRegionVisible(PanelPlacement.Left));
+    }
+
+    [StaFact]
+    public void RestoreOpenRegions_CollapsesHiddenRegionStateWithoutHidingPanel()
+    {
+        var shell = new PanelShell();
+        var panel = CreatePanel("a", "Panel A");
+        shell.RegisterPanel(panel, PanelPlacement.Left, 250);
+        shell.ShowPanel("a");
+
+        shell.RestoreOpenRegions([
+            new RegionState { Placement = PanelPlacement.Left, Size = 250, Visible = false }
+        ]);
+
+        Assert.True(shell.IsPanelVisible("a"));
+        Assert.False(shell.IsRegionVisible(PanelPlacement.Left));
+    }
+
+    [StaFact]
     public void GetAvailablePanels_ReturnsHiddenPanels()
     {
         var shell = new PanelShell();
