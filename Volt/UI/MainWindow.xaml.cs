@@ -1836,22 +1836,10 @@ public partial class MainWindow
         {
             var kind = recent.Kind;
             var path = recent.Path;
-            var header = kind switch
-            {
-                RecentItemKind.Folder => Path.GetFileName(path) + " - " + Path.GetDirectoryName(path),
-                RecentItemKind.Workspace => Path.GetFileNameWithoutExtension(path) + " - " + Path.GetDirectoryName(path),
-                _ => Path.GetFileName(path) + " - " + Path.GetDirectoryName(path)
-            };
-            var iconGlyph = kind switch
-            {
-                RecentItemKind.Folder => Codicons.FolderOpened,
-                RecentItemKind.Workspace => Codicons.Project,
-                _ => Codicons.File
-            };
-            var item = new MenuItem { Header = header, Style = dropdownStyle };
+            var item = new MenuItem { Header = RecentItemDisplay.GetMenuLabel(recent), Style = dropdownStyle };
             item.Icon = new System.Windows.Controls.TextBlock
             {
-                Text = iconGlyph,
+                Text = RecentItemDisplay.GetIconGlyph(kind),
                 FontFamily = Codicons.Font,
                 FontSize = 14,
                 VerticalAlignment = VerticalAlignment.Center
@@ -1894,13 +1882,7 @@ public partial class MainWindow
         {
             var kind = recent.Kind;
             var path = recent.Path;
-            var label = kind switch
-            {
-                RecentItemKind.Folder => Path.GetFileName(path) + " (Folder) - " + Path.GetDirectoryName(path),
-                RecentItemKind.Workspace => Path.GetFileNameWithoutExtension(path) + " (Workspace) - " + Path.GetDirectoryName(path),
-                _ => Path.GetFileName(path) + " - " + Path.GetDirectoryName(path)
-            };
-            return new PaletteOption(label,
+            return new PaletteOption(RecentItemDisplay.GetPaletteLabel(recent),
                 ApplyPreview: () => { },
                 Commit: () => OpenRecentItem(path, kind),
                 Revert: () => { });
@@ -1919,27 +1901,18 @@ public partial class MainWindow
 
     private async void OpenRecentItem(string path, RecentItemKind kind)
     {
+        if (!EnsureRecentItemExists(path, kind))
+            return;
+
         switch (kind)
         {
             case RecentItemKind.File:
-                if (!File.Exists(path))
-                {
-                    ThemedMessageBox.Show(this, $"The file no longer exists:\n{path}", "File Not Found");
-                    RemoveFromRecentLists(path, kind);
-                    return;
-                }
                 var tab = await OpenFileInTabAsync(path, reuseUntitled: true, activate: true);
                 if (tab != null)
                     FindBarControl.RefreshSearch();
                 break;
 
             case RecentItemKind.Folder:
-                if (!Directory.Exists(path))
-                {
-                    ThemedMessageBox.Show(this, $"The folder no longer exists:\n{path}", "Folder Not Found");
-                    RemoveFromRecentLists(path, kind);
-                    return;
-                }
                 if (_workspaceManager.CurrentWorkspace != null)
                 {
                     if (!PromptCloseUnsavedWorkspace()) return;
@@ -1949,15 +1922,34 @@ public partial class MainWindow
                 break;
 
             case RecentItemKind.Workspace:
-                if (!File.Exists(path))
-                {
-                    ThemedMessageBox.Show(this, $"The workspace no longer exists:\n{path}", "Workspace Not Found");
-                    RemoveFromRecentLists(path, kind);
-                    return;
-                }
                 OpenWorkspaceFromPath(path);
                 break;
         }
+    }
+
+    private bool EnsureRecentItemExists(string path, RecentItemKind kind)
+    {
+        bool exists = kind == RecentItemKind.Folder
+            ? Directory.Exists(path)
+            : File.Exists(path);
+        if (exists)
+            return true;
+
+        string itemName = kind switch
+        {
+            RecentItemKind.Folder => "folder",
+            RecentItemKind.Workspace => "workspace",
+            _ => "file"
+        };
+        string title = kind switch
+        {
+            RecentItemKind.Folder => "Folder Not Found",
+            RecentItemKind.Workspace => "Workspace Not Found",
+            _ => "File Not Found"
+        };
+        ThemedMessageBox.Show(this, $"The {itemName} no longer exists:\n{path}", title);
+        RemoveFromRecentLists(path, kind);
+        return false;
     }
 
     private void RemoveFromRecentLists(string path, RecentItemKind kind)
