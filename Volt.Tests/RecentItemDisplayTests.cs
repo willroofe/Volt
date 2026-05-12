@@ -6,6 +6,7 @@ namespace Volt.Tests;
 public class RecentItemDisplayTests
 {
     [Theory]
+    [InlineData(RecentItemKind.Folder, @"C:\", @"C:\")]
     [InlineData(RecentItemKind.File, @"C:\work\notes.txt", @"notes.txt - C:\work")]
     [InlineData(RecentItemKind.Folder, @"C:\work\Project", @"Project - C:\work")]
     [InlineData(RecentItemKind.Workspace, @"C:\work\Project.volt-workspace", @"Project - C:\work")]
@@ -19,6 +20,7 @@ public class RecentItemDisplayTests
     }
 
     [Theory]
+    [InlineData(RecentItemKind.Folder, @"C:\", @"C:\ (Folder)")]
     [InlineData(RecentItemKind.File, @"C:\work\notes.txt", @"notes.txt - C:\work")]
     [InlineData(RecentItemKind.Folder, @"C:\work\Project", @"Project (Folder) - C:\work")]
     [InlineData(RecentItemKind.Workspace, @"C:\work\Project.volt-workspace", @"Project (Workspace) - C:\work")]
