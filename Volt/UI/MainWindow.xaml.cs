@@ -36,6 +36,16 @@ public partial class MainWindow
     private readonly FileExplorerPanel _explorerPanel = new();
     private readonly TerminalPanel _terminalPanel = new();
     private readonly KeyBindingManager _keyBindingManager = new();
+    private static readonly VoltCommand[] TerminalAllowlistedCommands =
+    [
+        VoltCommand.CommandPalette,
+        VoltCommand.SwitchTabForward,
+        VoltCommand.SwitchTabBackward,
+        VoltCommand.ReopenClosedTab,
+        VoltCommand.Settings,
+        VoltCommand.ToggleLeftPanel,
+        VoltCommand.ToggleTerminal,
+    ];
 
     internal TerminalPanel TerminalPanel => _terminalPanel;
     internal string? _startupFilePath;
@@ -149,6 +159,7 @@ public partial class MainWindow
 
         _tabHeaderFactory.TabActivated += tab => ActivateTab(tab);
         _tabHeaderFactory.TabClosed += tab => CloseTab(tab);
+        _tabHeaderFactory.TabCloseCommandRequested += (tab, command) => _ = ClosePaneTabsAsync(tab, command);
         _tabHeaderFactory.TabReordered += CommitTabReorder;
         _tabHeaderFactory.TabMovedToOtherLeaf += CommitTabMoveToLeaf;
         _tabHeaderFactory.TabEditorSplitDrop += CommitTabEditorSplitDrop;
@@ -172,6 +183,7 @@ public partial class MainWindow
         // Register explorer panel with shell
         Shell.RegisterPanel(_explorerPanel, PanelPlacement.Left, 250);
         Shell.RegisterPanel(_terminalPanel, PanelPlacement.Bottom, 240);
+        _terminalPanel.LastSessionClosed += OnTerminalLastSessionClosed;
         RestorePanelLayout();
         SyncViewMenuChecks();
 
@@ -296,19 +308,43 @@ public partial class MainWindow
         UpdateCaretPos();
     }
 
-    private async void CloseTab(TabInfo tab)
+    private async void CloseTab(TabInfo tab) => await CloseTabAsync(tab);
+
+    private async Task CloseTabAsync(TabInfo tab)
     {
-        if (tab.IsSaving) return;
+        await CloseTabFromBatchAsync(tab);
+    }
+
+    private async Task ClosePaneTabsAsync(TabInfo clickedTab, TabCloseCommand command)
+    {
+        var targets = EditorLayoutTree.GetPaneTabCloseTargets(_editorLayoutRoot, clickedTab, command);
+        foreach (var tab in targets)
+        {
+            if (!await CloseTabFromBatchAsync(tab))
+                return;
+        }
+    }
+
+    private async Task<bool> CloseTabFromBatchAsync(TabInfo tab)
+    {
+        if (tab.IsSaving)
+        {
+            if (TabExistsInAnyPane(tab))
+                ActivateTab(tab);
+            return false;
+        }
+
         if (tab.IsLoading)
         {
             if (TabExistsInAnyPane(tab))
                 RemoveTab(tab);
-            return;
+            return true;
         }
 
-        if (tab.Editor.IsDirty && !await PromptSaveTabAsync(tab)) return;
-        if (!TabExistsInAnyPane(tab)) return;
+        if (tab.Editor.IsDirty && !await PromptSaveTabAsync(tab)) return false;
+        if (!TabExistsInAnyPane(tab)) return true;
         RemoveTab(tab);
+        return true;
     }
 
     private void ClearClosedTabHistory() => _closedTabPaths.Clear();
@@ -693,18 +729,8 @@ public partial class MainWindow
     /// </summary>
     internal void RegisterTerminalAllowlist(TerminalView view)
     {
-        // Command palette: Ctrl+Shift+P
-        view.AddAllowlistedShortcut(Key.P, ModifierKeys.Control | ModifierKeys.Shift);
-        // Switch editor tabs: Ctrl+Tab / Ctrl+Shift+Tab
-        view.AddAllowlistedShortcut(Key.Tab, ModifierKeys.Control);
-        view.AddAllowlistedShortcut(Key.Tab, ModifierKeys.Control | ModifierKeys.Shift);
-        view.AddAllowlistedShortcut(Key.T, ModifierKeys.Control | ModifierKeys.Shift);
-        // Settings: Ctrl+Alt+S (mapped to VoltCommand.Settings)
-        view.AddAllowlistedShortcut(Key.S, ModifierKeys.Control | ModifierKeys.Alt);
-        // Toggle explorer: Ctrl+B
-        view.AddAllowlistedShortcut(Key.B, ModifierKeys.Control);
-        // Toggle terminal panel itself: Ctrl+`
-        view.AddAllowlistedShortcut(Key.OemTilde, ModifierKeys.Control);
+        view.SetAllowlistedShortcuts(TerminalAllowlistedCommands
+            .Select(_keyBindingManager.GetBinding));
     }
 
     private void FocusExplorer()
@@ -880,8 +906,6 @@ public partial class MainWindow
             }
         }
     }
-
-    private void OnReopenClosedTab(object sender, RoutedEventArgs e) => _ = RestoreClosedTabAsync();
 
     /// <summary>Checks whether any session data exists that RestoreSession will act on.</summary>
     private bool HasSessionToRestore()
@@ -1811,22 +1835,10 @@ public partial class MainWindow
         {
             var kind = recent.Kind;
             var path = recent.Path;
-            var header = kind switch
-            {
-                RecentItemKind.Folder => Path.GetFileName(path) + " - " + Path.GetDirectoryName(path),
-                RecentItemKind.Workspace => Path.GetFileNameWithoutExtension(path) + " - " + Path.GetDirectoryName(path),
-                _ => Path.GetFileName(path) + " - " + Path.GetDirectoryName(path)
-            };
-            var iconGlyph = kind switch
-            {
-                RecentItemKind.Folder => Codicons.FolderOpened,
-                RecentItemKind.Workspace => Codicons.Project,
-                _ => Codicons.File
-            };
-            var item = new MenuItem { Header = header, Style = dropdownStyle };
+            var item = new MenuItem { Header = RecentItemDisplay.GetMenuLabel(recent), Style = dropdownStyle };
             item.Icon = new System.Windows.Controls.TextBlock
             {
-                Text = iconGlyph,
+                Text = RecentItemDisplay.GetIconGlyph(kind),
                 FontFamily = Codicons.Font,
                 FontSize = 14,
                 VerticalAlignment = VerticalAlignment.Center
@@ -1869,13 +1881,7 @@ public partial class MainWindow
         {
             var kind = recent.Kind;
             var path = recent.Path;
-            var label = kind switch
-            {
-                RecentItemKind.Folder => Path.GetFileName(path) + " (Folder) - " + Path.GetDirectoryName(path),
-                RecentItemKind.Workspace => Path.GetFileNameWithoutExtension(path) + " (Workspace) - " + Path.GetDirectoryName(path),
-                _ => Path.GetFileName(path) + " - " + Path.GetDirectoryName(path)
-            };
-            return new PaletteOption(label,
+            return new PaletteOption(RecentItemDisplay.GetPaletteLabel(recent),
                 ApplyPreview: () => { },
                 Commit: () => OpenRecentItem(path, kind),
                 Revert: () => { });
@@ -1894,27 +1900,18 @@ public partial class MainWindow
 
     private async void OpenRecentItem(string path, RecentItemKind kind)
     {
+        if (!EnsureRecentItemExists(path, kind))
+            return;
+
         switch (kind)
         {
             case RecentItemKind.File:
-                if (!File.Exists(path))
-                {
-                    ThemedMessageBox.Show(this, $"The file no longer exists:\n{path}", "File Not Found");
-                    RemoveFromRecentLists(path, kind);
-                    return;
-                }
                 var tab = await OpenFileInTabAsync(path, reuseUntitled: true, activate: true);
                 if (tab != null)
                     FindBarControl.RefreshSearch();
                 break;
 
             case RecentItemKind.Folder:
-                if (!Directory.Exists(path))
-                {
-                    ThemedMessageBox.Show(this, $"The folder no longer exists:\n{path}", "Folder Not Found");
-                    RemoveFromRecentLists(path, kind);
-                    return;
-                }
                 if (_workspaceManager.CurrentWorkspace != null)
                 {
                     if (!PromptCloseUnsavedWorkspace()) return;
@@ -1929,12 +1926,25 @@ public partial class MainWindow
         }
     }
 
+    private bool EnsureRecentItemExists(string path, RecentItemKind kind)
+    {
+        (bool exists, string itemName, string title) = kind switch
+        {
+            RecentItemKind.Folder => (Directory.Exists(path), "folder", "Folder Not Found"),
+            RecentItemKind.Workspace => (File.Exists(path), "workspace", "Workspace Not Found"),
+            _ => (File.Exists(path), "file", "File Not Found")
+        };
+        if (exists)
+            return true;
+
+        ThemedMessageBox.Show(this, $"The {itemName} no longer exists:\n{path}", title);
+        RemoveFromRecentLists(path, kind);
+        return false;
+    }
+
     private void RemoveFromRecentLists(string path, RecentItemKind kind)
     {
-        bool Match(RecentItem r) =>
-            string.Equals(r.Path, path, StringComparison.OrdinalIgnoreCase) && r.Kind == kind;
-        _settings.Application.RecentItems.RemoveAll(Match);
-        _settings.Application.RecentHistory.RemoveAll(Match);
+        _settings.RemoveRecentItem(path, kind);
         _settings.Save();
     }
 
@@ -2068,6 +2078,7 @@ public partial class MainWindow
         _settings.Editor.TerminalShellArgs = dlg.TerminalShellArgs;
         _settings.Editor.TerminalScrollbackLines = dlg.TerminalScrollbackLines;
         _keyBindingManager.SetAll(dlg.KeyBindings);
+        _terminalPanel.RefreshShortcutAllowlists();
         _settings.KeyBindings = _keyBindingManager.GetSaveState();
         _settings.Save();
         UpdateMenuGestureText();
@@ -2164,13 +2175,23 @@ public partial class MainWindow
 
     private void ToggleTerminalPanel()
     {
-        if (!Shell.IsPanelVisible("terminal"))
-            Shell.ShowPanel("terminal");
+        if (_terminalPanel.IsKeyboardFocusWithin)
+        {
+            FocusEditor();
+            return;
+        }
+
+        Shell.ShowPanel("terminal");
         if (_terminalPanel.SessionCount == 0)
             _terminalPanel.NewSession();
         else
             Dispatcher.BeginInvoke(new Action(() => _terminalPanel.TryFocusActiveSession()), System.Windows.Threading.DispatcherPriority.Input);
         SyncViewMenuChecks();
+    }
+
+    private void OnTerminalLastSessionClosed()
+    {
+        Shell.CollapseRegionIfOnlyVisiblePanel("terminal");
     }
 
     private void OpenGoToLine()
@@ -2225,7 +2246,6 @@ public partial class MainWindow
         MenuSaveAs.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.SaveAs);
         MenuOpenFile.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.OpenFile);
         MenuOpenFolder.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.OpenFolder);
-        MenuReopenClosedTab.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ReopenClosedTab);
         MenuViewLeft.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleLeftPanel);
         MenuViewRight.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleRightPanel);
         MenuViewTop.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleTopPanel);

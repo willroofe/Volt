@@ -39,7 +39,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     /// <summary>
     /// <see cref="FontManager"/> raises <see cref="FontManager.FontChanged"/> from both <c>Apply</c> and
     /// <c>LineHeightMultiplier</c> in one <see cref="ApplyFontAndCaret"/> call. Deferring
-    /// <see cref="TryResizeGridToViewport"/> until both finish avoids two grid/PTY resizes (duplicate prompts).
+    /// <see cref="ScheduleResizeGridToViewport"/> until both finish avoids two grid/PTY resizes (duplicate prompts).
     /// </summary>
     private bool _batchFontCaretApply;
     /// <summary>Coalesces <see cref="ArrangeOverride"/>, font metrics, and DPI into one grid/PTY resize so layout flutter does not fire multiple SIGWINCH redraws (duplicate screen content).</summary>
@@ -47,6 +47,8 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     private double _lastCommittedCellWidth;
     private double _lastCommittedCellHeight;
     private bool _haveCommittedCellSize;
+    private int _lastRequestedRows = -1;
+    private int _lastRequestedCols = -1;
 
     protected override int VisualChildrenCount => 2;
     protected override Visual GetVisualChild(int index) => index == 0 ? _textVisual : _cursorVisual;
@@ -94,7 +96,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         // ScrollViewer or the scrollbar stays wrong and scrolling breaks after font changes.
         ScrollOwner?.InvalidateScrollInfo();
         if (!_batchFontCaretApply)
-            ScheduleTryResizeGridToViewport();
+            ScheduleResizeGridToViewport();
     }
 
     /// <summary>Match the active editor (live palette / zoom); fall back to <see cref="AppSettings.Editor"/> if none.</summary>
@@ -183,7 +185,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         finally
         {
             _batchFontCaretApply = false;
-            ScheduleTryResizeGridToViewport();
+            ScheduleResizeGridToViewport();
         }
     }
 
@@ -211,7 +213,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         _fontCaretSnapshotValid = false;
         InvalidateVisual();
         ScrollOwner?.InvalidateScrollInfo();
-        ScheduleTryResizeGridToViewport();
+        ScheduleResizeGridToViewport();
     }
 
     protected override void OnGotKeyboardFocus(KeyboardFocusChangedEventArgs e)
@@ -250,6 +252,8 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
             _grid = value;
             if (_grid != null) _grid.Changed += OnGridChanged;
             _haveCommittedCellSize = false;
+            _lastRequestedRows = -1;
+            _lastRequestedCols = -1;
             InvalidateVisual();
         }
     }
@@ -266,7 +270,7 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
 
     private void OnThemeChanged(object? sender, EventArgs e) => InvalidateVisual();
 
-    private void ScheduleTryResizeGridToViewport()
+    private void ScheduleResizeGridToViewport()
     {
         _viewportResizeTimer ??= new DispatcherTimer(
             TimeSpan.FromMilliseconds(25),
@@ -280,10 +284,10 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     private void OnViewportResizeTick(object? sender, EventArgs e)
     {
         _viewportResizeTimer?.Stop();
-        TryResizeGridToViewport();
+        ResizeGridToViewport(notifyPty: true);
     }
 
-    private void TryResizeGridToViewport()
+    private void ResizeGridToViewport(bool notifyPty)
     {
         if (_grid == null) return;
         double cellWidth = _font.CharWidth;
@@ -303,7 +307,6 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
             _grid.Resize(rows, cols);
             if (cellMetricsChanged)
                 _grid.ClearMainScreenHome();
-            SizeRequested?.Invoke(rows, cols);
         }
 
         _lastCommittedCellWidth = cellWidth;
@@ -314,6 +317,13 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         // often leave row/col count the same but still change extent (or scroll data was never refreshed).
         ScrollOwner?.InvalidateScrollInfo();
         InvalidateVisual();
+
+        if (notifyPty && (rows != _lastRequestedRows || cols != _lastRequestedCols))
+        {
+            _lastRequestedRows = rows;
+            _lastRequestedCols = cols;
+            SizeRequested?.Invoke(rows, cols);
+        }
     }
 
     protected override void OnRender(DrawingContext dc)
@@ -472,11 +482,20 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     private readonly HashSet<(Key key, ModifierKeys mods)> _allowlist = new();
 
     /// <summary>
-    /// Register a Volt-global shortcut that should bubble past the terminal
+    /// Register Volt-global shortcuts that should bubble past the terminal
     /// instead of being forwarded as VT input bytes to the shell.
-    /// Call from MainWindow during startup.
     /// </summary>
-    public void AddAllowlistedShortcut(Key key, ModifierKeys mods) => _allowlist.Add((key, mods));
+    internal void SetAllowlistedShortcuts(IEnumerable<KeyCombo> shortcuts)
+    {
+        _allowlist.Clear();
+        foreach (var shortcut in shortcuts)
+        {
+            if (!shortcut.IsNone)
+                _allowlist.Add((shortcut.Key, shortcut.Modifiers));
+        }
+    }
+
+    private static Key ShortcutKey(KeyEventArgs e) => e.Key == Key.System ? e.SystemKey : e.Key;
 
     /// <summary>After the user types or pastes, snap scroll to the live area so the shell cursor is visible.</summary>
     private void FollowCursorAfterUserInput()
@@ -486,14 +505,14 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         InvalidateVisual();
     }
 
-    private double ViewportWidthPx => ActualWidth > 0 ? ActualWidth : (_viewport.Width > 0 ? _viewport.Width : 0);
+    private double ViewportWidthPx => _viewport.Width > 0 ? _viewport.Width : (ActualWidth > 0 ? ActualWidth : 0);
 
-    private double ViewportHeightPx => ActualHeight > 0 ? ActualHeight : (_viewport.Height > 0 ? _viewport.Height : 0);
+    private double ViewportHeightPx => _viewport.Height > 0 ? _viewport.Height : (ActualHeight > 0 ? ActualHeight : 0);
 
     protected override Size MeasureOverride(Size availableSize)
     {
         // Only treat finite constraints as the viewport — infinity is common before the
-        // parent has a size; do not use a fake height here or TryResizeGridToViewport could
+        // parent has a size; do not use a fake height here or ResizeGridToViewport could
         // briefly match the wrong row count before Arrange runs.
         if (!double.IsInfinity(availableSize.Width) && availableSize.Width > 0
             && !double.IsInfinity(availableSize.Height) && availableSize.Height > 0)
@@ -511,10 +530,10 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     {
         _viewport = finalSize;
         ScrollOwner?.InvalidateScrollInfo();
-        // Grid + PTY size must follow the arranged viewport (not a debounced RenderSize tick),
-        // otherwise we can resize to a stale height between measure and arrange and confuse
-        // the shell (duplicate reflow / spurious scroll extent).
-        ScheduleTryResizeGridToViewport();
+        ResizeGridToViewport(notifyPty: false);
+        // Keep the local buffer in step with live splitter drags; the ConPTY resize stays
+        // debounced so the shell is not hammered with transient dimensions.
+        ScheduleResizeGridToViewport();
         return finalSize;
     }
 
@@ -523,10 +542,11 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
         base.OnKeyDown(e);
         if (e.Handled) return;
 
+        var key = ShortcutKey(e);
         var mods = Keyboard.Modifiers;
 
         // Reserved Volt shortcuts — bubble up unhandled so MainWindow handles them
-        if (_allowlist.Contains((e.Key, mods))) return;
+        if (_allowlist.Contains((key, mods))) return;
 
         // Terminal-managed copy/paste
         if (mods == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.C)

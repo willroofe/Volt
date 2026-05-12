@@ -220,6 +220,16 @@ public class AppSettings
         AddToList(Application.RecentHistory, fullPath, kind, MaxRecentHistory);
     }
 
+    public void RemoveRecentItem(string path, RecentItemKind kind)
+    {
+        var fullPath = System.IO.Path.GetFullPath(path);
+        bool Match(RecentItem r) =>
+            string.Equals(r.Path, fullPath, StringComparison.OrdinalIgnoreCase) && r.Kind == kind;
+
+        Application.RecentItems.RemoveAll(Match);
+        Application.RecentHistory.RemoveAll(Match);
+    }
+
     private static void AddToList(List<RecentItem> list, string fullPath, RecentItemKind kind, int max)
     {
         list.RemoveAll(r =>

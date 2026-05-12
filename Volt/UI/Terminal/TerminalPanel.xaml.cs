@@ -22,6 +22,7 @@ public partial class TerminalPanel : UserControl, IPanel
 #pragma warning disable CS0067 // Title is fixed; event required by IPanel for other panels
     public event Action? TitleChanged;
 #pragma warning restore CS0067
+    public event Action? LastSessionClosed;
 
     public TerminalPanel()
     {
@@ -35,6 +36,15 @@ public partial class TerminalPanel : UserControl, IPanel
             s.View.SyncFromActiveEditor();
     }
 
+    internal void RefreshShortcutAllowlists()
+    {
+        if (Application.Current.MainWindow is not MainWindow mainWindow)
+            return;
+
+        foreach (var s in _sessions)
+            mainWindow.RegisterTerminalAllowlist(s.View);
+    }
+
     public int SessionCount => _sessions.Count;
 
     /// <summary>Closes all instance tabs and opens <paramref name="count"/> new ones using current shell settings.</summary>
@@ -42,7 +52,7 @@ public partial class TerminalPanel : UserControl, IPanel
     {
         count = Math.Max(0, count);
         foreach (var s in _sessions.ToList())
-            CloseSession(s);
+            CloseSession(s, notifyLastSessionClosed: false);
         for (int i = 0; i < count; i++)
             NewSession(prefs?.GetWorkingDirectoryForInstance(i));
     }
@@ -74,8 +84,8 @@ public partial class TerminalPanel : UserControl, IPanel
         string? args;
         if (shellPreference is { } pick)
         {
-            shell = ResolveShellPath(pick);
-            var configuredKind = ClassifyShellPath(editor?.TerminalShellPath);
+            shell = TerminalShellCatalog.ResolveShellPath(pick);
+            var configuredKind = TerminalShellCatalog.ClassifyPath(editor?.TerminalShellPath);
             args = configuredKind == pick ? editor?.TerminalShellArgs : null;
         }
         else
@@ -83,7 +93,7 @@ public partial class TerminalPanel : UserControl, IPanel
             shell = editor?.TerminalShellPath ?? "";
             if (string.IsNullOrEmpty(shell))
             {
-                shell = ResolveDefaultShell();
+                shell = TerminalShellCatalog.ResolveDefaultShell();
                 if (editor != null)
                 {
                     editor.TerminalShellPath = shell;
@@ -117,8 +127,7 @@ public partial class TerminalPanel : UserControl, IPanel
         s.Exited += _ => Dispatcher.BeginInvoke(new Action(() => CloseSession(s)));
         _sessions.Add(s);
         SetActive(s);
-        if (Application.Current.MainWindow is MainWindow mw)
-            mw.RegisterTerminalAllowlist(s.View);
+        RefreshShortcutAllowlists();
         RebuildTabs();
     }
 
@@ -157,13 +166,16 @@ public partial class TerminalPanel : UserControl, IPanel
         if (_active != null) CloseSession(_active);
     }
 
-    private void CloseSession(TerminalSession s)
+    private void CloseSession(TerminalSession s, bool notifyLastSessionClosed = true)
     {
+        if (!_sessions.Remove(s)) return;
+
         try { s.Dispose(); } catch { }
-        _sessions.Remove(s);
         if (_active == s) _active = _sessions.Count > 0 ? _sessions[^1] : null;
         SetActive(_active);
         RebuildTabs();
+        if (_sessions.Count == 0 && notifyLastSessionClosed)
+            LastSessionClosed?.Invoke();
     }
 
     private void SetActive(TerminalSession? s)
@@ -263,59 +275,15 @@ public partial class TerminalPanel : UserControl, IPanel
         menu.Placement = PlacementMode.Bottom;
         menu.PlacementTarget = btn;
         menu.PlacementRectangle = new Rect(0, btn.ActualHeight, btn.ActualWidth, 0);
-        menu.Items.Add(ContextMenuHelper.Item("PowerShell", Codicons.Terminal, () => NewSession(shellPreference: TerminalShellPreference.PowerShell)));
-        menu.Items.Add(ContextMenuHelper.Item("Command Prompt", Codicons.Terminal, () => NewSession(shellPreference: TerminalShellPreference.CommandPrompt)));
+        foreach (var option in TerminalShellCatalog.Options)
+        {
+            var preference = option.Preference;
+            menu.Items.Add(ContextMenuHelper.Item(
+                option.DisplayName,
+                Codicons.Terminal,
+                () => NewSession(shellPreference: preference)));
+        }
         menu.IsOpen = true;
-    }
-
-    private static string ResolveDefaultShell()
-    {
-        foreach (var name in new[] { "pwsh.exe", "powershell.exe", "cmd.exe" })
-        {
-            var path = FindInPath(name);
-            if (path != null) return path;
-        }
-        return "cmd.exe";
-    }
-
-    /// <summary>Settings UI choice for shell — maps to resolved executable paths.</summary>
-    internal enum TerminalShellPreference
-    {
-        PowerShell,
-        CommandPrompt,
-    }
-
-    /// <summary>Maps a persisted shell path to the settings dropdown (pwsh/ps → PowerShell, cmd → Command Prompt).</summary>
-    internal static TerminalShellPreference ClassifyShellPath(string? shellPath)
-    {
-        if (string.IsNullOrWhiteSpace(shellPath)) return TerminalShellPreference.PowerShell;
-        var file = Path.GetFileName(shellPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        if (file.Equals("cmd.exe", StringComparison.OrdinalIgnoreCase))
-            return TerminalShellPreference.CommandPrompt;
-        return TerminalShellPreference.PowerShell;
-    }
-
-    /// <summary>Full path to the chosen shell (<see cref="FindInPath"/>), same resolution as <see cref="NewSession"/>.</summary>
-    internal static string ResolveShellPath(TerminalShellPreference preference)
-    {
-        if (preference == TerminalShellPreference.CommandPrompt)
-            return FindInPath("cmd.exe") ?? "cmd.exe";
-        return FindInPath("pwsh.exe") ?? FindInPath("powershell.exe") ?? "powershell.exe";
-    }
-
-    private static string? FindInPath(string exe)
-    {
-        var paths = Environment.GetEnvironmentVariable("PATH")?.Split(';') ?? Array.Empty<string>();
-        foreach (var p in paths)
-        {
-            try
-            {
-                var candidate = Path.Combine(p, exe);
-                if (File.Exists(candidate)) return candidate;
-            }
-            catch { }
-        }
-        return null;
     }
 
     private string ResolveStartingDirectory()

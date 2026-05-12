@@ -215,6 +215,18 @@ public partial class MainWindow
         Keyboard.Focus(leaf.ActiveTab.Editor);
     }
 
+    private void FocusEditor()
+    {
+        if (EditorLayoutTree.FindLeafById(_editorLayoutRoot, _focusedLeafId)?.ActiveTab != null)
+        {
+            FocusLeaf(_focusedLeafId);
+            return;
+        }
+
+        if (_activeTab != null)
+            ActivateTab(_activeTab);
+    }
+
     private void EnsureSecondTabForSplit()
     {
         var leaf = GetFocusedLeaf();

@@ -134,4 +134,46 @@ public class RecentItemsTests
         Assert.Equal(2, settings.Application.RecentItems.Count);
         Assert.Empty(settings.Application.RecentHistory);
     }
+
+    [Fact]
+    public void RemoveRecentItem_RemovesFromMenuAndHistory()
+    {
+        var settings = new AppSettings();
+        settings.AddRecentItem(@"C:\a.txt", RecentItemKind.File);
+        settings.AddRecentItem(@"C:\b.txt", RecentItemKind.File);
+
+        settings.RemoveRecentItem(@"C:\a.txt", RecentItemKind.File);
+
+        Assert.Single(settings.Application.RecentItems);
+        Assert.Single(settings.Application.RecentHistory);
+        Assert.Equal(@"C:\b.txt", settings.Application.RecentItems[0].Path);
+        Assert.Equal(@"C:\b.txt", settings.Application.RecentHistory[0].Path);
+    }
+
+    [Fact]
+    public void RemoveRecentItem_PreservesSamePathDifferentKind()
+    {
+        var settings = new AppSettings();
+        settings.AddRecentItem(@"C:\project", RecentItemKind.Folder);
+        settings.AddRecentItem(@"C:\project", RecentItemKind.Workspace);
+
+        settings.RemoveRecentItem(@"C:\project", RecentItemKind.Workspace);
+
+        Assert.Single(settings.Application.RecentItems);
+        Assert.Single(settings.Application.RecentHistory);
+        Assert.Equal(RecentItemKind.Folder, settings.Application.RecentItems[0].Kind);
+        Assert.Equal(RecentItemKind.Folder, settings.Application.RecentHistory[0].Kind);
+    }
+
+    [Fact]
+    public void RemoveRecentItem_MatchesCaseInsensitive()
+    {
+        var settings = new AppSettings();
+        settings.AddRecentItem(@"C:\Folder\file.txt", RecentItemKind.File);
+
+        settings.RemoveRecentItem(@"C:\folder\FILE.TXT", RecentItemKind.File);
+
+        Assert.Empty(settings.Application.RecentItems);
+        Assert.Empty(settings.Application.RecentHistory);
+    }
 }

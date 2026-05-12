@@ -98,8 +98,10 @@ public partial class SettingsWindow : Window
         TerminalShellPath = snapshot.TerminalShellPath;
         TerminalShellArgs = snapshot.TerminalShellArgs;
         TerminalScrollbackLines = snapshot.TerminalScrollbackLines;
-        var shellPref = TerminalPanel.ClassifyShellPath(snapshot.TerminalShellPath);
-        TerminalShellBox.SelectedIndex = (int)shellPref;
+        foreach (var option in TerminalShellCatalog.Options)
+            TerminalShellBox.Items.Add(option.DisplayName);
+        var shellPref = TerminalShellCatalog.ClassifyPath(snapshot.TerminalShellPath);
+        TerminalShellBox.SelectedIndex = TerminalShellCatalog.IndexOf(shellPref);
         TerminalShellArgsBox.Text = snapshot.TerminalShellArgs ?? "";
         TerminalScrollbackBox.Text = snapshot.TerminalScrollbackLines.ToString();
 
@@ -729,8 +731,8 @@ public partial class SettingsWindow : Window
         ExplorerFileIcons = AppSettings.ExplorerFileIconOptions[Math.Max(0, ExplorerFileIconsBox.SelectedIndex)];
         ExplorerRevealActiveFile = ExplorerRevealActiveFileBox.SelectedIndex == 0;
 
-        var shellChoice = (TerminalPanel.TerminalShellPreference)Math.Clamp(TerminalShellBox.SelectedIndex, 0, 1);
-        TerminalShellPath = TerminalPanel.ResolveShellPath(shellChoice);
+        var shellChoice = TerminalShellCatalog.PreferenceAt(TerminalShellBox.SelectedIndex);
+        TerminalShellPath = TerminalShellCatalog.ResolveShellPath(shellChoice);
         TerminalShellArgs = string.IsNullOrWhiteSpace(TerminalShellArgsBox.Text)
             ? null
             : TerminalShellArgsBox.Text.Trim();

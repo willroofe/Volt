@@ -308,16 +308,29 @@ public class TerminalGridTests
     }
 
     [Fact]
-    public void Resize_Smaller_KeepsBottomRowsAndRemapsCursor()
+    public void Resize_Smaller_KeepsCursorRowVisible()
     {
         var g = new TerminalGrid(10, 10, 10);
         g.WriteCell(2, 0, 'T', CellAttr.None);
         g.WriteCell(9, 0, 'B', CellAttr.None);
         g.SetCursor(3, 3);
         g.Resize(5, 5);
+        Assert.Equal('T', g.CellAt(2, 0).Glyph);
+        Assert.Equal(' ', g.CellAt(4, 0).Glyph);
+        Assert.Equal((3, 3), g.Cursor);
+    }
+
+    [Fact]
+    public void Resize_Smaller_KeepsBottomRowsWhenCursorNearBottom()
+    {
+        var g = new TerminalGrid(10, 10, 10);
+        g.WriteCell(0, 0, 'T', CellAttr.None);
+        g.WriteCell(9, 0, 'B', CellAttr.None);
+        g.SetCursor(9, 3);
+        g.Resize(5, 5);
         Assert.Equal(' ', g.CellAt(0, 0).Glyph);
         Assert.Equal('B', g.CellAt(4, 0).Glyph);
-        Assert.Equal((0, 3), g.Cursor);
+        Assert.Equal((4, 3), g.Cursor);
     }
 
     [Fact]

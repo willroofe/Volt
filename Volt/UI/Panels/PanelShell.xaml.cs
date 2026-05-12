@@ -64,7 +64,14 @@ public partial class PanelShell : UserControl
     public void ShowPanel(string panelId)
     {
         if (!_panels.TryGetValue(panelId, out var reg)) return;
-        if (reg.IsVisible) return;
+        if (reg.IsVisible)
+        {
+            bool openedRegion = !IsRegionVisible(reg.Placement);
+            ShowRegion(reg.Placement);
+            if (openedRegion)
+                PanelLayoutChanged?.Invoke(panelId, reg.Placement, GetRegionSize(reg.Placement));
+            return;
+        }
         reg.IsVisible = true;
 
         var region = _regions[reg.Placement];
@@ -96,6 +103,25 @@ public partial class PanelShell : UserControl
     public bool IsPanelVisible(string panelId)
     {
         return _panels.TryGetValue(panelId, out var reg) && reg.IsVisible;
+    }
+
+    public bool CollapseRegionIfOnlyVisiblePanel(string panelId)
+    {
+        if (!_panels.TryGetValue(panelId, out var reg)) return false;
+        if (!reg.IsVisible) return false;
+
+        var placement = reg.Placement;
+        bool hasOtherVisiblePanel = _panels.Values.Any(r => r != reg && r.Placement == placement && r.IsVisible);
+        if (hasOtherVisiblePanel)
+            return false;
+
+        if (!IsRegionVisible(placement))
+            return true;
+
+        SyncRegionSizes();
+        CollapseRegion(placement);
+        PanelLayoutChanged?.Invoke(panelId, placement, GetRegionSize(placement));
+        return true;
     }
 
     public void TogglePanel(string panelId)
@@ -195,8 +221,10 @@ public partial class PanelShell : UserControl
         foreach (var state in openRegions)
         {
             _regionSizes[state.Placement] = Math.Max(state.Size, GetMinSize(state.Placement));
-            if (state.Visible && !IsRegionVisible(state.Placement))
+            if (state.Visible)
                 ShowRegion(state.Placement);
+            else
+                CollapseRegion(state.Placement);
         }
     }
 
