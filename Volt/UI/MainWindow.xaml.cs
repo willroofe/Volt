@@ -906,8 +906,6 @@ public partial class MainWindow
         }
     }
 
-    private void OnReopenClosedTab(object sender, RoutedEventArgs e) => _ = RestoreClosedTabAsync();
-
     /// <summary>Checks whether any session data exists that RestoreSession will act on.</summary>
     private bool HasSessionToRestore()
     {
@@ -2236,7 +2234,6 @@ public partial class MainWindow
         MenuSaveAs.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.SaveAs);
         MenuOpenFile.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.OpenFile);
         MenuOpenFolder.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.OpenFolder);
-        MenuReopenClosedTab.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ReopenClosedTab);
         MenuViewLeft.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleLeftPanel);
         MenuViewRight.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleRightPanel);
         MenuViewTop.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleTopPanel);
