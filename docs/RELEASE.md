@@ -41,6 +41,10 @@ vpk upload github `
   --merge `
   --publish `
   -o Volt/Releases
+
+git checkout develop
+git merge --ff-only master
+git push origin develop
 ```
 
 ## Important Details
@@ -52,6 +56,7 @@ vpk upload github `
 - The upload step publishes `Volt-win-Setup.exe`, `Volt-win-Portable.zip`, `.nupkg` packages, `releases.win.json`, and legacy `RELEASES`.
 - If `vpk` fails because it targets an older .NET runtime, run commands with `$env:DOTNET_ROLL_FORWARD = "Major"` or reinstall the tool for an available runtime.
 - If you must repack an already-published tag, delete the existing release assets before re-uploading files with the same names.
+- After publishing, fast-forward `develop` from `master` so it includes the release merge commit and does not appear behind the release branch.
 
 ## Release Notes
 
