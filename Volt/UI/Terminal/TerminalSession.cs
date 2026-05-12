@@ -1,6 +1,5 @@
 // Volt/UI/Terminal/TerminalSession.cs
 using System;
-using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -43,7 +42,7 @@ public sealed class TerminalSession : IDisposable
         _shellExe = shellExe;
         _args = args;
         _cwd = cwd;
-        Title = ShellTabLabel(shellExe);
+        Title = TerminalShellCatalog.GetTabTitle(shellExe);
 
         Grid = new TerminalGrid(rows, cols, scrollbackLines);
         Dispatcher = new VtDispatcher(Grid);
@@ -98,15 +97,4 @@ public sealed class TerminalSession : IDisposable
         try { Pty?.Dispose(); } catch { }
     }
 
-    /// <summary>Maps the shell executable to a short tab title; ignores VT OSC title sequences.</summary>
-    internal static string ShellTabLabel(string shellExe)
-    {
-        if (string.IsNullOrWhiteSpace(shellExe)) return "Shell";
-        var trimmed = shellExe.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var file = Path.GetFileName(trimmed);
-        if (file.Equals("pwsh.exe", StringComparison.OrdinalIgnoreCase)) return "PowerShell";
-        if (file.Equals("powershell.exe", StringComparison.OrdinalIgnoreCase)) return "PowerShell";
-        if (file.Equals("cmd.exe", StringComparison.OrdinalIgnoreCase)) return "Command Prompt";
-        return Path.GetFileNameWithoutExtension(file);
-    }
 }

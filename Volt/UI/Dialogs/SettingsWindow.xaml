@@ -770,10 +770,7 @@
                                 <ComboBox x:Name="TerminalShellBox" Width="220" Height="26"
                                           Grid.Column="1"
                                           HorizontalAlignment="Right"
-                                          VerticalContentAlignment="Center" FontSize="13">
-                                    <ComboBoxItem Content="PowerShell"/>
-                                    <ComboBoxItem Content="Command Prompt"/>
-                                </ComboBox>
+                                          VerticalContentAlignment="Center" FontSize="13"/>
                             </Grid>
 
                             <Grid x:Name="TerminalShellArgsRow" Style="{StaticResource SettingRow}">
