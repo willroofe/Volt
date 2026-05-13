@@ -33,6 +33,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     {
         _languageService = languageService;
         InvalidateLanguageAnalysis();
+        InvalidateText();
     }
 
     // ── Caret ────────────────────────────────────────────────────────
@@ -175,6 +176,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private int _gutterRenderedLastLine = -1;
     private const int RenderBufferLines = 50;
     private const int LongLineThreshold = 500_000; // skip expensive processing for lines longer than this
+    private const long MaxFullDocumentSyntaxChars = 2_000_000;
+    private const int SyntaxRenderContextChars = 512;
     private const int MaxEagerWordWrapLines = 1_000_000;
     // Track rendered scroll region for long-line viewport clamping
     private double _renderedScrollX = double.NaN;
@@ -947,6 +950,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (_languageService == null)
             return null;
 
+        if (_buffer.CharCount > MaxFullDocumentSyntaxChars)
+            return null;
+
         long generation = _buffer.EditGeneration;
         if (_languageSnapshot != null && _languageSnapshotGeneration == generation)
             return _languageSnapshot;
@@ -1164,6 +1170,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     {
         int drawFirst = Math.Max(0, firstLine - RenderBufferLines);
         int drawLast = Math.Min(_buffer.Count - 1, lastLine + RenderBufferLines);
+        LanguageSnapshot? languageSnapshot = GetLanguageSnapshot();
 
         using var dc = _textVisual.RenderOpen();
 
@@ -1200,13 +1207,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     segEnd = Math.Min(lineLength,
                         (int)((_offset.X + _viewport.Width) / _font.CharWidth) + 2);
                     drawText = LineSegment(i, segStart, segEnd - segStart);
-                    _font.DrawGlyphRun(dc, drawText, 0, drawText.Length,
-                        x + segStart * _font.CharWidth - _textXBias, y, ThemeManager.EditorFg);
+                    DrawTokenizedGlyphs(dc, drawText, i, segStart, segEnd, segStart,
+                        x + segStart * _font.CharWidth - _textXBias, y, languageSnapshot);
                     continue;
                 }
                 // Subtract _textXBias from X to keep content-space coords small
-                _font.DrawGlyphRun(dc, drawText, segStart, segEnd - segStart,
-                    x + segStart * _font.CharWidth - _textXBias, y, ThemeManager.EditorFg);
+                DrawTokenizedGlyphs(dc, drawText, i, segStart, segEnd, 0,
+                    x + segStart * _font.CharWidth - _textXBias, y, languageSnapshot);
             }
             else
             {
@@ -1223,8 +1230,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     double y = (baseCumul + w) * _font.LineHeight - _textYBias;
                     double wx = x + WrapIndentPx(i, w);
                     string drawText = longLine ? LineSegment(i, segStart, segEnd - segStart) : line;
-                    _font.DrawGlyphRun(dc, drawText, longLine ? 0 : segStart,
-                        longLine ? drawText.Length : segEnd - segStart, wx, y, ThemeManager.EditorFg);
+                    DrawTokenizedGlyphs(dc, drawText, i, segStart, segEnd,
+                        longLine ? segStart : 0, wx, y, languageSnapshot);
                 }
             }
         }
@@ -1242,6 +1249,135 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _renderedScrollX = double.NaN;
         }
 
+    }
+
+    private void DrawTokenizedGlyphs(
+        DrawingContext dc,
+        string text,
+        int sourceLine,
+        int sourceStartColumn,
+        int sourceEndColumn,
+        int textColumnOffset,
+        double x,
+        double y,
+        LanguageSnapshot? languageSnapshot)
+    {
+        if (sourceEndColumn <= sourceStartColumn)
+            return;
+
+        IReadOnlyList<LanguageToken>? tokens = GetTokensForRenderedSegment(
+            sourceLine, sourceStartColumn, sourceEndColumn, text, textColumnOffset, languageSnapshot);
+        if (tokens == null || tokens.Count == 0)
+        {
+            DrawGlyphRange(dc, text, sourceStartColumn, sourceEndColumn,
+                sourceStartColumn, textColumnOffset, x, y, ThemeManager.EditorFg);
+            return;
+        }
+
+        DrawLanguageTokenRuns(dc, text, sourceLine, sourceStartColumn, sourceEndColumn,
+            textColumnOffset, x, y, tokens);
+    }
+
+    private void DrawLanguageTokenRuns(
+        DrawingContext dc,
+        string text,
+        int sourceLine,
+        int sourceStartColumn,
+        int sourceEndColumn,
+        int textColumnOffset,
+        double x,
+        double y,
+        IReadOnlyList<LanguageToken> tokens)
+    {
+        int cursor = sourceStartColumn;
+        foreach (LanguageToken token in tokens)
+        {
+            if (token.Range.End.Line < sourceLine)
+                continue;
+            if (token.Range.Start.Line > sourceLine)
+                break;
+
+            int tokenStart = token.Range.Start.Line == sourceLine ? token.Range.Start.Column : 0;
+            int tokenEnd = token.Range.End.Line == sourceLine ? token.Range.End.Column : sourceEndColumn;
+            int start = Math.Max(sourceStartColumn, tokenStart);
+            int end = Math.Min(sourceEndColumn, tokenEnd);
+            if (start >= end)
+                continue;
+
+            if (cursor < start)
+            {
+                DrawGlyphRange(dc, text, cursor, start, sourceStartColumn,
+                    textColumnOffset, x, y, ThemeManager.EditorFg);
+            }
+
+            DrawGlyphRange(dc, text, start, end, sourceStartColumn,
+                textColumnOffset, x, y, ThemeManager.GetSyntaxBrush(token.Kind, token.Scope));
+            cursor = Math.Max(cursor, end);
+        }
+
+        if (cursor < sourceEndColumn)
+        {
+            DrawGlyphRange(dc, text, cursor, sourceEndColumn, sourceStartColumn,
+                textColumnOffset, x, y, ThemeManager.EditorFg);
+        }
+    }
+
+    private IReadOnlyList<LanguageToken>? GetTokensForRenderedSegment(
+        int sourceLine,
+        int sourceStartColumn,
+        int sourceEndColumn,
+        string text,
+        int textColumnOffset,
+        LanguageSnapshot? languageSnapshot)
+    {
+        if (languageSnapshot is { Tokens.Count: > 0 })
+            return languageSnapshot.Tokens;
+
+        if (_languageService == null)
+            return null;
+
+        int contextStart = Math.Max(0, sourceStartColumn - SyntaxRenderContextChars);
+        int contextEnd = Math.Min(LineLength(sourceLine), sourceEndColumn + SyntaxRenderContextChars);
+        if (contextEnd <= contextStart)
+            return null;
+
+        string segmentText = contextStart == textColumnOffset
+            && contextEnd - contextStart <= text.Length
+            ? text[..(contextEnd - contextStart)]
+            : LineSegment(sourceLine, contextStart, contextEnd - contextStart);
+
+        return _languageService.TokenizeForRendering(
+            new LanguageTextSegment(sourceLine, contextStart, segmentText));
+    }
+
+    private void DrawGlyphRange(
+        DrawingContext dc,
+        string text,
+        int sourceStartColumn,
+        int sourceEndColumn,
+        int segmentStartColumn,
+        int textColumnOffset,
+        double segmentX,
+        double y,
+        Brush brush)
+    {
+        int startIndex = sourceStartColumn - textColumnOffset;
+        int length = sourceEndColumn - sourceStartColumn;
+        if (startIndex < 0)
+        {
+            length += startIndex;
+            sourceStartColumn -= startIndex;
+            startIndex = 0;
+        }
+
+        if (startIndex + length > text.Length)
+            length = text.Length - startIndex;
+
+        if (length <= 0)
+            return;
+
+        double x = segmentX + (sourceStartColumn - segmentStartColumn) * _font.CharWidth;
+        _font.DrawGlyphRun(dc, text, startIndex, length, x, y, brush);
     }
 
     // ──────────────────────────────────────────────────────────────────

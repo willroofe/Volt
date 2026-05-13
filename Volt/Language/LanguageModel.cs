@@ -39,9 +39,12 @@ public sealed record LanguageSnapshot(
     IReadOnlyList<LanguageToken> Tokens,
     IReadOnlyList<ParseDiagnostic> Diagnostics);
 
+public readonly record struct LanguageTextSegment(int Line, int StartColumn, string Text);
+
 public interface ILanguageService
 {
     string Name { get; }
     IReadOnlyList<string> Extensions { get; }
     LanguageSnapshot Analyze(string text, long sourceVersion);
+    IReadOnlyList<LanguageToken> TokenizeForRendering(LanguageTextSegment segment);
 }

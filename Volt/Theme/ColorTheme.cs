@@ -80,6 +80,9 @@ public class ColorTheme
     [JsonPropertyName("editor")]
     public EditorColors Editor { get; set; } = new();
 
+    [JsonPropertyName("scopes")]
+    public Dictionary<string, string> Scopes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     [JsonPropertyName("chrome")]
     public ChromeColors Chrome { get; set; } = new();
 

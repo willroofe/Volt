@@ -37,6 +37,62 @@ public sealed class JsonLanguageService : ILanguageService
         return new LanguageSnapshot(Name, sourceVersion, root, publicTokens, parser.Diagnostics);
     }
 
+    public IReadOnlyList<LanguageToken> TokenizeForRendering(LanguageTextSegment segment)
+    {
+        if (segment.Text.Length == 0)
+            return Array.Empty<LanguageToken>();
+
+        var lexer = new JsonLexer(segment.Text, segment.Line, segment.StartColumn);
+        IReadOnlyList<JsonToken> tokens = lexer.Lex();
+        var publicTokens = new List<LanguageToken>(tokens.Count);
+        for (int i = 0; i < tokens.Count; i++)
+        {
+            JsonToken token = tokens[i];
+            if (token.Kind == JsonTokenKind.EndOfFile)
+                continue;
+
+            LanguageTokenKind kind = GetRenderTokenKind(token, segment);
+            publicTokens.Add(new LanguageToken(token.Range, kind, GetScope(kind), token.Text));
+        }
+
+        return publicTokens;
+    }
+
+    private static LanguageTokenKind GetRenderTokenKind(JsonToken token, LanguageTextSegment segment)
+    {
+        return token.Kind switch
+        {
+            JsonTokenKind.String when IsPropertyNameForRendering(token, segment) => LanguageTokenKind.PropertyName,
+            JsonTokenKind.String => LanguageTokenKind.String,
+            JsonTokenKind.Number => LanguageTokenKind.Number,
+            JsonTokenKind.True or JsonTokenKind.False => LanguageTokenKind.Boolean,
+            JsonTokenKind.Null => LanguageTokenKind.Null,
+            JsonTokenKind.Invalid => LanguageTokenKind.Invalid,
+            _ => LanguageTokenKind.Punctuation,
+        };
+    }
+
+    private static bool IsPropertyNameForRendering(JsonToken token, LanguageTextSegment segment)
+    {
+        if (token.Range.End.Line != segment.Line)
+            return false;
+
+        int offset = token.Range.End.Column - segment.StartColumn;
+        if (offset < 0)
+            return false;
+
+        for (int i = offset; i < segment.Text.Length; i++)
+        {
+            char current = segment.Text[i];
+            if (char.IsWhiteSpace(current))
+                continue;
+
+            return current == ':';
+        }
+
+        return false;
+    }
+
     private static string GetScope(LanguageTokenKind kind) => kind switch
     {
         LanguageTokenKind.PropertyName => "property",
@@ -92,9 +148,11 @@ internal sealed class JsonLexer
     private int _line;
     private int _column;
 
-    public JsonLexer(string text)
+    public JsonLexer(string text, int startLine = 0, int startColumn = 0)
     {
         _text = text;
+        _line = startLine;
+        _column = startColumn;
     }
 
     public IReadOnlyList<ParseDiagnostic> Diagnostics => _diagnostics;

@@ -53,4 +53,26 @@ public class JsonLanguageServiceTests
         Assert.Equal("JSON", service!.Name);
         Assert.Contains("JSON", manager.GetAvailableLanguages());
     }
+
+    [Fact]
+    public void TokenizeForRendering_UsesAbsoluteRangeAndClassifiesPropertyNames()
+    {
+        var service = new JsonLanguageService();
+
+        IReadOnlyList<LanguageToken> tokens = service.TokenizeForRendering(
+            new LanguageTextSegment(123, 10, """  "name": "Volt", true, null, 3"""));
+
+        Assert.Contains(tokens,
+            token => token.Kind == LanguageTokenKind.PropertyName
+                     && token.Text == "\"name\""
+                     && token.Range.Start == new TextPosition(123, 12));
+        Assert.Contains(tokens,
+            token => token.Kind == LanguageTokenKind.String && token.Text == "\"Volt\"");
+        Assert.Contains(tokens,
+            token => token.Kind == LanguageTokenKind.Boolean && token.Text == "true");
+        Assert.Contains(tokens,
+            token => token.Kind == LanguageTokenKind.Null && token.Text == "null");
+        Assert.Contains(tokens,
+            token => token.Kind == LanguageTokenKind.Number && token.Text == "3");
+    }
 }

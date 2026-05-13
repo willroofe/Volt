@@ -11,6 +11,7 @@ public class ThemeManager
 
     private ColorTheme _colorTheme = new();
     private List<ColorTheme>? _themeCache;
+    private readonly Dictionary<string, Brush> _syntaxBrushes = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly string _themesDir = AppPaths.ThemesDir;
 
@@ -29,6 +30,17 @@ public class ThemeManager
     public TerminalColors TerminalColors => _colorTheme.Terminal;
 
     private bool _initialized;
+
+    public ThemeManager()
+    {
+        UpdateEditorColors();
+    }
+
+    internal ThemeManager(ColorTheme colorTheme)
+    {
+        _colorTheme = colorTheme;
+        UpdateEditorColors();
+    }
 
     public void Initialize()
     {
@@ -91,6 +103,52 @@ public class ThemeManager
         ActiveLineNumberFg = ColorTheme.ParseBrush(e.ActiveLineNumber);
         FindMatchBrush = ColorTheme.ParseBrush(e.FindMatch);
         FindMatchCurrentBrush = ColorTheme.ParseBrush(e.FindMatchCurrent);
+
+        _syntaxBrushes.Clear();
+        foreach (var (scope, hex) in _colorTheme.Scopes)
+            _syntaxBrushes[scope] = ColorTheme.ParseBrush(hex);
+    }
+
+    public Brush GetSyntaxBrush(LanguageTokenKind kind, string? scope)
+    {
+        if (TryGetSyntaxBrush(scope, out Brush brush))
+            return brush;
+
+        return kind switch
+        {
+            LanguageTokenKind.PropertyName => GetSyntaxBrushFallback("property", "hashkey", "variable"),
+            LanguageTokenKind.String => GetSyntaxBrushFallback("string"),
+            LanguageTokenKind.Number => GetSyntaxBrushFallback("number"),
+            LanguageTokenKind.Boolean or LanguageTokenKind.Null => GetSyntaxBrushFallback("keyword"),
+            LanguageTokenKind.Punctuation => GetSyntaxBrushFallback("operator"),
+            LanguageTokenKind.Invalid => GetSyntaxBrushFallback("invalid", "regex", "keyword"),
+            _ => EditorFg,
+        };
+    }
+
+    private Brush GetSyntaxBrushFallback(string first, string? second = null, string? third = null)
+    {
+        if (TryGetSyntaxBrush(first, out Brush brush))
+            return brush;
+        if (TryGetSyntaxBrush(second, out brush))
+            return brush;
+        if (TryGetSyntaxBrush(third, out brush))
+            return brush;
+
+        return EditorFg;
+    }
+
+    private bool TryGetSyntaxBrush(string? scope, out Brush brush)
+    {
+        if (!string.IsNullOrWhiteSpace(scope)
+            && _syntaxBrushes.TryGetValue(scope, out Brush? found))
+        {
+            brush = found;
+            return true;
+        }
+
+        brush = EditorFg;
+        return false;
     }
 
     private void UpdateAppResources()
