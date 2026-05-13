@@ -1054,12 +1054,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         TextBuffer.LineSnapshot source = _buffer.SnapshotLines(0, _buffer.Count);
         if (ShouldDisableAutomaticDiagnostics(languageService, source, out string disabledMessage))
         {
-            _diagnosticsSnapshot = null;
-            _diagnosticsProgress = null;
-            _diagnosticsDisabledMessage = disabledMessage;
-            _diagnosticsVisualDirty = true;
-            DiagnosticsChanged?.Invoke(this, EventArgs.Empty);
-            InvalidateVisual();
+            DisableDiagnostics(disabledMessage);
             using DiagnosticsTraceRun? skippedTrace = DiagnosticsPerformanceTrace.Begin(
                 languageService.Name,
                 generation,
@@ -1173,6 +1168,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
         return _diagnosticsSnapshot.Diagnostics.Count == 1
             ? $"1 {_diagnosticsSnapshot.LanguageName} error"
             : $"{_diagnosticsSnapshot.Diagnostics.Count} {_diagnosticsSnapshot.LanguageName} errors";
+    }
+
+    private void DisableDiagnostics(string message)
+    {
+        _diagnosticsSnapshot = null;
+        _diagnosticsProgress = null;
+        _diagnosticsDisabledMessage = message;
+        _diagnosticsVisualDirty = true;
+        DiagnosticsChanged?.Invoke(this, EventArgs.Empty);
+        InvalidateVisual();
     }
 
     private static bool ShouldDisableAutomaticDiagnostics(

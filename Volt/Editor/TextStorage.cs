@@ -340,15 +340,6 @@ internal sealed class FileTextSource : ITextSource, IFastLiteralMatchCounter, IL
         if (_index.HasTabs || _index.HasNonAscii)
             return false;
 
-        if (_index.LineCount == 1)
-        {
-            if (startLine != 0 || lineCount != 1)
-                return false;
-
-            stream = new SingleLineAsciiFileTextStream(_path, _index.ContentStartOffset, _index.MaxLineLength);
-            return true;
-        }
-
         long offset = GetByteOffsetForLine(startLine, CancellationToken.None);
         stream = new SequentialAsciiFileTextStream(_path, offset, startLine, lineCount);
         return true;
@@ -799,65 +790,6 @@ internal sealed class FileTextSource : ITextSource, IFastLiteralMatchCounter, IL
         }
 
         return false;
-    }
-
-    private sealed class SingleLineAsciiFileTextStream : ILanguageTextStream
-    {
-        private const int BufferSize = 1 * 1024 * 1024;
-
-        private readonly FileStream _stream;
-        private readonly byte[] _buffer;
-        private int _column;
-        private int _remaining;
-        private bool _disposed;
-
-        public SingleLineAsciiFileTextStream(string path, long startOffset, int length)
-        {
-            _remaining = length;
-            _buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
-            _stream = new FileStream(path, FileMode.Open, FileAccess.Read,
-                FileShare.ReadWrite | FileShare.Delete, bufferSize: BufferSize, FileOptions.SequentialScan);
-            _stream.Seek(startOffset, SeekOrigin.Begin);
-        }
-
-        public LanguageTextReadSegment ReadSegment(int maxLength, CancellationToken cancellationToken)
-        {
-            if (_remaining <= 0)
-                return new LanguageTextReadSegment(0, _column, "", EndsAtLineEnd: true, IsEnd: true);
-
-            int count = Math.Min(Math.Min(Math.Max(1, maxLength), _buffer.Length), _remaining);
-            int totalRead = 0;
-            while (totalRead < count)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                int read = _stream.Read(_buffer, totalRead, count - totalRead);
-                if (read == 0)
-                    break;
-                totalRead += read;
-            }
-
-            if (totalRead == 0)
-            {
-                _remaining = 0;
-                return new LanguageTextReadSegment(0, _column, "", EndsAtLineEnd: true, IsEnd: true);
-            }
-
-            string text = Encoding.Latin1.GetString(_buffer, 0, totalRead);
-            int startColumn = _column;
-            _column += text.Length;
-            _remaining -= text.Length;
-            return new LanguageTextReadSegment(0, startColumn, text, _remaining <= 0, IsEnd: false);
-        }
-
-        public void Dispose()
-        {
-            if (_disposed)
-                return;
-
-            _disposed = true;
-            _stream.Dispose();
-            ArrayPool<byte>.Shared.Return(_buffer);
-        }
     }
 
     private sealed class SequentialAsciiFileTextStream : ILanguageTextStream

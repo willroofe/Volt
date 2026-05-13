@@ -1551,8 +1551,7 @@ internal static class JsonDiagnosticsAnalyzer
                     EnsureSegment();
                     return _streamEnded
                         || _streamAtLineEnd
-                        || (_segmentIndex < _segment.Length && _segment[_segmentIndex] is '\r' or '\n')
-                        || _segmentIndex >= _segment.Length;
+                        || (_segmentIndex < _segment.Length && _segment[_segmentIndex] is '\r' or '\n');
                 }
 
                 if (IsAtEnd)
