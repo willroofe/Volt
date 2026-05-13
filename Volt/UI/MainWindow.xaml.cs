@@ -291,12 +291,14 @@ public partial class MainWindow
         {
             _activeTab.Editor.DirtyChanged -= OnActiveDirtyChanged;
             _activeTab.Editor.CaretMoved -= OnActiveCaretMoved;
+            _activeTab.Editor.DiagnosticsChanged -= OnActiveDiagnosticsChanged;
         }
 
         _activeTab = tab;
 
         tab.Editor.DirtyChanged += OnActiveDirtyChanged;
         tab.Editor.CaretMoved += OnActiveCaretMoved;
+        tab.Editor.DiagnosticsChanged += OnActiveDiagnosticsChanged;
 
         FindBarControl.SetEditor(tab.Editor);
         FindBarControl.RefreshSearch();
@@ -596,6 +598,7 @@ public partial class MainWindow
 
     private void OnActiveDirtyChanged(object? sender, EventArgs e) => UpdateTitle();
     private void OnActiveCaretMoved(object? sender, EventArgs e) => UpdateCaretPos();
+    private void OnActiveDiagnosticsChanged(object? sender, EventArgs e) => UpdateDiagnosticsStatus();
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
@@ -1441,17 +1444,25 @@ public partial class MainWindow
         {
             CaretPosText.Text = "Loading...";
             CharCountText.Text = "";
+            DiagnosticsText.Text = "";
             return;
         }
         if (_activeTab?.IsSaving == true)
         {
             CaretPosText.Text = "Saving...";
             CharCountText.Text = "";
+            DiagnosticsText.Text = "";
             return;
         }
 
         CaretPosText.Text = $"Ln {editor.CaretLine + 1}, Col {editor.CaretCol + 1}";
         CharCountText.Text = $"{editor.CharCount:N0} {(editor.CharCount == 1 ? "Character" : "Characters")}";
+        UpdateDiagnosticsStatus();
+    }
+
+    private void UpdateDiagnosticsStatus()
+    {
+        DiagnosticsText.Text = Editor?.DiagnosticsStatusText ?? "";
     }
 
     private string GetEncodingLabel()
@@ -1487,6 +1498,7 @@ public partial class MainWindow
 
         EncodingText.Text = GetEncodingLabel();
         LineEndingText.Text = editor.LineEnding;
+        UpdateDiagnosticsStatus();
     }
 
     private void SetActiveTabLanguage(string? languageName)

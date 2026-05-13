@@ -41,6 +41,30 @@ public sealed record LanguageSnapshot(
 
 public readonly record struct LanguageTextSegment(int Line, int StartColumn, string Text);
 
+public interface ILanguageTextSource
+{
+    int LineCount { get; }
+    long CharCountWithoutLineEndings { get; }
+    int GetLineLength(int line);
+    string GetLineSegment(int line, int startColumn, int length);
+}
+
+public sealed record LanguageDiagnosticsProgress(long CharactersProcessed, long TotalCharacters)
+{
+    public int? Percent =>
+        TotalCharacters <= 0
+            ? null
+            : (int)Math.Clamp(CharactersProcessed * 100 / TotalCharacters, 0, 100);
+}
+
+public sealed record LanguageDiagnosticsSnapshot(
+    string LanguageName,
+    long SourceVersion,
+    IReadOnlyList<ParseDiagnostic> Diagnostics,
+    bool IsComplete,
+    LanguageDiagnosticsProgress? Progress,
+    bool HasMoreDiagnostics);
+
 public readonly record struct LanguageRenderState(
     string Mode,
     TextPosition TokenStart,
@@ -58,6 +82,11 @@ public interface ILanguageService
     string Name { get; }
     IReadOnlyList<string> Extensions { get; }
     LanguageSnapshot Analyze(string text, long sourceVersion);
+    LanguageDiagnosticsSnapshot AnalyzeDiagnostics(
+        ILanguageTextSource source,
+        long sourceVersion,
+        IProgress<LanguageDiagnosticsProgress>? progress,
+        CancellationToken cancellationToken);
     LanguageRenderState GetRenderState(LanguageTextSegment segment, LanguageRenderState initialState);
     IReadOnlyList<LanguageToken> TokenizeForRendering(LanguageTextSegment segment, LanguageRenderState initialState);
 }

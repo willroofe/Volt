@@ -28,6 +28,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private long _languageSnapshotGeneration = -1;
     private readonly Dictionary<int, SortedList<int, LanguageRenderState>> _languageRenderStateCache = [];
     private long _languageRenderStateGeneration = -1;
+    private LanguageDiagnosticsSnapshot? _diagnosticsSnapshot;
+    private LanguageDiagnosticsProgress? _diagnosticsProgress;
+    private CancellationTokenSource? _diagnosticsCancellation;
+    private readonly DispatcherTimer _diagnosticsDebounceTimer;
+    private int _diagnosticsVersion;
 
     public string LanguageName => _languageService?.Name ?? "Plain Text";
 
@@ -162,6 +167,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     // ── Layered rendering visuals ───────────────────────────────────
     private readonly DrawingVisual _textVisual = new();
+    private readonly DrawingVisual _diagnosticsVisual = new();
     private readonly DrawingVisual _gutterVisual = new();
     private readonly DrawingVisual _caretVisual = new();
     private readonly DrawingVisual _busyVisual = new();
@@ -171,9 +177,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private readonly RotateTransform _busySpinnerTransform = new();
     private readonly RectangleGeometry _textClipGeom = new();
     private bool _textVisualDirty = true;
+    private bool _diagnosticsVisualDirty = true;
     private bool _gutterVisualDirty = true;
     private int _renderedFirstLine = -1;
     private int _renderedLastLine = -1;
+    private int _diagnosticsRenderedFirstLine = -1;
+    private int _diagnosticsRenderedLastLine = -1;
     private int _gutterRenderedFirstLine = -1;
     private int _gutterRenderedLastLine = -1;
     private const int RenderBufferLines = 50;
@@ -253,10 +262,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public event EventHandler? DirtyChanged;
     public event EventHandler? CaretMoved;
     public event EventHandler? FindChanged;
+    public event EventHandler? DiagnosticsChanged;
 
     public int CaretLine => _caretLine;
     public int CaretCol => _caretCol;
     public long CharCount => _buffer.CharCount;
+    public int DiagnosticCount => _diagnosticsSnapshot?.Diagnostics.Count ?? 0;
+    public string CurrentDiagnosticMessage => GetDiagnosticAt(_caretLine, _caretCol)?.Message ?? "";
+    public string DiagnosticsStatusText => GetDiagnosticsStatusText();
 
     // ── Mouse drag ───────────────────────────────────────────────────
     private bool _isDragging;
@@ -326,20 +339,31 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _caretVisible = !_caretVisible;
             UpdateCaretVisual();
         };
+        _diagnosticsDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _diagnosticsDebounceTimer.Tick += (_, _) =>
+        {
+            _diagnosticsDebounceTimer.Stop();
+            StartDiagnosticsAnalysis();
+        };
 
         _textVisual.Transform = _textTransform;
+        _diagnosticsVisual.Transform = _textTransform;
         _textVisual.Clip = _textClipGeom;
+        _diagnosticsVisual.Clip = _textClipGeom;
         _gutterVisual.Transform = _gutterTransform;
         _busySpinnerVisual.Transform = _busySpinnerTransform;
         TextOptions.SetTextRenderingMode(_textVisual, TextRenderingMode.ClearType);
+        TextOptions.SetTextRenderingMode(_diagnosticsVisual, TextRenderingMode.ClearType);
         TextOptions.SetTextRenderingMode(_gutterVisual, TextRenderingMode.ClearType);
         TextOptions.SetTextRenderingMode(_busyVisual, TextRenderingMode.ClearType);
         TextOptions.SetTextRenderingMode(_busySpinnerVisual, TextRenderingMode.ClearType);
         TextOptions.SetTextHintingMode(_textVisual, TextHintingMode.Fixed);
+        TextOptions.SetTextHintingMode(_diagnosticsVisual, TextHintingMode.Fixed);
         TextOptions.SetTextHintingMode(_gutterVisual, TextHintingMode.Fixed);
         TextOptions.SetTextHintingMode(_busyVisual, TextHintingMode.Fixed);
         TextOptions.SetTextHintingMode(_busySpinnerVisual, TextHintingMode.Fixed);
         AddVisualChild(_textVisual);
+        AddVisualChild(_diagnosticsVisual);
         AddVisualChild(_gutterVisual);
         AddVisualChild(_caretVisual);
         AddVisualChild(_busyVisual);
@@ -363,6 +387,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         Unloaded += (_, _) =>
         {
             _blinkTimer.Stop();
+            _diagnosticsDebounceTimer.Stop();
+            CancelDiagnosticsAnalysis();
             StopBusySpinnerAnimation();
             _font.BeforeFontChanged -= OnBeforeFontChanged;
             _font.FontChanged -= OnFontChanged;
@@ -370,15 +396,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
         };
     }
 
-    // ── Visual tree (layered children: text → gutter → caret → busy overlay → busy spinner) ─────
-    protected override int VisualChildrenCount => 5;
+    // ── Visual tree (layered children: text → diagnostics → gutter → caret → busy overlay → busy spinner) ─────
+    protected override int VisualChildrenCount => 6;
     protected override Visual GetVisualChild(int index) => index switch
     {
         0 => _textVisual,
-        1 => _gutterVisual,
-        2 => _caretVisual,
-        3 => _busyVisual,
-        4 => _busySpinnerVisual,
+        1 => _diagnosticsVisual,
+        2 => _gutterVisual,
+        3 => _caretVisual,
+        4 => _busyVisual,
+        5 => _busySpinnerVisual,
         _ => throw new ArgumentOutOfRangeException(nameof(index))
     };
 
@@ -386,6 +413,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     {
         RecalcWrapData();
         _textVisualDirty = true;
+        _diagnosticsVisualDirty = true;
         _gutterVisualDirty = true;
         UpdateExtent();
         InvalidateVisual();
@@ -394,9 +422,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private void InvalidateText()
     {
         _textVisualDirty = true;
+        _diagnosticsVisualDirty = true;
         _gutterVisualDirty = true;
         _renderedFirstLine = -1;
         _renderedLastLine = -1;
+        _diagnosticsRenderedFirstLine = -1;
+        _diagnosticsRenderedLastLine = -1;
         _gutterRenderedFirstLine = -1;
         _gutterRenderedLastLine = -1;
         InvalidateVisual();
@@ -945,12 +976,15 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _gutterSepPen.Freeze();
     }
 
-    private void InvalidateLanguageAnalysis()
+    private void InvalidateLanguageAnalysis(bool scheduleDiagnostics = true)
     {
         _languageSnapshot = null;
         _languageSnapshotGeneration = -1;
         _languageRenderStateCache.Clear();
         _languageRenderStateGeneration = -1;
+
+        if (scheduleDiagnostics)
+            ScheduleDiagnosticsAnalysis();
     }
 
     public LanguageSnapshot? GetLanguageSnapshot()
@@ -968,6 +1002,166 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _languageSnapshot = _languageService.Analyze(GetContent(), generation);
         _languageSnapshotGeneration = generation;
         return _languageSnapshot;
+    }
+
+    private void ScheduleDiagnosticsAnalysis()
+    {
+        _diagnosticsDebounceTimer.Stop();
+        CancelDiagnosticsAnalysis();
+        ClearDiagnostics();
+
+        if (_languageService == null || _buffer.Count == 0)
+        {
+            InvalidateVisual();
+            return;
+        }
+
+        _diagnosticsDebounceTimer.Start();
+        InvalidateVisual();
+    }
+
+    private void ClearDiagnostics()
+    {
+        _diagnosticsSnapshot = null;
+        _diagnosticsProgress = null;
+        _diagnosticsVisualDirty = true;
+        _diagnosticsRenderedFirstLine = -1;
+        _diagnosticsRenderedLastLine = -1;
+        DiagnosticsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void CancelDiagnosticsAnalysis()
+    {
+        _diagnosticsCancellation?.Cancel();
+        _diagnosticsCancellation = null;
+    }
+
+    private async void StartDiagnosticsAnalysis()
+    {
+        _diagnosticsDebounceTimer.Stop();
+        CancelDiagnosticsAnalysis();
+
+        ILanguageService? languageService = _languageService;
+        if (languageService == null || _buffer.Count == 0)
+            return;
+
+        int version = ++_diagnosticsVersion;
+        long generation = _buffer.EditGeneration;
+        TextBuffer.LineSnapshot source = _buffer.SnapshotLines(0, _buffer.Count);
+        var cancellation = new CancellationTokenSource();
+        _diagnosticsCancellation = cancellation;
+        CancellationToken token = cancellation.Token;
+
+        _diagnosticsProgress = new LanguageDiagnosticsProgress(0, source.CharCountWithoutLineEndings);
+        _diagnosticsSnapshot = new LanguageDiagnosticsSnapshot(
+            languageService.Name,
+            generation,
+            Array.Empty<ParseDiagnostic>(),
+            IsComplete: false,
+            _diagnosticsProgress,
+            HasMoreDiagnostics: false);
+        _diagnosticsVisualDirty = true;
+        DiagnosticsChanged?.Invoke(this, EventArgs.Empty);
+        InvalidateVisual();
+
+        var progress = new Progress<LanguageDiagnosticsProgress>(value =>
+        {
+            if (version != _diagnosticsVersion || token.IsCancellationRequested)
+                return;
+
+            _diagnosticsProgress = value;
+            if (_diagnosticsSnapshot != null)
+                _diagnosticsSnapshot = _diagnosticsSnapshot with { Progress = value };
+            DiagnosticsChanged?.Invoke(this, EventArgs.Empty);
+        });
+
+        try
+        {
+            LanguageDiagnosticsSnapshot result = await Task.Run(
+                () => languageService.AnalyzeDiagnostics(source, generation, progress, token),
+                token);
+
+            if (version != _diagnosticsVersion
+                || token.IsCancellationRequested
+                || generation != _buffer.EditGeneration
+                || !ReferenceEquals(languageService, _languageService))
+            {
+                return;
+            }
+
+            _diagnosticsSnapshot = result;
+            _diagnosticsProgress = result.Progress;
+            _diagnosticsVisualDirty = true;
+            DiagnosticsChanged?.Invoke(this, EventArgs.Empty);
+            InvalidateVisual();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(_diagnosticsCancellation, cancellation))
+                _diagnosticsCancellation = null;
+            cancellation.Dispose();
+        }
+    }
+
+    private string GetDiagnosticsStatusText()
+    {
+        if (_languageService == null || _diagnosticsSnapshot == null)
+            return "";
+
+        if (!_diagnosticsSnapshot.IsComplete)
+        {
+            int? percent = _diagnosticsProgress?.Percent;
+            return percent.HasValue
+                ? $"Checking {_diagnosticsSnapshot.LanguageName}... {percent.Value}%"
+                : $"Checking {_diagnosticsSnapshot.LanguageName}...";
+        }
+
+        if (_diagnosticsSnapshot.Diagnostics.Count == 0)
+            return "";
+
+        string currentMessage = CurrentDiagnosticMessage;
+        if (!string.IsNullOrEmpty(currentMessage))
+            return currentMessage;
+
+        if (_diagnosticsSnapshot.HasMoreDiagnostics)
+            return $"{_diagnosticsSnapshot.Diagnostics.Count}+ {_diagnosticsSnapshot.LanguageName} errors";
+
+        return _diagnosticsSnapshot.Diagnostics.Count == 1
+            ? $"1 {_diagnosticsSnapshot.LanguageName} error"
+            : $"{_diagnosticsSnapshot.Diagnostics.Count} {_diagnosticsSnapshot.LanguageName} errors";
+    }
+
+    private ParseDiagnostic? GetDiagnosticAt(int line, int column)
+    {
+        if (_diagnosticsSnapshot == null || !_diagnosticsSnapshot.IsComplete)
+            return null;
+
+        foreach (ParseDiagnostic diagnostic in _diagnosticsSnapshot.Diagnostics)
+        {
+            if (PositionIntersectsRange(line, column, diagnostic.Range))
+                return diagnostic;
+        }
+
+        return null;
+    }
+
+    private static bool PositionIntersectsRange(int line, int column, TextRange range)
+    {
+        if (line < range.Start.Line || line > range.End.Line)
+            return false;
+
+        if (range.Start.Line == range.End.Line && range.Start.Column == range.End.Column)
+            return line == range.Start.Line && column == range.Start.Column;
+
+        if (line == range.Start.Line && column < range.Start.Column)
+            return false;
+        if (line == range.End.Line && column >= range.End.Column)
+            return false;
+
+        return true;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -1120,6 +1314,15 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             RenderTextVisual(firstLine, lastLine);
             _textVisualDirty = false;
+            _diagnosticsVisualDirty = true;
+        }
+        if (_diagnosticsVisualDirty
+            || firstLine < _diagnosticsRenderedFirstLine
+            || lastLine > _diagnosticsRenderedLastLine
+            || longLineScrolled)
+        {
+            RenderDiagnosticsVisual(firstLine, lastLine);
+            _diagnosticsVisualDirty = false;
         }
         if (_gutterVisualDirty
             || firstLine < _gutterRenderedFirstLine
@@ -1481,6 +1684,116 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     /// <summary>Find the previous visible line at or before the given line.</summary>
     private static int PrevVisibleLine(int line) => Math.Max(line, 0);
+
+    private void RenderDiagnosticsVisual(int firstLine, int lastLine)
+    {
+        int drawFirst = Math.Max(0, firstLine - RenderBufferLines);
+        int drawLast = Math.Min(_buffer.Count - 1, lastLine + RenderBufferLines);
+
+        using var dc = _diagnosticsVisual.RenderOpen();
+
+        if (drawLast < drawFirst
+            || _diagnosticsSnapshot is not { IsComplete: true, Diagnostics.Count: > 0 })
+        {
+            _diagnosticsRenderedFirstLine = drawFirst;
+            _diagnosticsRenderedLastLine = drawLast;
+            return;
+        }
+
+        var pen = new Pen(ThemeManager.DiagnosticErrorBrush, 1.25);
+        if (pen.CanFreeze) pen.Freeze();
+
+        foreach (ParseDiagnostic diagnostic in _diagnosticsSnapshot.Diagnostics)
+        {
+            if (diagnostic.Range.End.Line < drawFirst)
+                continue;
+            if (diagnostic.Range.Start.Line > drawLast)
+                break;
+
+            int startLine = Math.Max(drawFirst, diagnostic.Range.Start.Line);
+            int endLine = Math.Min(drawLast, diagnostic.Range.End.Line);
+            for (int line = startLine; line <= endLine; line++)
+            {
+                int lineLength = LineLength(line);
+                int startColumn = line == diagnostic.Range.Start.Line
+                    ? Math.Clamp(diagnostic.Range.Start.Column, 0, lineLength)
+                    : 0;
+                int endColumn = line == diagnostic.Range.End.Line
+                    ? Math.Clamp(diagnostic.Range.End.Column, 0, lineLength)
+                    : lineLength;
+
+                DrawDiagnosticUnderline(dc, pen, line, startColumn, endColumn);
+            }
+        }
+
+        _diagnosticsRenderedFirstLine = drawFirst;
+        _diagnosticsRenderedLastLine = drawLast;
+    }
+
+    private void DrawDiagnosticUnderline(DrawingContext dc, Pen pen, int line, int startColumn, int endColumn)
+    {
+        int lineLength = LineLength(line);
+        int start = Math.Clamp(startColumn, 0, lineLength);
+        int end = Math.Clamp(endColumn, 0, lineLength);
+        if (end <= start)
+            end = Math.Min(lineLength, start + 1);
+        if (end <= start)
+            end = start + 1;
+
+        if (!_wordWrap || VisualLineCount(line) <= 1)
+        {
+            double y = GetLineTopY(line) - _textYBias + _font.LineHeight - 2;
+            double x1 = _gutterWidth + GutterPadding + start * _font.CharWidth - _textXBias;
+            double x2 = _gutterWidth + GutterPadding + end * _font.CharWidth - _textXBias;
+            DrawWavyUnderline(dc, pen, x1, x2, y);
+            return;
+        }
+
+        int current = start;
+        while (current < end)
+        {
+            int visualLine = LogicalToVisualLine(line, current);
+            int wrapIndex = visualLine - _wrap.CumulOffset(line);
+            int wrapStart = WrapColStart(line, wrapIndex);
+            int wrapEnd = wrapIndex + 1 < VisualLineCount(line)
+                ? WrapColStart(line, wrapIndex + 1)
+                : lineLength;
+            int segmentEnd = Math.Min(end, Math.Max(current + 1, wrapEnd));
+
+            double x1 = _gutterWidth + GutterPadding + WrapIndentPx(line, wrapIndex)
+                + (current - wrapStart) * _font.CharWidth - _textXBias;
+            double x2 = _gutterWidth + GutterPadding + WrapIndentPx(line, wrapIndex)
+                + (segmentEnd - wrapStart) * _font.CharWidth - _textXBias;
+            double y = visualLine * _font.LineHeight - _textYBias + _font.LineHeight - 2;
+            DrawWavyUnderline(dc, pen, x1, x2, y);
+            current = segmentEnd;
+        }
+    }
+
+    private static void DrawWavyUnderline(DrawingContext dc, Pen pen, double x1, double x2, double y)
+    {
+        if (x2 <= x1)
+            return;
+
+        const double step = 4;
+        const double amplitude = 2;
+        var geometry = new StreamGeometry();
+        using (StreamGeometryContext context = geometry.Open())
+        {
+            context.BeginFigure(new Point(x1, y), isFilled: false, isClosed: false);
+            bool high = false;
+            for (double x = x1 + step; x < x2; x += step)
+            {
+                context.LineTo(new Point(x, y + (high ? -amplitude : amplitude)), isStroked: true, isSmoothJoin: false);
+                high = !high;
+            }
+
+            context.LineTo(new Point(x2, y + (high ? -amplitude : amplitude)), isStroked: true, isSmoothJoin: false);
+        }
+
+        if (geometry.CanFreeze) geometry.Freeze();
+        dc.DrawGeometry(null, pen, geometry);
+    }
 
     private void RenderGutterVisual(int firstLine, int lastLine)
     {
@@ -2576,7 +2889,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
         bool large = _buffer.Count > 10_000;
         _undoManager.Clear();
         _buffer.Clear();
-        InvalidateLanguageAnalysis();
+        _diagnosticsDebounceTimer.Stop();
+        CancelDiagnosticsAnalysis();
+        ClearDiagnostics();
+        InvalidateLanguageAnalysis(scheduleDiagnostics: false);
         // TrimExcess releases the backing arrays that Clear() leaves allocated.
         _find.Clear(trimExcess: true);
         _lineNumStrings.Clear();

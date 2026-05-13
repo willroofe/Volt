@@ -12,16 +12,66 @@ public class TextBuffer
 {
     internal sealed record LinePiece(ITextSource Source, int StartLine, int LineCount);
 
-    public sealed class LineSnapshot
+    public sealed class LineSnapshot : ILanguageTextSource
     {
         internal LineSnapshot(List<LinePiece> pieces, int count)
         {
             Pieces = pieces;
             Count = count;
+            _pieceStartLines = new int[pieces.Count];
+            int startLine = 0;
+            long charCount = 0;
+            for (int i = 0; i < pieces.Count; i++)
+            {
+                LinePiece piece = pieces[i];
+                _pieceStartLines[i] = startLine;
+                startLine += piece.LineCount;
+                charCount += piece.Source.GetCharCountWithoutLineEndings(piece.StartLine, piece.LineCount);
+            }
+
+            CharCountWithoutLineEndings = charCount;
         }
+
+        private readonly int[] _pieceStartLines;
 
         internal List<LinePiece> Pieces { get; }
         public int Count { get; }
+        public int LineCount => Count;
+        public long CharCountWithoutLineEndings { get; }
+
+        public int GetLineLength(int line)
+        {
+            var (pieceIndex, offset) = FindPiece(line);
+            LinePiece piece = Pieces[pieceIndex];
+            return piece.Source.GetLineLength(piece.StartLine + offset);
+        }
+
+        public string GetLineSegment(int line, int startColumn, int length)
+        {
+            var (pieceIndex, offset) = FindPiece(line);
+            LinePiece piece = Pieces[pieceIndex];
+            return piece.Source.GetLineSegment(piece.StartLine + offset, startColumn, length);
+        }
+
+        private (int pieceIndex, int offset) FindPiece(int line)
+        {
+            if ((uint)line >= (uint)Count)
+                throw new ArgumentOutOfRangeException(nameof(line));
+
+            int low = 0;
+            int high = _pieceStartLines.Length - 1;
+            while (low <= high)
+            {
+                int mid = low + (high - low) / 2;
+                if (_pieceStartLines[mid] <= line)
+                    low = mid + 1;
+                else
+                    high = mid - 1;
+            }
+
+            int pieceIndex = Math.Max(0, high);
+            return (pieceIndex, line - _pieceStartLines[pieceIndex]);
+        }
     }
 
     private readonly List<LinePiece> _pieces = [];

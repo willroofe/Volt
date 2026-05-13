@@ -362,6 +362,7 @@ public partial class MainWindow
         {
             tab.Editor.DirtyChanged -= OnActiveDirtyChanged;
             tab.Editor.CaretMoved -= OnActiveCaretMoved;
+            tab.Editor.DiagnosticsChanged -= OnActiveDiagnosticsChanged;
             _activeTab = null;
         }
 

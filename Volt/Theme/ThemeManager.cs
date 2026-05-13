@@ -27,6 +27,7 @@ public class ThemeManager
     public Brush ActiveLineNumberFg { get; private set; } = Brushes.DarkGray;
     public Brush FindMatchBrush { get; private set; } = Brushes.Yellow;
     public Brush FindMatchCurrentBrush { get; private set; } = Brushes.Orange;
+    public Brush DiagnosticErrorBrush { get; private set; } = Brushes.Red;
     public TerminalColors TerminalColors => _colorTheme.Terminal;
 
     private bool _initialized;
@@ -107,6 +108,8 @@ public class ThemeManager
         _syntaxBrushes.Clear();
         foreach (var (scope, hex) in _colorTheme.Scopes)
             _syntaxBrushes[scope] = ColorTheme.ParseBrush(hex);
+
+        DiagnosticErrorBrush = GetDiagnosticBrush();
     }
 
     public Brush GetSyntaxBrush(LanguageTokenKind kind, string? scope)
@@ -149,6 +152,13 @@ public class ThemeManager
 
         brush = EditorFg;
         return false;
+    }
+
+    private Brush GetDiagnosticBrush()
+    {
+        return TryGetSyntaxBrush("invalid", out Brush brush)
+            ? brush
+            : ColorTheme.ParseBrush("#E05252");
     }
 
     private void UpdateAppResources()

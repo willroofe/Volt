@@ -376,6 +376,11 @@
                     <TextBlock x:Name="CharCountText" Text="0 Characters" Margin="8,0"
                                FontFamily="Segoe UI" FontSize="12"
                                Foreground="{DynamicResource ThemeTextFg}"/>
+                    <Rectangle Width="1" Fill="{DynamicResource ThemeBorderBrush}"/>
+                    <TextBlock x:Name="DiagnosticsText" Text="" Margin="8,0" MaxWidth="520"
+                               TextTrimming="CharacterEllipsis"
+                               FontFamily="Segoe UI" FontSize="12"
+                               Foreground="{DynamicResource ThemeTextFg}"/>
                 </StackPanel>
             </DockPanel>
         </Border>
