@@ -12,7 +12,7 @@ public class TextBuffer
 {
     internal sealed record LinePiece(ITextSource Source, int StartLine, int LineCount);
 
-    public sealed class LineSnapshot : ILanguageTextSource
+    public sealed class LineSnapshot : ILanguageTextSource, ILanguageTextStreamSource
     {
         internal LineSnapshot(List<LinePiece> pieces, int count)
         {
@@ -51,6 +51,23 @@ public class TextBuffer
             var (pieceIndex, offset) = FindPiece(line);
             LinePiece piece = Pieces[pieceIndex];
             return piece.Source.GetLineSegment(piece.StartLine + offset, startColumn, length);
+        }
+
+        bool ILanguageTextStreamSource.TryCreateTextStream(int startLine, int lineCount, out ILanguageTextStream stream)
+        {
+            stream = null!;
+            if (lineCount <= 0 || startLine < 0 || startLine + lineCount > Count)
+                return false;
+
+            var (pieceIndex, offset) = FindPiece(startLine);
+            LinePiece piece = Pieces[pieceIndex];
+            if (offset + lineCount > piece.LineCount
+                || piece.Source is not ILanguageTextStreamSource streamSource)
+            {
+                return false;
+            }
+
+            return streamSource.TryCreateTextStream(piece.StartLine + offset, lineCount, out stream);
         }
 
         private (int pieceIndex, int offset) FindPiece(int line)

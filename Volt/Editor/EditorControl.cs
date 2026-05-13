@@ -11,6 +11,8 @@ namespace Volt;
 
 public class EditorControl : FrameworkElement, IScrollInfo
 {
+    private const long AutomaticJsonDiagnosticsCharLimit = 50L * 1024 * 1024;
+
     // ── Extracted components ─────────────────────────────────────────
     private readonly TextBuffer _buffer = new();
     private readonly UndoManager _undoManager = new();
@@ -30,6 +32,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private long _languageRenderStateGeneration = -1;
     private LanguageDiagnosticsSnapshot? _diagnosticsSnapshot;
     private LanguageDiagnosticsProgress? _diagnosticsProgress;
+    private string _diagnosticsDisabledMessage = "";
     private CancellationTokenSource? _diagnosticsCancellation;
     private readonly DispatcherTimer _diagnosticsDebounceTimer;
     private int _diagnosticsVersion;
@@ -1024,6 +1027,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     {
         _diagnosticsSnapshot = null;
         _diagnosticsProgress = null;
+        _diagnosticsDisabledMessage = "";
         _diagnosticsVisualDirty = true;
         _diagnosticsRenderedFirstLine = -1;
         _diagnosticsRenderedLastLine = -1;
@@ -1048,11 +1052,35 @@ public class EditorControl : FrameworkElement, IScrollInfo
         int version = ++_diagnosticsVersion;
         long generation = _buffer.EditGeneration;
         TextBuffer.LineSnapshot source = _buffer.SnapshotLines(0, _buffer.Count);
+        if (ShouldDisableAutomaticDiagnostics(languageService, source, out string disabledMessage))
+        {
+            _diagnosticsSnapshot = null;
+            _diagnosticsProgress = null;
+            _diagnosticsDisabledMessage = disabledMessage;
+            _diagnosticsVisualDirty = true;
+            DiagnosticsChanged?.Invoke(this, EventArgs.Empty);
+            InvalidateVisual();
+            using DiagnosticsTraceRun? skippedTrace = DiagnosticsPerformanceTrace.Begin(
+                languageService.Name,
+                generation,
+                source.LineCount,
+                source.CharCountWithoutLineEndings);
+            skippedTrace?.Finish("disabled", 0, hasMoreDiagnostics: false);
+            return;
+        }
+
+        _diagnosticsDisabledMessage = "";
         var cancellation = new CancellationTokenSource();
         _diagnosticsCancellation = cancellation;
         CancellationToken token = cancellation.Token;
+        DiagnosticsTraceRun? traceRun = DiagnosticsPerformanceTrace.Begin(
+            languageService.Name,
+            generation,
+            source.LineCount,
+            source.CharCountWithoutLineEndings);
 
         _diagnosticsProgress = new LanguageDiagnosticsProgress(0, source.CharCountWithoutLineEndings);
+        traceRun?.RecordProgress(_diagnosticsProgress);
         _diagnosticsSnapshot = new LanguageDiagnosticsSnapshot(
             languageService.Name,
             generation,
@@ -1070,6 +1098,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 return;
 
             _diagnosticsProgress = value;
+            traceRun?.RecordProgress(value);
             if (_diagnosticsSnapshot != null)
                 _diagnosticsSnapshot = _diagnosticsSnapshot with { Progress = value };
             DiagnosticsChanged?.Invoke(this, EventArgs.Empty);
@@ -1086,28 +1115,40 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 || generation != _buffer.EditGeneration
                 || !ReferenceEquals(languageService, _languageService))
             {
+                traceRun?.Finish("stale", result.Diagnostics.Count, result.HasMoreDiagnostics);
                 return;
             }
 
             _diagnosticsSnapshot = result;
             _diagnosticsProgress = result.Progress;
+            traceRun?.Finish("completed", result.Diagnostics.Count, result.HasMoreDiagnostics);
             _diagnosticsVisualDirty = true;
             DiagnosticsChanged?.Invoke(this, EventArgs.Empty);
             InvalidateVisual();
         }
         catch (OperationCanceledException)
         {
+            traceRun?.Finish("cancelled", 0, hasMoreDiagnostics: false);
+        }
+        catch
+        {
+            traceRun?.Finish("failed", 0, hasMoreDiagnostics: false);
+            throw;
         }
         finally
         {
             if (ReferenceEquals(_diagnosticsCancellation, cancellation))
                 _diagnosticsCancellation = null;
+            traceRun?.Dispose();
             cancellation.Dispose();
         }
     }
 
     private string GetDiagnosticsStatusText()
     {
+        if (!string.IsNullOrEmpty(_diagnosticsDisabledMessage))
+            return _diagnosticsDisabledMessage;
+
         if (_languageService == null || _diagnosticsSnapshot == null)
             return "";
 
@@ -1132,6 +1173,22 @@ public class EditorControl : FrameworkElement, IScrollInfo
         return _diagnosticsSnapshot.Diagnostics.Count == 1
             ? $"1 {_diagnosticsSnapshot.LanguageName} error"
             : $"{_diagnosticsSnapshot.Diagnostics.Count} {_diagnosticsSnapshot.LanguageName} errors";
+    }
+
+    private static bool ShouldDisableAutomaticDiagnostics(
+        ILanguageService languageService,
+        ILanguageTextSource source,
+        out string message)
+    {
+        if (string.Equals(languageService.Name, "JSON", StringComparison.OrdinalIgnoreCase)
+            && source.CharCountWithoutLineEndings > AutomaticJsonDiagnosticsCharLimit)
+        {
+            message = "JSON checking disabled for files over 50 MiB";
+            return true;
+        }
+
+        message = "";
+        return false;
     }
 
     private ParseDiagnostic? GetDiagnosticAt(int line, int column)

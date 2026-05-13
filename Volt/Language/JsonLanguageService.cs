@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Text;
+
 namespace Volt;
 
 public sealed class JsonLanguageService : ILanguageService
@@ -549,6 +552,15 @@ internal sealed class JsonLexer
     private static bool IsDigitOneToNine(char value) => value is >= '1' and <= '9';
     private static bool IsHexDigit(char value) =>
         value is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
+
+    private static bool IsDigit(char value) =>
+        value is >= '0' and <= '9';
+
+    private static bool IsAsciiLetter(char value) =>
+        value is >= 'a' and <= 'z' or >= 'A' and <= 'Z';
+
+    private static bool IsJsonWhitespace(char value) =>
+        value is ' ' or '\t' or '\r' or '\n';
 }
 
 internal sealed class JsonDiagnosticSink
@@ -1095,9 +1107,10 @@ internal sealed class JsonParser
 
 internal static class JsonDiagnosticsAnalyzer
 {
-    private const int SegmentSize = 64 * 1024;
+    private const int SegmentSize = 1 * 1024 * 1024;
     private const int MaxDiagnostics = 1000;
-    private const long ProgressReportInterval = 1 * 1024 * 1024;
+    private const long ProgressReportInterval = 16 * 1024 * 1024;
+    private static readonly TimeSpan ProgressReportMinimumInterval = TimeSpan.FromMilliseconds(100);
 
     public static LanguageDiagnosticsSnapshot Analyze(
         string languageName,
@@ -1123,14 +1136,17 @@ internal static class JsonDiagnosticsAnalyzer
         private readonly CancellationToken _cancellationToken;
         private readonly JsonDiagnosticSink _diagnostics = new(MaxDiagnostics);
         private readonly JsonGrammarValidator _grammar;
+        private readonly Stopwatch _progressStopwatch = Stopwatch.StartNew();
         private long _nextProgressReport = ProgressReportInterval;
+        private TimeSpan _lastProgressReportElapsed;
+        private int _cancellationCheckCountdown = 4096;
 
         public Analyzer(
             ILanguageTextSource source,
             IProgress<LanguageDiagnosticsProgress>? progress,
             CancellationToken cancellationToken)
         {
-            _cursor = new SourceCursor(source);
+            _cursor = new SourceCursor(source, cancellationToken);
             _progress = progress;
             _cancellationToken = cancellationToken;
             _grammar = new JsonGrammarValidator(_diagnostics);
@@ -1140,75 +1156,88 @@ internal static class JsonDiagnosticsAnalyzer
 
         public IReadOnlyList<ParseDiagnostic> Analyze()
         {
-            ReportProgress(force: true);
-            while (!_cursor.IsAtEnd)
+            try
             {
-                _cancellationToken.ThrowIfCancellationRequested();
-                ReportProgress(force: false);
-
-                if (_cursor.IsAtLineEnd)
+                ReportProgress(force: true);
+                while (!_cursor.IsAtEnd)
                 {
-                    if (_cursor.IsAtLastLine)
-                        break;
+                    _cancellationToken.ThrowIfCancellationRequested();
+                    ReportProgress(force: false);
 
-                    _cursor.AdvanceLine();
-                    continue;
-                }
+                    if (_cursor.IsAtLineEnd)
+                    {
+                        if (_cursor.IsAtLastLine)
+                            break;
 
-                char current = _cursor.Current;
-                if (char.IsWhiteSpace(current))
-                {
-                    _cursor.Advance();
-                    continue;
-                }
+                        _cursor.AdvanceLine();
+                        continue;
+                    }
 
-                TextPosition start = _cursor.Position;
-                switch (current)
-                {
-                    case '{':
+                    char current = _cursor.Current;
+                    if (current is ' ' or '\t')
+                    {
+                        SkipInlineWhitespace();
+                        continue;
+                    }
+
+                    if (IsJsonWhitespace(current))
+                    {
                         _cursor.Advance();
-                        Accept(JsonTokenKind.LeftBrace, start, _cursor.Position);
-                        break;
-                    case '}':
-                        _cursor.Advance();
-                        Accept(JsonTokenKind.RightBrace, start, _cursor.Position);
-                        break;
-                    case '[':
-                        _cursor.Advance();
-                        Accept(JsonTokenKind.LeftBracket, start, _cursor.Position);
-                        break;
-                    case ']':
-                        _cursor.Advance();
-                        Accept(JsonTokenKind.RightBracket, start, _cursor.Position);
-                        break;
-                    case ':':
-                        _cursor.Advance();
-                        Accept(JsonTokenKind.Colon, start, _cursor.Position);
-                        break;
-                    case ',':
-                        _cursor.Advance();
-                        Accept(JsonTokenKind.Comma, start, _cursor.Position);
-                        break;
-                    case '"':
-                        LexString();
-                        break;
-                    case '-':
-                        LexNumber();
-                        break;
-                    default:
-                        if (char.IsDigit(current))
+                        continue;
+                    }
+
+                    TextPosition start = _cursor.Position;
+                    switch (current)
+                    {
+                        case '{':
+                            _cursor.Advance();
+                            Accept(JsonTokenKind.LeftBrace, start, _cursor.Position);
+                            break;
+                        case '}':
+                            _cursor.Advance();
+                            Accept(JsonTokenKind.RightBrace, start, _cursor.Position);
+                            break;
+                        case '[':
+                            _cursor.Advance();
+                            Accept(JsonTokenKind.LeftBracket, start, _cursor.Position);
+                            break;
+                        case ']':
+                            _cursor.Advance();
+                            Accept(JsonTokenKind.RightBracket, start, _cursor.Position);
+                            break;
+                        case ':':
+                            _cursor.Advance();
+                            Accept(JsonTokenKind.Colon, start, _cursor.Position);
+                            break;
+                        case ',':
+                            _cursor.Advance();
+                            Accept(JsonTokenKind.Comma, start, _cursor.Position);
+                            break;
+                        case '"':
+                            LexString();
+                            break;
+                        case '-':
                             LexNumber();
-                        else if (char.IsLetter(current))
-                            LexLiteral();
-                        else
-                            LexUnexpectedCharacter();
-                        break;
+                            break;
+                        default:
+                            if (IsDigit(current))
+                                LexNumber();
+                            else if (IsAsciiLetter(current))
+                                LexLiteral();
+                            else
+                                LexUnexpectedCharacter();
+                            break;
+                    }
                 }
-            }
 
-            _grammar.Finish(_cursor.Position);
-            ReportProgress(force: true);
-            return _diagnostics.Diagnostics;
+                _grammar.Finish(_cursor.Position);
+                ReportProgress(force: true);
+                return _diagnostics.Diagnostics;
+            }
+            finally
+            {
+                _cursor.Dispose();
+            }
         }
 
         private void LexString()
@@ -1218,6 +1247,21 @@ internal static class JsonDiagnosticsAnalyzer
 
             while (!_cursor.IsAtEnd)
             {
+                CheckCancellationAndProgress();
+                ReadOnlySpan<char> span = _cursor.RemainingTextOnLine;
+                if (span.Length > 0)
+                {
+                    int stop = span.IndexOfAny('"', '\\');
+                    if (stop < 0)
+                    {
+                        _cursor.AdvanceBy(span.Length);
+                        continue;
+                    }
+
+                    if (stop > 0)
+                        _cursor.AdvanceBy(stop);
+                }
+
                 if (_cursor.IsAtLineEnd)
                 {
                     AddDiagnostic(new TextRange(start, _cursor.Position), "String literal is not terminated.");
@@ -1291,7 +1335,7 @@ internal static class JsonDiagnosticsAnalyzer
             if (_cursor.Current == '-')
                 _cursor.Advance();
 
-            if (_cursor.IsAtEnd || _cursor.IsAtLineEnd || !char.IsDigit(_cursor.Current))
+            if (_cursor.IsAtEnd || _cursor.IsAtLineEnd || !IsDigit(_cursor.Current))
             {
                 AddDiagnostic(new TextRange(start, _cursor.Position), "Expected digit after minus sign.");
                 Accept(JsonTokenKind.Number, start, _cursor.Position);
@@ -1301,7 +1345,7 @@ internal static class JsonDiagnosticsAnalyzer
             if (_cursor.Current == '0')
             {
                 _cursor.Advance();
-                if (!_cursor.IsAtEnd && !_cursor.IsAtLineEnd && char.IsDigit(_cursor.Current))
+                if (!_cursor.IsAtEnd && !_cursor.IsAtLineEnd && IsDigit(_cursor.Current))
                     AddDiagnostic(new TextRange(start, _cursor.Position), "JSON numbers cannot contain leading zeroes.");
             }
             else
@@ -1312,7 +1356,7 @@ internal static class JsonDiagnosticsAnalyzer
             if (!_cursor.IsAtEnd && !_cursor.IsAtLineEnd && _cursor.Current == '.')
             {
                 _cursor.Advance();
-                if (_cursor.IsAtEnd || _cursor.IsAtLineEnd || !char.IsDigit(_cursor.Current))
+                if (_cursor.IsAtEnd || _cursor.IsAtLineEnd || !IsDigit(_cursor.Current))
                     AddDiagnostic(new TextRange(start, _cursor.Position), "Expected digit after decimal point.");
                 ReadDigits();
             }
@@ -1323,7 +1367,7 @@ internal static class JsonDiagnosticsAnalyzer
                 if (!_cursor.IsAtEnd && !_cursor.IsAtLineEnd && _cursor.Current is '+' or '-')
                     _cursor.Advance();
 
-                if (_cursor.IsAtEnd || _cursor.IsAtLineEnd || !char.IsDigit(_cursor.Current))
+                if (_cursor.IsAtEnd || _cursor.IsAtLineEnd || !IsDigit(_cursor.Current))
                     AddDiagnostic(new TextRange(start, _cursor.Position), "Expected digit in exponent.");
                 ReadDigits();
             }
@@ -1334,8 +1378,16 @@ internal static class JsonDiagnosticsAnalyzer
         private void LexLiteral()
         {
             TextPosition start = _cursor.Position;
-            string text = ReadLetters();
-            JsonTokenKind kind = text switch
+            var text = new StringBuilder();
+            while (!_cursor.IsAtEnd && !_cursor.IsAtLineEnd && IsAsciiLetter(_cursor.Current))
+            {
+                CheckCancellationAndProgress();
+                text.Append(_cursor.Current);
+                _cursor.Advance();
+            }
+
+            string value = text.ToString();
+            JsonTokenKind kind = value switch
             {
                 "true" => JsonTokenKind.True,
                 "false" => JsonTokenKind.False,
@@ -1343,7 +1395,7 @@ internal static class JsonDiagnosticsAnalyzer
                 _ => JsonTokenKind.InvalidLiteral,
             };
             if (kind == JsonTokenKind.InvalidLiteral)
-                AddDiagnostic(new TextRange(start, _cursor.Position), $"Unexpected literal '{text}'.");
+                AddDiagnostic(new TextRange(start, _cursor.Position), $"Unexpected literal '{value}'.");
 
             Accept(kind, start, _cursor.Position);
         }
@@ -1361,30 +1413,74 @@ internal static class JsonDiagnosticsAnalyzer
 
         private void ReadDigits()
         {
-            while (!_cursor.IsAtEnd && !_cursor.IsAtLineEnd && char.IsDigit(_cursor.Current))
-                _cursor.Advance();
+            while (!_cursor.IsAtEnd && !_cursor.IsAtLineEnd)
+            {
+                ReadOnlySpan<char> span = _cursor.RemainingTextOnLine;
+                int count = 0;
+                while (count < span.Length && IsDigit(span[count]))
+                    count++;
+
+                if (count == 0)
+                    return;
+
+                _cursor.AdvanceBy(count);
+                CheckCancellationAndProgress();
+                if (count < span.Length)
+                    return;
+            }
         }
 
-        private string ReadLetters()
+        private void SkipInlineWhitespace()
         {
-            TextPosition start = _cursor.Position;
-            while (!_cursor.IsAtEnd && !_cursor.IsAtLineEnd && char.IsLetter(_cursor.Current))
-                _cursor.Advance();
+            while (!_cursor.IsAtEnd && !_cursor.IsAtLineEnd)
+            {
+                ReadOnlySpan<char> span = _cursor.RemainingTextOnLine;
+                int count = 0;
+                while (count < span.Length && span[count] is ' ' or '\t')
+                    count++;
 
-            int length = _cursor.Position.Column - start.Column;
-            return _cursor.GetText(start.Line, start.Column, length);
+                if (count == 0)
+                    return;
+
+                _cursor.AdvanceBy(count);
+                CheckCancellationAndProgress();
+                if (count < span.Length)
+                    return;
+            }
         }
 
         private void AddDiagnostic(TextRange range, string message)
             => _diagnostics.Add(range, message);
+
+        private void CheckCancellationAndProgress()
+        {
+            _cancellationCheckCountdown--;
+            if (_cancellationCheckCountdown > 0)
+                return;
+
+            _cancellationCheckCountdown = 4096;
+            _cancellationToken.ThrowIfCancellationRequested();
+            ReportProgress(force: false);
+        }
 
         private void ReportProgress(bool force)
         {
             if (_progress == null)
                 return;
 
-            if (!force && _cursor.CharactersRead < _nextProgressReport)
-                return;
+            if (!force)
+            {
+                if (_cursor.CharactersRead < _nextProgressReport)
+                    return;
+                TimeSpan elapsed = _progressStopwatch.Elapsed;
+                if (elapsed - _lastProgressReportElapsed < ProgressReportMinimumInterval)
+                    return;
+                _lastProgressReportElapsed = elapsed;
+            }
+            else
+            {
+                _lastProgressReportElapsed = _progressStopwatch.Elapsed;
+            }
 
             _nextProgressReport = _cursor.CharactersRead + ProgressReportInterval;
             _progress.Report(new LanguageDiagnosticsProgress(
@@ -1393,32 +1489,72 @@ internal static class JsonDiagnosticsAnalyzer
         }
     }
 
-    private sealed class SourceCursor
+    private sealed class SourceCursor : IDisposable
     {
         private readonly ILanguageTextSource _source;
+        private readonly ILanguageTextStream? _stream;
+        private readonly CancellationToken _cancellationToken;
         private string _segment = "";
         private int _segmentStartColumn = -1;
         private int _segmentIndex;
         private int _lineLength = -1;
+        private bool _segmentEndsAtLineEnd;
+        private bool _streamAtLineEnd;
+        private bool _streamEnded;
+        private bool _disposed;
 
-        public SourceCursor(ILanguageTextSource source)
+        public SourceCursor(ILanguageTextSource source, CancellationToken cancellationToken)
         {
             _source = source;
+            _cancellationToken = cancellationToken;
             TotalCharacters = source.CharCountWithoutLineEndings;
+            if (source is ILanguageTextStreamSource streamSource
+                && streamSource.TryCreateTextStream(0, source.LineCount, out ILanguageTextStream stream))
+            {
+                _stream = stream;
+            }
         }
 
         public int Line { get; private set; }
         public int Column { get; private set; }
         public long CharactersRead { get; private set; }
         public long TotalCharacters { get; }
-        public bool IsAtEnd => Line >= _source.LineCount;
+        public bool IsAtEnd => _stream != null ? _streamEnded : Line >= _source.LineCount;
         public bool IsAtLastLine => Line >= _source.LineCount - 1;
         public TextPosition Position => new(Line, Column);
+        public ReadOnlySpan<char> RemainingTextOnLine
+        {
+            get
+            {
+                EnsureSegment();
+                if (_streamEnded || _streamAtLineEnd || _segmentIndex >= _segment.Length)
+                    return ReadOnlySpan<char>.Empty;
+
+                ReadOnlySpan<char> span = _segment.AsSpan(_segmentIndex);
+                if (_stream != null)
+                {
+                    int lineBreak = span.IndexOfAny('\r', '\n');
+                    if (lineBreak >= 0)
+                        span = span[..lineBreak];
+                }
+
+                return span;
+            }
+        }
 
         public bool IsAtLineEnd
         {
             get
             {
+                if (_stream != null)
+                {
+                    EnsureSegment();
+                    return _streamEnded
+                        || _streamAtLineEnd
+                        || (_segmentIndex < _segment.Length && _segment[_segmentIndex] is '\r' or '\n')
+                        || _segmentIndex >= _segment.Length;
+                }
+
                 if (IsAtEnd)
                     return true;
                 return Column >= CurrentLineLength;
@@ -1436,19 +1572,73 @@ internal static class JsonDiagnosticsAnalyzer
 
         public void Advance()
         {
-            if (IsAtLineEnd)
+            if (_stream != null)
+            {
+                EnsureStreamSegment();
+                if (_streamEnded
+                    || _streamAtLineEnd
+                    || _segmentIndex >= _segment.Length
+                    || _segment[_segmentIndex] is '\r' or '\n')
+                {
+                    return;
+                }
+
+                AdvanceBy(1);
+                return;
+            }
+
+            if (IsAtEnd || Column >= CurrentLineLength)
                 return;
 
             EnsureSegment();
-            Column++;
-            _segmentIndex++;
-            CharactersRead++;
+            AdvanceBy(1);
+        }
+
+        public void AdvanceBy(int count)
+        {
+            if (count <= 0)
+                return;
+
+            Column += count;
+            _segmentIndex += count;
+            CharactersRead += count;
+            if (_stream != null
+                && _segmentIndex >= _segment.Length
+                && _segmentEndsAtLineEnd)
+            {
+                _streamAtLineEnd = true;
+            }
         }
 
         public void AdvanceLine()
         {
             if (IsAtEnd)
                 return;
+
+            if (_stream != null)
+            {
+                EnsureSegment();
+                if (_streamEnded)
+                    return;
+
+                Line++;
+                Column = 0;
+                if (_segmentIndex < _segment.Length && _segment[_segmentIndex] == '\r')
+                {
+                    _segmentIndex++;
+                    if (_segmentIndex < _segment.Length && _segment[_segmentIndex] == '\n')
+                        _segmentIndex++;
+                }
+                else if (_segmentIndex < _segment.Length && _segment[_segmentIndex] == '\n')
+                {
+                    _segmentIndex++;
+                }
+
+                _streamAtLineEnd = false;
+                if (_segmentIndex >= _segment.Length)
+                    ClearStreamSegment();
+                return;
+            }
 
             int unread = Math.Max(0, CurrentLineLength - Column);
             CharactersRead += unread;
@@ -1459,9 +1649,6 @@ internal static class JsonDiagnosticsAnalyzer
             _segmentStartColumn = -1;
             _segmentIndex = 0;
         }
-
-        public string GetText(int line, int startColumn, int length) =>
-            length <= 0 ? "" : _source.GetLineSegment(line, startColumn, length);
 
         private int CurrentLineLength
         {
@@ -1475,6 +1662,12 @@ internal static class JsonDiagnosticsAnalyzer
 
         private void EnsureSegment()
         {
+            if (_stream != null)
+            {
+                EnsureStreamSegment();
+                return;
+            }
+
             if (IsAtEnd || IsAtLineEnd)
                 return;
 
@@ -1487,12 +1680,89 @@ internal static class JsonDiagnosticsAnalyzer
             }
 
             int count = Math.Min(SegmentSize, CurrentLineLength - Column);
-            _segment = _source.GetLineSegment(Line, Column, count);
+            _segment = ReadSourceSegment(Line, Column, count);
             _segmentStartColumn = Column;
             _segmentIndex = 0;
+        }
+
+        private void EnsureStreamSegment()
+        {
+            if (_streamEnded || _streamAtLineEnd)
+                return;
+
+            if (_segmentIndex < _segment.Length)
+                return;
+
+            while (_segmentIndex >= _segment.Length)
+            {
+                LanguageTextReadSegment segment = ReadStreamSegment(SegmentSize);
+                if (segment.IsEnd)
+                {
+                    _streamEnded = true;
+                    _segment = "";
+                    _segmentStartColumn = Column;
+                    _segmentIndex = 0;
+                    _segmentEndsAtLineEnd = true;
+                    return;
+                }
+
+                Line = segment.Line;
+                Column = segment.StartColumn;
+                _segment = segment.Text;
+                _segmentStartColumn = Column;
+                _segmentIndex = 0;
+                _segmentEndsAtLineEnd = segment.EndsAtLineEnd;
+                _streamAtLineEnd = segment.Text.Length == 0 && segment.EndsAtLineEnd;
+                if (_segment.Length > 0 || _streamAtLineEnd)
+                    return;
+            }
+        }
+
+        private void ClearStreamSegment()
+        {
+            _segment = "";
+            _segmentStartColumn = -1;
+            _segmentIndex = 0;
+            _segmentEndsAtLineEnd = false;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            _stream?.Dispose();
+        }
+
+        private LanguageTextReadSegment ReadStreamSegment(int count)
+        {
+            long start = Stopwatch.GetTimestamp();
+            LanguageTextReadSegment segment = _stream!.ReadSegment(count, _cancellationToken);
+            TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
+            DiagnosticsPerformanceTrace.RecordSourceRead(elapsed, segment.Text.Length);
+            return segment;
+        }
+
+        private string ReadSourceSegment(int line, int column, int count)
+        {
+            long start = Stopwatch.GetTimestamp();
+            string segment = _source.GetLineSegment(line, column, count);
+            TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
+            DiagnosticsPerformanceTrace.RecordSourceRead(elapsed, segment.Length);
+            return segment;
         }
     }
 
     private static bool IsHexDigit(char value) =>
         value is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
+
+    private static bool IsDigit(char value) =>
+        value is >= '0' and <= '9';
+
+    private static bool IsAsciiLetter(char value) =>
+        value is >= 'a' and <= 'z' or >= 'A' and <= 'Z';
+
+    private static bool IsJsonWhitespace(char value) =>
+        value is ' ' or '\t' or '\r' or '\n';
 }

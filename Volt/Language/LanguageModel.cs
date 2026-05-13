@@ -49,6 +49,23 @@ public interface ILanguageTextSource
     string GetLineSegment(int line, int startColumn, int length);
 }
 
+internal readonly record struct LanguageTextReadSegment(
+    int Line,
+    int StartColumn,
+    string Text,
+    bool EndsAtLineEnd,
+    bool IsEnd);
+
+internal interface ILanguageTextStream : IDisposable
+{
+    LanguageTextReadSegment ReadSegment(int maxLength, CancellationToken cancellationToken);
+}
+
+internal interface ILanguageTextStreamSource
+{
+    bool TryCreateTextStream(int startLine, int lineCount, out ILanguageTextStream stream);
+}
+
 public sealed record LanguageDiagnosticsProgress(long CharactersProcessed, long TotalCharacters)
 {
     public int? Percent =>

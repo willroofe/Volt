@@ -136,6 +136,26 @@ public class EditorControlLanguageRenderingTests
     }
 
     [StaFact]
+    public void Diagnostics_LargeJson_DisablesAutomaticChecking()
+    {
+        var service = new CountingDiagnosticsJsonLanguageService();
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
+        editor.SetLanguage(service);
+        editor.SetPreparedContent(new TextBuffer.PreparedContent
+        {
+            Source = new LongInvalidJsonTextSource(51 * 1024 * 1024),
+            LineEnding = "\n"
+        });
+
+        InvokePrivate(editor, "StartDiagnosticsAnalysis");
+
+        Assert.Equal(0, service.AnalyzeDiagnosticsCalls);
+        Assert.Equal(0, editor.DiagnosticCount);
+        Assert.Contains("disabled", editor.DiagnosticsStatusText);
+        Assert.Contains("50 MiB", editor.DiagnosticsStatusText);
+    }
+
+    [StaFact]
     public void RenderDiagnostics_DoesNotCrashForWrappedAndLongLines()
     {
         var editor = new EditorControl(new ThemeManager(), new LanguageManager())
@@ -316,6 +336,36 @@ public class EditorControlLanguageRenderingTests
             LanguageTextSegment segment,
             LanguageRenderState initialState) =>
             Array.Empty<LanguageToken>();
+    }
+
+    private sealed class CountingDiagnosticsJsonLanguageService : ILanguageService
+    {
+        private readonly JsonLanguageService _json = new();
+
+        public int AnalyzeDiagnosticsCalls { get; private set; }
+        public string Name => "JSON";
+        public IReadOnlyList<string> Extensions { get; } = [".json"];
+
+        public LanguageSnapshot Analyze(string text, long sourceVersion) =>
+            throw new InvalidOperationException("Diagnostics test should not request a syntax snapshot.");
+
+        public LanguageDiagnosticsSnapshot AnalyzeDiagnostics(
+            ILanguageTextSource source,
+            long sourceVersion,
+            IProgress<LanguageDiagnosticsProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            AnalyzeDiagnosticsCalls++;
+            return _json.AnalyzeDiagnostics(source, sourceVersion, progress, cancellationToken);
+        }
+
+        public LanguageRenderState GetRenderState(LanguageTextSegment segment, LanguageRenderState initialState) =>
+            _json.GetRenderState(segment, initialState);
+
+        public IReadOnlyList<LanguageToken> TokenizeForRendering(
+            LanguageTextSegment segment,
+            LanguageRenderState initialState) =>
+            _json.TokenizeForRendering(segment, initialState);
     }
 
     private sealed class RepeatingTextSource : ITextSource

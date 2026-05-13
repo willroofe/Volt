@@ -1,3 +1,5 @@
+using System.IO;
+using System.Text;
 using Volt;
 using Xunit;
 
@@ -156,7 +158,149 @@ public class JsonLanguageServiceTests
             CancellationToken.None);
 
         Assert.Contains(snapshot.Diagnostics, diagnostic => diagnostic.Message.Contains("Unexpected literal"));
-        Assert.InRange(source.MaxRequestedSegmentLength, 1, 64 * 1024);
+        Assert.InRange(source.MaxRequestedSegmentLength, 1, 1024 * 1024);
+    }
+
+    [Fact]
+    public void AnalyzeDiagnostics_WhenStreamingSourceAvailable_UsesStreamingSegments()
+    {
+        var service = new JsonLanguageService();
+        var source = new StreamingSingleLineJsonSource("""{ "name": "Volt", "ok": true }""");
+
+        LanguageDiagnosticsSnapshot snapshot = service.AnalyzeDiagnostics(
+            source,
+            sourceVersion: 1,
+            progress: null,
+            CancellationToken.None);
+
+        Assert.Empty(snapshot.Diagnostics);
+        Assert.True(source.StreamReadCount > 0);
+        Assert.Equal(0, source.FallbackSegmentRequestCount);
+    }
+
+    [Fact]
+    public void AnalyzeDiagnostics_WhenStreamingUnavailable_UsesSegmentFallback()
+    {
+        var service = new JsonLanguageService();
+        var source = new HugeSingleLineJsonSource(200_000);
+
+        service.AnalyzeDiagnostics(
+            source,
+            sourceVersion: 1,
+            progress: null,
+            CancellationToken.None);
+
+        Assert.True(source.SegmentRequestCount > 0);
+    }
+
+    [Fact]
+    public void AnalyzeDiagnostics_FileBackedCrlfSource_StreamsMultiLineChunks()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "Volt.Tests." + Guid.NewGuid().ToString("N") + ".json");
+        File.WriteAllText(path, "{\r\n  \"name\": \"Volt\",\r\n  \"ok\": true\r\n}", new UTF8Encoding(false));
+        try
+        {
+            var buffer = new TextBuffer();
+            buffer.SetPreparedContent(TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), tabSize: 4));
+            TextBuffer.LineSnapshot source = buffer.SnapshotLines(0, buffer.Count);
+
+            var streamSource = Assert.IsAssignableFrom<ILanguageTextStreamSource>(source);
+            Assert.True(streamSource.TryCreateTextStream(0, source.LineCount, out ILanguageTextStream stream));
+            using (stream)
+            {
+                LanguageTextReadSegment segment = stream.ReadSegment(4096, CancellationToken.None);
+                Assert.Contains("\r\n", segment.Text);
+                Assert.False(segment.IsEnd);
+            }
+
+            var service = new JsonLanguageService();
+            LanguageDiagnosticsSnapshot snapshot = service.AnalyzeDiagnostics(
+                source,
+                sourceVersion: 1,
+                progress: null,
+                CancellationToken.None);
+
+            Assert.Empty(snapshot.Diagnostics);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void AnalyzeDiagnostics_FileBackedMultiChunkJson_DoesNotCrash()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "Volt.Tests." + Guid.NewGuid().ToString("N") + ".json");
+        var text = new StringBuilder();
+        text.Append("{\r\n  \"items\": [");
+        int item = 0;
+        while (text.Length < 2 * 1024 * 1024)
+        {
+            text.Append(item == 0 ? "\r\n    " : ",\r\n    ");
+            text.Append("{ \"id\": ");
+            text.Append(item);
+            text.Append(", \"name\": \"fixture item\", \"active\": true, \"payload\": \"abcdefghijklmnopqrstuvwxyz0123456789\" }");
+            item++;
+        }
+
+        text.Append("\r\n  ]\r\n}\r\n");
+        File.WriteAllText(path, text.ToString(), new UTF8Encoding(false));
+        try
+        {
+            var buffer = new TextBuffer();
+            buffer.SetPreparedContent(TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), tabSize: 4));
+            TextBuffer.LineSnapshot source = buffer.SnapshotLines(0, buffer.Count);
+            var service = new JsonLanguageService();
+
+            LanguageDiagnosticsSnapshot snapshot = service.AnalyzeDiagnostics(
+                source,
+                sourceVersion: 1,
+                progress: null,
+                CancellationToken.None);
+
+            Assert.Empty(snapshot.Diagnostics);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void AnalyzeDiagnostics_CancelsDuringLongStreamingString()
+    {
+        var service = new JsonLanguageService();
+        using var cts = new CancellationTokenSource();
+        var source = new StreamingSingleLineJsonSource("\"" + new string('a', 128 * 1024), cts);
+
+        Assert.Throws<OperationCanceledException>(() => service.AnalyzeDiagnostics(
+            source,
+            sourceVersion: 1,
+            progress: null,
+            cts.Token));
+
+        Assert.True(source.StreamReadCount > 0);
+    }
+
+    [Fact]
+    public void AnalyzeDiagnostics_ReportsMonotonicProgress()
+    {
+        var service = new JsonLanguageService();
+        var source = new HugeSingleLineJsonSource(200_000);
+        var values = new List<LanguageDiagnosticsProgress>();
+
+        service.AnalyzeDiagnostics(
+            source,
+            sourceVersion: 1,
+            progress: new CapturingProgress(values),
+            CancellationToken.None);
+
+        Assert.NotEmpty(values);
+        Assert.Equal(0, values[0].CharactersProcessed);
+        Assert.Equal(source.CharCountWithoutLineEndings, values[^1].CharactersProcessed);
+        Assert.All(values.Zip(values.Skip(1)), pair =>
+            Assert.True(pair.First.CharactersProcessed <= pair.Second.CharactersProcessed));
     }
 
     [Fact]
@@ -281,11 +425,13 @@ public class JsonLanguageServiceTests
         public int LineCount => 1;
         public long CharCountWithoutLineEndings => GetLineLength(0);
         public int MaxRequestedSegmentLength { get; private set; }
+        public int SegmentRequestCount { get; private set; }
 
         public int GetLineLength(int line) => Prefix.Length + _paddingLength + Suffix.Length;
 
         public string GetLineSegment(int line, int startColumn, int length)
         {
+            SegmentRequestCount++;
             MaxRequestedSegmentLength = Math.Max(MaxRequestedSegmentLength, length);
             int lineLength = GetLineLength(line);
             int count = Math.Min(length, lineLength - startColumn);
@@ -313,6 +459,84 @@ public class JsonLanguageServiceTests
 
             return Suffix[column - paddingEnd];
         }
+    }
+
+    private sealed class StreamingSingleLineJsonSource : ILanguageTextSource, ILanguageTextStreamSource
+    {
+        private readonly string _text;
+        private readonly CancellationTokenSource? _cancelOnFirstRead;
+
+        public StreamingSingleLineJsonSource(string text, CancellationTokenSource? cancelOnFirstRead = null)
+        {
+            _text = text;
+            _cancelOnFirstRead = cancelOnFirstRead;
+        }
+
+        public int LineCount => 1;
+        public long CharCountWithoutLineEndings => _text.Length;
+        public int StreamReadCount { get; private set; }
+        public int FallbackSegmentRequestCount { get; private set; }
+
+        public int GetLineLength(int line) => _text.Length;
+
+        public string GetLineSegment(int line, int startColumn, int length)
+        {
+            FallbackSegmentRequestCount++;
+            return "";
+        }
+
+        public bool TryCreateTextStream(int startLine, int lineCount, out ILanguageTextStream stream)
+        {
+            stream = new Reader(this);
+            return true;
+        }
+
+        private sealed class Reader : ILanguageTextStream
+        {
+            private readonly StreamingSingleLineJsonSource _source;
+            private int _position;
+
+            public Reader(StreamingSingleLineJsonSource source)
+            {
+                _source = source;
+            }
+
+            public LanguageTextReadSegment ReadSegment(int maxLength, CancellationToken cancellationToken)
+            {
+                if (_position >= _source._text.Length)
+                    return new LanguageTextReadSegment(0, _position, "", EndsAtLineEnd: true, IsEnd: true);
+
+                _source.StreamReadCount++;
+                if (_source.StreamReadCount == 1)
+                    _source._cancelOnFirstRead?.Cancel();
+
+                int start = _position;
+                int count = Math.Min(Math.Min(maxLength, 4096), _source._text.Length - _position);
+                _position += count;
+                return new LanguageTextReadSegment(
+                    0,
+                    start,
+                    _source._text.Substring(start, count),
+                    _position >= _source._text.Length,
+                    IsEnd: false);
+            }
+
+            public void Dispose()
+            {
+            }
+        }
+    }
+
+    private sealed class CapturingProgress : IProgress<LanguageDiagnosticsProgress>
+    {
+        private readonly List<LanguageDiagnosticsProgress> _values;
+
+        public CapturingProgress(List<LanguageDiagnosticsProgress> values)
+        {
+            _values = values;
+        }
+
+        public void Report(LanguageDiagnosticsProgress value) => _values.Add(value);
     }
 
     private sealed class StringLanguageTextSource : ILanguageTextSource
