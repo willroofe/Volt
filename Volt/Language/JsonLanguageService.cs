@@ -37,14 +37,65 @@ public sealed class JsonLanguageService : ILanguageService
         return new LanguageSnapshot(Name, sourceVersion, root, publicTokens, parser.Diagnostics);
     }
 
-    public IReadOnlyList<LanguageToken> TokenizeForRendering(LanguageTextSegment segment)
+    public LanguageRenderState GetRenderState(LanguageTextSegment segment, LanguageRenderState initialState)
+    {
+        bool inString = IsStringState(initialState);
+        TextPosition stringStart = inString ? initialState.TokenStart : default;
+        bool isEscaped = inString && initialState.IsEscaped;
+
+        for (int i = 0; i < segment.Text.Length; i++)
+        {
+            char current = segment.Text[i];
+            if (!inString)
+            {
+                if (current == '"')
+                {
+                    inString = true;
+                    stringStart = new TextPosition(segment.Line, segment.StartColumn + i);
+                    isEscaped = false;
+                }
+
+                continue;
+            }
+
+            if (isEscaped)
+            {
+                isEscaped = false;
+            }
+            else if (current == '\\')
+            {
+                isEscaped = true;
+            }
+            else if (current == '"' || current is '\r' or '\n')
+            {
+                inString = false;
+                isEscaped = false;
+            }
+        }
+
+        return inString
+            ? CreateStringState(stringStart, isEscaped)
+            : LanguageRenderState.Default;
+    }
+
+    public IReadOnlyList<LanguageToken> TokenizeForRendering(
+        LanguageTextSegment segment,
+        LanguageRenderState initialState)
     {
         if (segment.Text.Length == 0)
             return Array.Empty<LanguageToken>();
 
-        var lexer = new JsonLexer(segment.Text, segment.Line, segment.StartColumn);
+        var publicTokens = new List<LanguageToken>();
+        int startIndex = 0;
+        if (IsStringState(initialState))
+        {
+            startIndex = LexStringContinuation(segment, initialState, publicTokens);
+            if (startIndex >= segment.Text.Length)
+                return publicTokens;
+        }
+
+        var lexer = new JsonLexer(segment.Text[startIndex..], segment.Line, segment.StartColumn + startIndex);
         IReadOnlyList<JsonToken> tokens = lexer.Lex();
-        var publicTokens = new List<LanguageToken>(tokens.Count);
         for (int i = 0; i < tokens.Count; i++)
         {
             JsonToken token = tokens[i];
@@ -58,11 +109,69 @@ public sealed class JsonLanguageService : ILanguageService
         return publicTokens;
     }
 
+    private static int LexStringContinuation(
+        LanguageTextSegment segment,
+        LanguageRenderState initialState,
+        List<LanguageToken> tokens)
+    {
+        bool isEscaped = initialState.IsEscaped;
+        for (int i = 0; i < segment.Text.Length; i++)
+        {
+            char current = segment.Text[i];
+            TextPosition end = new(segment.Line, segment.StartColumn + i + 1);
+
+            if (isEscaped)
+            {
+                isEscaped = false;
+                continue;
+            }
+
+            if (current == '\\')
+            {
+                isEscaped = true;
+                continue;
+            }
+
+            if (current is '\r' or '\n')
+            {
+                tokens.Add(CreateToken(initialState, end, segment.Text[..(i + 1)]));
+                return i + 1;
+            }
+
+            if (current == '"')
+            {
+                tokens.Add(CreateToken(initialState, end, segment.Text[..(i + 1)], segment));
+                return i + 1;
+            }
+        }
+
+        TextPosition segmentEnd = new(segment.Line, segment.StartColumn + segment.Text.Length);
+        tokens.Add(CreateToken(initialState, segmentEnd, segment.Text));
+        return segment.Text.Length;
+    }
+
+    private static LanguageToken CreateToken(
+        LanguageRenderState state,
+        TextPosition end,
+        string text,
+        LanguageTextSegment? segment = null)
+    {
+        LanguageTokenKind kind = segment.HasValue && IsPropertyNameForRendering(end, segment.Value)
+            ? LanguageTokenKind.PropertyName
+            : state.TokenKind;
+
+        return new LanguageToken(
+            new TextRange(state.TokenStart, end),
+            kind,
+            GetScope(kind),
+            text);
+    }
+
     private static LanguageTokenKind GetRenderTokenKind(JsonToken token, LanguageTextSegment segment)
     {
         return token.Kind switch
         {
-            JsonTokenKind.String when IsPropertyNameForRendering(token, segment) => LanguageTokenKind.PropertyName,
+            JsonTokenKind.String when IsPropertyNameForRendering(token.Range.End, segment) => LanguageTokenKind.PropertyName,
             JsonTokenKind.String => LanguageTokenKind.String,
             JsonTokenKind.Number => LanguageTokenKind.Number,
             JsonTokenKind.True or JsonTokenKind.False => LanguageTokenKind.Boolean,
@@ -72,12 +181,12 @@ public sealed class JsonLanguageService : ILanguageService
         };
     }
 
-    private static bool IsPropertyNameForRendering(JsonToken token, LanguageTextSegment segment)
+    private static bool IsPropertyNameForRendering(TextPosition tokenEnd, LanguageTextSegment segment)
     {
-        if (token.Range.End.Line != segment.Line)
+        if (tokenEnd.Line != segment.Line)
             return false;
 
-        int offset = token.Range.End.Column - segment.StartColumn;
+        int offset = tokenEnd.Column - segment.StartColumn;
         if (offset < 0)
             return false;
 
@@ -92,6 +201,12 @@ public sealed class JsonLanguageService : ILanguageService
 
         return false;
     }
+
+    private static LanguageRenderState CreateStringState(TextPosition start, bool isEscaped = false) =>
+        new(JsonSyntaxKinds.String, start, LanguageTokenKind.String, isEscaped);
+
+    private static bool IsStringState(LanguageRenderState state) =>
+        string.Equals(state.Mode, JsonSyntaxKinds.String, StringComparison.Ordinal);
 
     private static string GetScope(LanguageTokenKind kind) => kind switch
     {

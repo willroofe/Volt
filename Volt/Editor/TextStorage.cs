@@ -364,6 +364,9 @@ internal sealed class FileTextSource : ITextSource, IFastLiteralMatchCounter
                 : value.Substring(startColumn, Math.Min(length, value.Length - startColumn));
         }
 
+        if (CanSeekSingleLineByColumn())
+            return GetSingleLineAsciiSegment(startColumn, length);
+
         var (checkpointLine, offset) = _index.GetCheckpointForLine(line);
         using var stream = new FileStream(_path, FileMode.Open, FileAccess.Read,
             FileShare.ReadWrite | FileShare.Delete, bufferSize: 1 << 20, FileOptions.RandomAccess);
@@ -399,6 +402,43 @@ internal sealed class FileTextSource : ITextSource, IFastLiteralMatchCounter
         }
 
         return new string(chars, 0, read);
+    }
+
+    private bool CanSeekSingleLineByColumn() =>
+        _index.LineCount == 1 && !_index.HasTabs && !_index.HasNonAscii;
+
+    private string GetSingleLineAsciiSegment(int startColumn, int length)
+    {
+        if (startColumn >= _index.MaxLineLength)
+            return "";
+
+        int count = Math.Min(length, _index.MaxLineLength - startColumn);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(count);
+        try
+        {
+            using var stream = new FileStream(_path, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete, bufferSize: 4096, FileOptions.RandomAccess);
+            stream.Seek(_index.ContentStartOffset + startColumn, SeekOrigin.Begin);
+
+            int totalRead = 0;
+            while (totalRead < count)
+            {
+                int read = stream.Read(buffer, totalRead, count - totalRead);
+                if (read == 0)
+                    break;
+                totalRead += read;
+            }
+
+            int textLength = 0;
+            while (textLength < totalRead && buffer[textLength] is not (byte)'\r' and not (byte)'\n')
+                textLength++;
+
+            return _encoding.GetString(buffer, 0, textLength);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     private string LoadPageContaining(int line)

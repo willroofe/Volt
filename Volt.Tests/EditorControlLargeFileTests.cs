@@ -118,6 +118,44 @@ public class EditorControlLargeFileTests
     }
 
     [StaFact]
+    public void RenderLongLine_DrawsHorizontalBufferForRetainedScrollReuse()
+    {
+        var source = new FakeTextSource(lineCount: 1, lineLength: 2_000_000);
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
+        editor.SetPreparedContent(new TextBuffer.PreparedContent
+        {
+            Source = source,
+            LineEnding = "\n"
+        });
+
+        var size = new Size(640, 360);
+        editor.Measure(size);
+        editor.Arrange(new Rect(size));
+        editor.UpdateLayout();
+
+        FontManager font = GetPrivateField<FontManager>(editor, "_font");
+        const double initialOffset = 100_000;
+        const double retainedScrollRatio = 0.25;
+        editor.SetHorizontalOffset(initialOffset);
+        InvokePrivate(editor, "RenderTextVisual", 0, 0);
+
+        double renderedOffset = editor.HorizontalOffset;
+        int visibleStartColumn = (int)Math.Floor(renderedOffset / font.CharWidth);
+        int visibleEndColumn = (int)Math.Ceiling((renderedOffset + size.Width) / font.CharWidth);
+
+        Assert.True(source.LongestSegmentStartColumn <= visibleStartColumn,
+            $"start {source.LongestSegmentStartColumn} should cover visible start {visibleStartColumn}");
+        Assert.True(source.LongestSegmentEndColumn >= visibleEndColumn,
+            $"end {source.LongestSegmentEndColumn} should cover visible end {visibleEndColumn}");
+
+        double leadingBufferWidth = (visibleStartColumn - source.LongestSegmentStartColumn) * font.CharWidth;
+        double trailingBufferWidth = (source.LongestSegmentEndColumn - visibleEndColumn) * font.CharWidth;
+
+        Assert.True(leadingBufferWidth >= size.Width * retainedScrollRatio);
+        Assert.True(trailingBufferWidth >= size.Width * retainedScrollRatio);
+    }
+
+    [StaFact]
     public void TabOnHugeSelection_UsesPieceBackedUniformIndent()
     {
         const int lineCount = 1_200_000;
@@ -213,6 +251,9 @@ public class EditorControlLargeFileTests
         public int LineCount { get; }
         public long CharCountWithoutLineEndings { get; }
         public int MaxLineLength { get; }
+        public int LongestSegmentStartColumn { get; private set; } = -1;
+        public int LongestSegmentLength { get; private set; }
+        public int LongestSegmentEndColumn => LongestSegmentStartColumn + LongestSegmentLength;
 
         public string GetLine(int line) => _line;
         public int GetLineLength(int line) => MaxLineLength;
@@ -223,6 +264,12 @@ public class EditorControlLargeFileTests
                 return "";
 
             int count = Math.Min(length, MaxLineLength - startColumn);
+            if (count >= LongestSegmentLength)
+            {
+                LongestSegmentStartColumn = startColumn;
+                LongestSegmentLength = count;
+            }
+
             if (startColumn >= _line.Length)
                 return new string('x', count);
 

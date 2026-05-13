@@ -41,10 +41,23 @@ public sealed record LanguageSnapshot(
 
 public readonly record struct LanguageTextSegment(int Line, int StartColumn, string Text);
 
+public readonly record struct LanguageRenderState(
+    string Mode,
+    TextPosition TokenStart,
+    LanguageTokenKind TokenKind,
+    bool IsEscaped)
+{
+    public static LanguageRenderState Default { get; } =
+        new("", new TextPosition(0, 0), LanguageTokenKind.Punctuation, false);
+
+    public bool IsDefault => string.IsNullOrEmpty(Mode);
+}
+
 public interface ILanguageService
 {
     string Name { get; }
     IReadOnlyList<string> Extensions { get; }
     LanguageSnapshot Analyze(string text, long sourceVersion);
-    IReadOnlyList<LanguageToken> TokenizeForRendering(LanguageTextSegment segment);
+    LanguageRenderState GetRenderState(LanguageTextSegment segment, LanguageRenderState initialState);
+    IReadOnlyList<LanguageToken> TokenizeForRendering(LanguageTextSegment segment, LanguageRenderState initialState);
 }

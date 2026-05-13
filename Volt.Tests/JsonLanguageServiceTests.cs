@@ -60,7 +60,8 @@ public class JsonLanguageServiceTests
         var service = new JsonLanguageService();
 
         IReadOnlyList<LanguageToken> tokens = service.TokenizeForRendering(
-            new LanguageTextSegment(123, 10, """  "name": "Volt", true, null, 3"""));
+            new LanguageTextSegment(123, 10, """  "name": "Volt", true, null, 3"""),
+            LanguageRenderState.Default);
 
         Assert.Contains(tokens,
             token => token.Kind == LanguageTokenKind.PropertyName
@@ -74,5 +75,41 @@ public class JsonLanguageServiceTests
             token => token.Kind == LanguageTokenKind.Null && token.Text == "null");
         Assert.Contains(tokens,
             token => token.Kind == LanguageTokenKind.Number && token.Text == "3");
+    }
+
+    [Fact]
+    public void TokenizeForRendering_ContinuesStringFromInitialState()
+    {
+        var service = new JsonLanguageService();
+        LanguageRenderState state = service.GetRenderState(
+            new LanguageTextSegment(4, 0, "\"abcdef"),
+            LanguageRenderState.Default);
+
+        IReadOnlyList<LanguageToken> tokens = service.TokenizeForRendering(
+            new LanguageTextSegment(4, 7, "gh\""),
+            state);
+
+        LanguageToken token = Assert.Single(tokens);
+        Assert.Equal(LanguageTokenKind.String, token.Kind);
+        Assert.Equal(new TextPosition(4, 0), token.Range.Start);
+        Assert.Equal(new TextPosition(4, 10), token.Range.End);
+    }
+
+    [Fact]
+    public void TokenizeForRendering_PreservesEscapedQuoteAcrossSegmentBoundary()
+    {
+        var service = new JsonLanguageService();
+        LanguageRenderState state = service.GetRenderState(
+            new LanguageTextSegment(0, 0, "\"abc\\"),
+            LanguageRenderState.Default);
+
+        IReadOnlyList<LanguageToken> tokens = service.TokenizeForRendering(
+            new LanguageTextSegment(0, 5, "\"still\""),
+            state);
+
+        LanguageToken token = Assert.Single(tokens);
+        Assert.Equal(LanguageTokenKind.String, token.Kind);
+        Assert.Equal(new TextPosition(0, 0), token.Range.Start);
+        Assert.Equal(new TextPosition(0, 12), token.Range.End);
     }
 }

@@ -195,6 +195,20 @@ public class TextBufferFileStorageTests : IDisposable
     }
 
     [Fact]
+    public void FileBackedBuffer_ReadsDeepAsciiSegmentFromSingleLine()
+    {
+        const int markerColumn = LargeFileLineIndex.ReadBufferSize + 123;
+        string marker = "needle";
+        string path = Write("single-line-deep-segment.json",
+            new string('a', markerColumn) + marker + new string('z', 1024));
+        var buffer = new TextBuffer();
+
+        buffer.SetPreparedContent(TextBuffer.PrepareContentFromFile(path, new UTF8Encoding(false), tabSize: 4));
+
+        Assert.Equal(marker, buffer.GetLineSegment(0, markerColumn, marker.Length));
+    }
+
+    [Fact]
     public void PieceEdits_DoNotDisturbFileBackedLines()
     {
         string path = Write("edit.txt", "alpha\nbeta\ngamma");

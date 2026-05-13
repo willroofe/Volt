@@ -26,6 +26,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private ILanguageService? _languageService;
     private LanguageSnapshot? _languageSnapshot;
     private long _languageSnapshotGeneration = -1;
+    private readonly Dictionary<int, SortedList<int, LanguageRenderState>> _languageRenderStateCache = [];
+    private long _languageRenderStateGeneration = -1;
 
     public string LanguageName => _languageService?.Name ?? "Plain Text";
 
@@ -176,8 +178,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private int _gutterRenderedLastLine = -1;
     private const int RenderBufferLines = 50;
     private const int LongLineThreshold = 500_000; // skip expensive processing for lines longer than this
+    private const double LongLineRenderRefreshViewportRatio = 0.25;
+    private const double LongLineHorizontalRenderBufferViewportRatio = LongLineRenderRefreshViewportRatio + 0.05;
+    private const int LongLineMinimumHorizontalRenderBufferColumns = 32;
     private const long MaxFullDocumentSyntaxChars = 2_000_000;
     private const int SyntaxRenderContextChars = 512;
+    private const int SyntaxStateChunkChars = 16 * 1024;
     private const int MaxEagerWordWrapLines = 1_000_000;
     // Track rendered scroll region for long-line viewport clamping
     private double _renderedScrollX = double.NaN;
@@ -943,6 +949,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
     {
         _languageSnapshot = null;
         _languageSnapshotGeneration = -1;
+        _languageRenderStateCache.Clear();
+        _languageRenderStateGeneration = -1;
     }
 
     public LanguageSnapshot? GetLanguageSnapshot()
@@ -1102,8 +1110,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
         // For long lines, the rendered region is clamped to the viewport.
         // Re-render when scroll moves beyond the rendered buffer zone.
         bool longLineScrolled = !double.IsNaN(_renderedScrollX)
-            && (Math.Abs(_offset.X - _renderedScrollX) > _viewport.Width * 0.25
-                || Math.Abs(_offset.Y - _renderedScrollY) > _viewport.Height * 0.25);
+            && (Math.Abs(_offset.X - _renderedScrollX) > _viewport.Width * LongLineRenderRefreshViewportRatio
+                || Math.Abs(_offset.Y - _renderedScrollY) > _viewport.Height * LongLineRenderRefreshViewportRatio);
 
         if (_textVisualDirty
             || firstLine < _renderedFirstLine
@@ -1203,9 +1211,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 if (longLine)
                 {
                     // Clamp to visible horizontal range to avoid rendering millions of off-screen chars
-                    segStart = Math.Max(0, (int)(_offset.X / _font.CharWidth) - 2);
+                    int horizontalBufferColumns = GetLongLineHorizontalRenderBufferColumns();
+                    segStart = Math.Max(0,
+                        (int)Math.Floor(_offset.X / _font.CharWidth) - horizontalBufferColumns);
                     segEnd = Math.Min(lineLength,
-                        (int)((_offset.X + _viewport.Width) / _font.CharWidth) + 2);
+                        (int)Math.Ceiling((_offset.X + _viewport.Width) / _font.CharWidth)
+                        + horizontalBufferColumns);
                     drawText = LineSegment(i, segStart, segEnd - segStart);
                     DrawTokenizedGlyphs(dc, drawText, i, segStart, segEnd, segStart,
                         x + segStart * _font.CharWidth - _textXBias, y, languageSnapshot);
@@ -1249,6 +1260,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
             _renderedScrollX = double.NaN;
         }
 
+    }
+
+    private int GetLongLineHorizontalRenderBufferColumns()
+    {
+        if (_viewport.Width <= 0 || _font.CharWidth <= 0)
+            return LongLineMinimumHorizontalRenderBufferColumns;
+
+        double bufferWidth = _viewport.Width * LongLineHorizontalRenderBufferViewportRatio;
+        return Math.Max(LongLineMinimumHorizontalRenderBufferColumns,
+            (int)Math.Ceiling(bufferWidth / _font.CharWidth));
     }
 
     private void DrawTokenizedGlyphs(
@@ -1347,7 +1368,63 @@ public class EditorControl : FrameworkElement, IScrollInfo
             : LineSegment(sourceLine, contextStart, contextEnd - contextStart);
 
         return _languageService.TokenizeForRendering(
-            new LanguageTextSegment(sourceLine, contextStart, segmentText));
+            new LanguageTextSegment(sourceLine, contextStart, segmentText),
+            GetRenderStateAt(sourceLine, contextStart));
+    }
+
+    private LanguageRenderState GetRenderStateAt(int sourceLine, int sourceColumn)
+    {
+        if (_languageService == null || sourceColumn <= 0)
+            return LanguageRenderState.Default;
+
+        if (_languageRenderStateGeneration != _buffer.EditGeneration)
+        {
+            _languageRenderStateCache.Clear();
+            _languageRenderStateGeneration = _buffer.EditGeneration;
+        }
+
+        if (!_languageRenderStateCache.TryGetValue(sourceLine, out SortedList<int, LanguageRenderState>? checkpoints))
+        {
+            checkpoints = [];
+            checkpoints.Add(0, LanguageRenderState.Default);
+            _languageRenderStateCache[sourceLine] = checkpoints;
+        }
+
+        int checkpointIndex = FindRenderStateCheckpoint(checkpoints.Keys, sourceColumn);
+        int currentColumn = checkpoints.Keys[checkpointIndex];
+        LanguageRenderState state = checkpoints.Values[checkpointIndex];
+
+        while (currentColumn < sourceColumn)
+        {
+            int length = Math.Min(SyntaxStateChunkChars, sourceColumn - currentColumn);
+            string text = LineSegment(sourceLine, currentColumn, length);
+            if (text.Length == 0)
+                break;
+
+            state = _languageService.GetRenderState(
+                new LanguageTextSegment(sourceLine, currentColumn, text),
+                state);
+            currentColumn += text.Length;
+            checkpoints[currentColumn] = state;
+        }
+
+        return state;
+    }
+
+    private static int FindRenderStateCheckpoint(IList<int> columns, int targetColumn)
+    {
+        int low = 0;
+        int high = columns.Count - 1;
+        while (low <= high)
+        {
+            int mid = low + (high - low) / 2;
+            if (columns[mid] <= targetColumn)
+                low = mid + 1;
+            else
+                high = mid - 1;
+        }
+
+        return Math.Max(0, high);
     }
 
     private void DrawGlyphRange(
