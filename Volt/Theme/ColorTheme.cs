@@ -14,11 +14,8 @@ public class EditorColors
     [JsonPropertyName("caret")] public string Caret { get; set; } = "#000000";
     [JsonPropertyName("selection")] public string Selection { get; set; } = "#60339900";
     [JsonPropertyName("currentLine")] public string CurrentLine { get; set; } = "#F0F0F0";
-    [JsonPropertyName("matchingBracket")] public string MatchingBracket { get; set; } = "#DBDBDB";
-    [JsonPropertyName("matchingBracketBorder")] public string MatchingBracketBorder { get; set; } = "#999999";
     [JsonPropertyName("findMatch")] public string FindMatch { get; set; } = "#60FFFF00";
     [JsonPropertyName("findMatchCurrent")] public string FindMatchCurrent { get; set; } = "#80FF8C00";
-    [JsonPropertyName("indentGuide")] public string IndentGuide { get; set; } = "#30808080";
 }
 
 public class ChromeColors
@@ -80,9 +77,6 @@ public class ColorTheme
     [JsonPropertyName("name")]
     public string Name { get; set; } = "";
 
-    [JsonPropertyName("scopes")]
-    public Dictionary<string, string> Scopes { get; set; } = new();
-
     [JsonPropertyName("editor")]
     public EditorColors Editor { get; set; } = new();
 
@@ -91,9 +85,6 @@ public class ColorTheme
 
     [JsonPropertyName("terminal")]
     public TerminalColors Terminal { get; set; } = new();
-
-    [JsonIgnore]
-    private readonly Dictionary<string, SolidColorBrush> _brushCache = new();
 
     public static SolidColorBrush ParseBrush(string? hex)
     {
@@ -117,26 +108,6 @@ public class ColorTheme
             fallback.Freeze();
             return fallback;
         }
-    }
-
-    public static Pen ParsePen(string hex, double thickness)
-    {
-        var pen = new Pen(ParseBrush(hex), thickness);
-        pen.Freeze();
-        return pen;
-    }
-
-    /// <summary>
-    /// Returns a cached frozen brush for the given scope, or null if the scope is undefined.
-    /// Brushes are parsed once and reused for the lifetime of this theme instance.
-    /// </summary>
-    public SolidColorBrush? GetScopeBrush(string scope)
-    {
-        if (_brushCache.TryGetValue(scope, out var cached)) return cached;
-        if (!Scopes.TryGetValue(scope, out var hex)) return null;
-        var brush = ParseBrush(hex);
-        _brushCache[scope] = brush;
-        return brush;
     }
 
     public static ColorTheme? LoadFromFile(string path)

@@ -1,4 +1,4 @@
-﻿using System.Linq;
+using System.Linq;
 
 namespace Volt;
 
@@ -65,7 +65,7 @@ internal static class CommandPaletteCommands
         var findBar = ctx.FindBar;
         var cmdPalette = ctx.CommandPalette;
         var saveSettings = ctx.SaveSettings;
-        var syntaxManager = App.Current.SyntaxManager;
+        var languageManager = App.Current.LanguageManager;
         var explorer = ctx.Explorer;
         var workspace = ctx.Workspace;
         var toggleWordWrap = ctx.ToggleWordWrap;
@@ -261,7 +261,7 @@ internal static class CommandPaletteCommands
                         Commit: () => ctx.SetLanguage(""),
                         Revert: () => ctx.SetLanguage(originalOverride))
                 };
-                options.AddRange(syntaxManager.GetAvailableLanguages().Select(name => new PaletteOption(
+                options.AddRange(languageManager.GetAvailableLanguages().Select(name => new PaletteOption(
                     name,
                     ApplyPreview: () => ctx.SetLanguage(name),
                     Commit: () => ctx.SetLanguage(name),

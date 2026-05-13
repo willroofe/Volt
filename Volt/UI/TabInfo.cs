@@ -52,9 +52,9 @@ public class TabInfo
     /// <summary>Fired (on the UI thread) when the file is modified externally.</summary>
     public event Action<TabInfo>? FileChangedExternally;
 
-    public TabInfo(ThemeManager themeManager, SyntaxManager syntaxManager)
+    public TabInfo(ThemeManager themeManager, LanguageManager languageManager)
     {
-        Editor = new EditorControl(themeManager, syntaxManager);
+        Editor = new EditorControl(themeManager, languageManager);
         ScrollHost = new ScrollViewer
         {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Visible,

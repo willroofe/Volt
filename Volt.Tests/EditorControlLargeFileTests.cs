@@ -12,7 +12,7 @@ public class EditorControlLargeFileTests
     [StaFact]
     public void SetBusy_TogglesEditorBusyState()
     {
-        var editor = new EditorControl(new ThemeManager(), new SyntaxManager());
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
 
         editor.SetBusy(true, "Loading file...");
 
@@ -26,7 +26,7 @@ public class EditorControlLargeFileTests
     [StaFact]
     public void SetBusy_WithProgressClampsAndClearsProgress()
     {
-        var editor = new EditorControl(new ThemeManager(), new SyntaxManager());
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
 
         editor.SetBusy(true, "Loading file...", 125);
 
@@ -42,7 +42,7 @@ public class EditorControlLargeFileTests
     [StaFact]
     public void SetBusy_WithProgressRendersOverlay()
     {
-        var editor = new EditorControl(new ThemeManager(), new SyntaxManager());
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
         var size = new Size(640, 360);
 
         editor.SetBusy(true, "Indexing file...", 42.5);
@@ -60,7 +60,7 @@ public class EditorControlLargeFileTests
     [StaFact]
     public void SetPreparedContent_SuppressesWordWrapForVeryManyLines()
     {
-        var editor = new EditorControl(new ThemeManager(), new SyntaxManager())
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager())
         {
             WordWrap = true
         };
@@ -77,7 +77,7 @@ public class EditorControlLargeFileTests
     [StaFact]
     public void SetPreparedContent_SuppressesWordWrapForVeryLongLine()
     {
-        var editor = new EditorControl(new ThemeManager(), new SyntaxManager())
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager())
         {
             WordWrap = true
         };
@@ -94,7 +94,7 @@ public class EditorControlLargeFileTests
     [StaFact]
     public void RenderAtHighLineNumber_KeepsRetainedVisualTransformsNearViewport()
     {
-        var editor = new EditorControl(new ThemeManager(), new SyntaxManager());
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
         editor.SetPreparedContent(new TextBuffer.PreparedContent
         {
             Source = new FakeTextSource(lineCount: 12_000_000, lineLength: 32),
@@ -121,7 +121,7 @@ public class EditorControlLargeFileTests
     public void TabOnHugeSelection_UsesPieceBackedUniformIndent()
     {
         const int lineCount = 1_200_000;
-        var editor = new EditorControl(new ThemeManager(), new SyntaxManager());
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
         editor.SetPreparedContent(new TextBuffer.PreparedContent
         {
             Source = new FakeTextSource(lineCount, lineLength: 32),
@@ -157,7 +157,7 @@ public class EditorControlLargeFileTests
     public void ShiftTabOnHugeSelection_UsesPieceBackedLeadingSpaceRemoval()
     {
         const int lineCount = 1_200_000;
-        var editor = new EditorControl(new ThemeManager(), new SyntaxManager());
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
         editor.SetPreparedContent(new TextBuffer.PreparedContent
         {
             Source = new FakeTextSource(lineCount, lineLength: 36, prefix: "    "),
@@ -187,29 +187,6 @@ public class EditorControlLargeFileTests
 
         Assert.Equal("xxxx", buffer.GetLineSegment(0, 0, 4));
         Assert.Equal("xxxx", buffer.GetLineSegment(lineCount - 1, 0, 4));
-    }
-
-    [StaFact]
-    public void InvalidatingLastLineSyntaxState_DoesNotRewalkLookbackWindow()
-    {
-        const int lineCount = 1_200_000;
-        var source = new CountingTextSource(lineCount, lineLength: 32);
-        var editor = new EditorControl(new ThemeManager(), new SyntaxManager());
-        editor.SetPreparedContent(new TextBuffer.PreparedContent
-        {
-            Source = source,
-            LineEnding = "\n"
-        });
-
-        int lastLine = lineCount - 1;
-        InvokePrivate(editor, "EnsureLineStates", lastLine);
-        source.ResetCounts();
-
-        InvokePrivate(editor, "InvalidateLineStatesFrom", lastLine);
-        InvokePrivate(editor, "EnsureLineStates", lastLine);
-
-        Assert.Equal(0, source.LineReads);
-        Assert.Equal(0, source.LengthReads);
     }
 
     private sealed class FakeTextSource : ITextSource
@@ -260,64 +237,6 @@ public class EditorControlLargeFileTests
         {
             for (int i = 0; i < count && startLine + i < LineCount; i++)
                 yield return _line;
-        }
-
-        public int GetMaxLineLength(int startLine, int count) => MaxLineLength;
-        public long GetCharCountWithoutLineEndings(int startLine, int count) => (long)count * MaxLineLength;
-    }
-
-    private sealed class CountingTextSource : ITextSource
-    {
-        private readonly string _line;
-
-        public CountingTextSource(int lineCount, int lineLength)
-        {
-            LineCount = lineCount;
-            MaxLineLength = lineLength;
-            CharCountWithoutLineEndings = (long)lineCount * lineLength;
-            _line = new string('x', lineLength);
-        }
-
-        public int LineReads { get; private set; }
-        public int LengthReads { get; private set; }
-        public int LineCount { get; }
-        public long CharCountWithoutLineEndings { get; }
-        public int MaxLineLength { get; }
-
-        public void ResetCounts()
-        {
-            LineReads = 0;
-            LengthReads = 0;
-        }
-
-        public string GetLine(int line)
-        {
-            LineReads++;
-            return _line;
-        }
-
-        public int GetLineLength(int line)
-        {
-            LengthReads++;
-            return MaxLineLength;
-        }
-
-        public string GetLineSegment(int line, int startColumn, int length)
-        {
-            LineReads++;
-            if (length <= 0 || startColumn >= MaxLineLength)
-                return "";
-
-            return _line.Substring(startColumn, Math.Min(length, MaxLineLength - startColumn));
-        }
-
-        public IEnumerable<string> EnumerateLines(int startLine, int count, bool cache = true)
-        {
-            for (int i = 0; i < count && startLine + i < LineCount; i++)
-            {
-                LineReads++;
-                yield return _line;
-            }
         }
 
         public int GetMaxLineLength(int startLine, int count) => MaxLineLength;

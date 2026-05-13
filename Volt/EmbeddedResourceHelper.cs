@@ -5,7 +5,7 @@ namespace Volt;
 
 /// <summary>
 /// Extracts embedded resources to a target directory on disk.
-/// Used by ThemeManager and SyntaxManager to deploy built-in themes/grammars.
+/// Used by ThemeManager to deploy built-in themes.
 /// </summary>
 internal static class EmbeddedResourceHelper
 {

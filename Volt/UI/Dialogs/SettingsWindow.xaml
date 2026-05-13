@@ -656,20 +656,6 @@
                                 </ComboBox>
                             </Grid>
 
-                            <Grid x:Name="IndentationGuidesRow" Style="{StaticResource SettingRow}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Indent guides" Style="{StaticResource SettingLabel}"/>
-                                <ComboBox x:Name="IndentGuidesBox" Width="100" Height="26"
-                                          Grid.Column="1"
-                                          HorizontalAlignment="Right"
-                                          VerticalContentAlignment="Center" FontSize="13">
-                                    <ComboBoxItem Content="On"/>
-                                    <ComboBoxItem Content="Off"/>
-                                </ComboBox>
-                            </Grid>
                         </StackPanel>
 
                         <!-- Word Wrap section -->

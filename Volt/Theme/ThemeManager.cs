@@ -24,12 +24,8 @@ public class ThemeManager
     public Brush SelectionBrush { get; private set; } = Brushes.LightBlue;
     public Brush CurrentLineBrush { get; private set; } = Brushes.Transparent;
     public Brush ActiveLineNumberFg { get; private set; } = Brushes.DarkGray;
-    public Brush MatchingBracketBrush { get; private set; } = Brushes.Transparent;
-    public Pen MatchingBracketPen { get; private set; } = new Pen(Brushes.Gray, 1);
     public Brush FindMatchBrush { get; private set; } = Brushes.Yellow;
     public Brush FindMatchCurrentBrush { get; private set; } = Brushes.Orange;
-    public Pen IndentGuidePen { get; private set; } = new Pen(Brushes.Gray, 1);
-    public Brush FoldHoverBrush { get; private set; } = Brushes.DarkGray;
     public TerminalColors TerminalColors => _colorTheme.Terminal;
 
     private bool _initialized;
@@ -41,11 +37,6 @@ public class ThemeManager
         EnsureDefaultThemes();
         // Theme is applied later by App.OnStartup via Apply(settings.ColorTheme)
         // to avoid a redundant double-apply when the user's theme matches "Dark".
-    }
-
-    public Brush GetScopeBrush(string scope)
-    {
-        return _colorTheme.GetScopeBrush(scope) ?? EditorFg;
     }
 
     public List<string> GetAvailableThemes()
@@ -98,12 +89,8 @@ public class ThemeManager
         SelectionBrush = ColorTheme.ParseBrush(e.Selection);
         CurrentLineBrush = ColorTheme.ParseBrush(e.CurrentLine);
         ActiveLineNumberFg = ColorTheme.ParseBrush(e.ActiveLineNumber);
-        MatchingBracketBrush = ColorTheme.ParseBrush(e.MatchingBracket);
-        MatchingBracketPen = ColorTheme.ParsePen(e.MatchingBracketBorder, 1);
         FindMatchBrush = ColorTheme.ParseBrush(e.FindMatch);
         FindMatchCurrentBrush = ColorTheme.ParseBrush(e.FindMatchCurrent);
-        IndentGuidePen = ColorTheme.ParsePen(e.IndentGuide, 1);
-        FoldHoverBrush = ColorTheme.ParseBrush(_colorTheme.Chrome.ScrollThumb);
     }
 
     private void UpdateAppResources()

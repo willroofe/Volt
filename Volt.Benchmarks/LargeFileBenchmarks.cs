@@ -16,7 +16,7 @@ public class LargeFileBenchmarks
     private TextBuffer.PreparedContent? _prepared;
     private Encoding _encoding = null!;
     private ThemeManager _themeManager = null!;
-    private SyntaxManager _syntaxManager = null!;
+    private LanguageManager _languageManager = null!;
     private StaBenchmarkThread _staThread = null!;
     private readonly Random _random = new(1234);
     private int[] _sampleLines = [];
@@ -30,7 +30,7 @@ public class LargeFileBenchmarks
         _staThread.Invoke(() =>
         {
             _themeManager = new ThemeManager();
-            _syntaxManager = new SyntaxManager();
+            _languageManager = new LanguageManager();
             return 0;
         });
 
@@ -91,7 +91,7 @@ public class LargeFileBenchmarks
 
         return _staThread.Invoke(() =>
         {
-            var editor = new EditorControl(_themeManager, _syntaxManager);
+            var editor = new EditorControl(_themeManager, _languageManager);
             editor.SetPreparedContent(_prepared);
             return editor.LineEnding.Length;
         });
@@ -107,7 +107,7 @@ public class LargeFileBenchmarks
         TextBuffer.PreparedContent prepared = TextBuffer.PrepareContentFromFile(path, _encoding, tabSize: 4);
         return _staThread.Invoke(() =>
         {
-            var editor = new EditorControl(_themeManager, _syntaxManager);
+            var editor = new EditorControl(_themeManager, _languageManager);
             editor.SetPreparedContent(prepared);
             return editor.LineEnding.Length;
         });

@@ -12,7 +12,7 @@ public record SettingsSnapshot(
     double LineHeight, string ColorTheme, string FindBarPosition,
     bool FindSeedWithSelection, bool FixedWidthTabs,
     bool WordWrap, bool WordWrapAtWords, bool WordWrapIndent,
-    bool IndentGuides, string CommandPalettePosition,
+    string CommandPalettePosition,
     string ExplorerFileIcons, bool ExplorerRevealActiveFile,
     Dictionary<VoltCommand, KeyCombo> KeyBindings,
     string? TerminalShellPath, string? TerminalShellArgs, int TerminalScrollbackLines);
@@ -33,7 +33,6 @@ public partial class SettingsWindow : Window
     public bool WordWrap { get; private set; }
     public bool WordWrapAtWords { get; private set; }
     public bool WordWrapIndent { get; private set; }
-    public bool IndentGuides { get; private set; }
     public string CommandPalettePosition { get; private set; }
     public string ExplorerFileIcons { get; private set; }
     public bool ExplorerRevealActiveFile { get; private set; }
@@ -121,8 +120,6 @@ public partial class SettingsWindow : Window
         WordWrapAtWordsBox.SelectedIndex = snapshot.WordWrapAtWords ? 0 : 1;
         WordWrapIndent = snapshot.WordWrapIndent;
         WordWrapIndentBox.SelectedIndex = snapshot.WordWrapIndent ? 0 : 1;
-        IndentGuides = snapshot.IndentGuides;
-        IndentGuidesBox.SelectedIndex = snapshot.IndentGuides ? 0 : 1;
         foreach (var option in AppSettings.ExplorerFileIconOptions)
             ExplorerFileIconsBox.Items.Add(option);
         int fileIconsIndex = Array.IndexOf(AppSettings.ExplorerFileIconOptions, ExplorerFileIcons);
@@ -485,7 +482,6 @@ public partial class SettingsWindow : Window
         new(SettingsSection.Find, FindBarPositionRow, ["find", "find bar position", "search position", "top", "bottom"]),
         new(SettingsSection.Find, FindSeedSelectionRow, ["find", "selection", "add selection to find", "seed selection"]),
         new(SettingsSection.Indentation, IndentationTabSizeRow, ["indentation", "tab size", "indent size"]),
-        new(SettingsSection.Indentation, IndentationGuidesRow, ["indentation", "indent guides", "guide lines"]),
         new(SettingsSection.WordWrap, WordWrapEnabledRow, ["word wrap", "wrap", "line wrapping"]),
         new(SettingsSection.WordWrap, WordWrapAtWordsRow, ["word wrap", "word boundaries", "break at word boundaries"]),
         new(SettingsSection.WordWrap, WordWrapIndentRow, ["word wrap", "indent wrapped lines", "wrapped line indent"]),
@@ -727,7 +723,6 @@ public partial class SettingsWindow : Window
         WordWrap = WordWrapBox.SelectedIndex == 0;
         WordWrapAtWords = WordWrapAtWordsBox.SelectedIndex == 0;
         WordWrapIndent = WordWrapIndentBox.SelectedIndex == 0;
-        IndentGuides = IndentGuidesBox.SelectedIndex == 0;
         ExplorerFileIcons = AppSettings.ExplorerFileIconOptions[Math.Max(0, ExplorerFileIconsBox.SelectedIndex)];
         ExplorerRevealActiveFile = ExplorerRevealActiveFileBox.SelectedIndex == 0;
 

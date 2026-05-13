@@ -5,7 +5,7 @@ using BenchmarkDotNet.Toolchains.InProcess.Emit;
 using Volt.Benchmarks;
 
 // Run all benchmarks:       dotnet run -c Release
-// Run specific benchmark:   dotnet run -c Release -- --filter *Tokenize*
+// Run specific benchmark:   dotnet run -c Release -- --filter *JsonLanguage*
 // List available:           dotnet run -c Release -- --list flat
 
 // InProcess toolchain avoids the auto-generated project (which fails to
@@ -18,7 +18,7 @@ var config = ManualConfig.Create(DefaultConfig.Instance)
 var thread = new Thread(() =>
 {
     BenchmarkSwitcher
-        .FromAssembly(typeof(TokenizeBenchmarks).Assembly)
+        .FromAssembly(typeof(JsonLanguageBenchmarks).Assembly)
         .Run(args, config);
 });
 thread.SetApartmentState(ApartmentState.STA);

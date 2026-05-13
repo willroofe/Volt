@@ -288,7 +288,6 @@ public class SettingsWindowTests
             WordWrap: false,
             WordWrapAtWords: true,
             WordWrapIndent: true,
-            IndentGuides: true,
             CommandPalettePosition: "Top",
             ExplorerFileIcons: "Full",
             ExplorerRevealActiveFile: false,

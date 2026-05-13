@@ -8,7 +8,7 @@ namespace Volt;
 public partial class App : Application
 {
     public ThemeManager ThemeManager { get; } = new();
-    public SyntaxManager SyntaxManager { get; } = new();
+    public LanguageManager LanguageManager { get; } = new();
     public AppSettings Settings { get; private set; } = null!;
 
     private SingleInstanceManager? _singleInstance;
@@ -40,7 +40,7 @@ public partial class App : Application
         });
 
         ThemeManager.Initialize();
-        SyntaxManager.Initialize();
+        LanguageManager.Initialize();
         Settings = AppSettings.Load();
         ThemeManager.Apply(Settings.Application.ColorTheme);
         // Pre-warm monospace font cache at idle priority so it's ready

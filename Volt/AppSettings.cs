@@ -87,7 +87,6 @@ public class EditorSettings
     public bool WordWrapAtWords { get; set; } = true;
     public bool WordWrapIndent { get; set; } = true;
     public bool FixedWidthTabs { get; set; }
-    public bool IndentGuides { get; set; } = true;
     public FontSettings Font { get; set; } = new();
     public CaretSettings Caret { get; set; } = new();
     public FindSettings Find { get; set; } = new();

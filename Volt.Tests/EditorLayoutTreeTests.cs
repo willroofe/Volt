@@ -39,7 +39,7 @@ public class EditorLayoutTreeTests
         }
     }
 
-    private static TabInfo NewTab(ThemeManager tm, SyntaxManager sm) => new(tm, sm);
+    private static TabInfo NewTab(ThemeManager tm, LanguageManager lm) => new(tm, lm);
 
     private static (EditorLeafNode left, EditorLeafNode right, EditorSplitNode root) SplitTwoTabs(
         TabInfo a, TabInfo b)
@@ -65,7 +65,7 @@ public class EditorLayoutTreeTests
     {
         EnsureWpfResourcesForTabInfo();
         var tm = new ThemeManager();
-        var sm = new SyntaxManager();
+        var sm = new LanguageManager();
         var t1 = NewTab(tm, sm);
         var t2 = NewTab(tm, sm);
         var t3 = NewTab(tm, sm);
@@ -97,7 +97,7 @@ public class EditorLayoutTreeTests
     {
         EnsureWpfResourcesForTabInfo();
         var tm = new ThemeManager();
-        var sm = new SyntaxManager();
+        var sm = new LanguageManager();
         var (l1, l2, root) = SplitTwoTabs(NewTab(tm, sm), NewTab(tm, sm));
 
         Assert.Same(root, EditorLayoutTree.FindParentSplitOfLeaf(root, l1.Id));
@@ -109,7 +109,7 @@ public class EditorLayoutTreeTests
     {
         EnsureWpfResourcesForTabInfo();
         var tm = new ThemeManager();
-        var sm = new SyntaxManager();
+        var sm = new LanguageManager();
         var a = NewTab(tm, sm);
         var b = NewTab(tm, sm);
         var (l1, l2, root) = SplitTwoTabs(a, b);
@@ -128,7 +128,7 @@ public class EditorLayoutTreeTests
     {
         EnsureWpfResourcesForTabInfo();
         var tm = new ThemeManager();
-        var sm = new SyntaxManager();
+        var sm = new LanguageManager();
         var a = NewTab(tm, sm);
         var b = NewTab(tm, sm);
         var leaf = new EditorLeafNode("solo");
@@ -155,7 +155,7 @@ public class EditorLayoutTreeTests
     {
         EnsureWpfResourcesForTabInfo();
         var tm = new ThemeManager();
-        var sm = new SyntaxManager();
+        var sm = new LanguageManager();
         var a = NewTab(tm, sm);
         var b = NewTab(tm, sm);
         var leaf = new EditorLeafNode("solo");
@@ -182,7 +182,7 @@ public class EditorLayoutTreeTests
     {
         EnsureWpfResourcesForTabInfo();
         var tm = new ThemeManager();
-        var sm = new SyntaxManager();
+        var sm = new LanguageManager();
         var topTab = NewTab(tm, sm);
         var bottomTab = NewTab(tm, sm);
         var topLeaf = new EditorLeafNode("top");
@@ -212,7 +212,7 @@ public class EditorLayoutTreeTests
     {
         EnsureWpfResourcesForTabInfo();
         var tm = new ThemeManager();
-        var sm = new SyntaxManager();
+        var sm = new LanguageManager();
         var t1 = NewTab(tm, sm);
         var t2 = NewTab(tm, sm);
         var bottomTab = NewTab(tm, sm);
@@ -238,7 +238,7 @@ public class EditorLayoutTreeTests
     {
         EnsureWpfResourcesForTabInfo();
         var tm = new ThemeManager();
-        var sm = new SyntaxManager();
+        var sm = new LanguageManager();
         var leftTab = NewTab(tm, sm);
         var rightTab = NewTab(tm, sm);
         var leftLeaf = new EditorLeafNode("left");
@@ -268,7 +268,7 @@ public class EditorLayoutTreeTests
     {
         EnsureWpfResourcesForTabInfo();
         var tm = new ThemeManager();
-        var sm = new SyntaxManager();
+        var sm = new LanguageManager();
         var a = NewTab(tm, sm);
         var (l1, l2, root) = SplitTwoTabs(a, NewTab(tm, sm));
         l2.Tabs.Add(a); // duplicate ref
@@ -300,7 +300,7 @@ public class EditorLayoutTreeTests
     {
         EnsureWpfResourcesForTabInfo();
         var tm = new ThemeManager();
-        var sm = new SyntaxManager();
+        var sm = new LanguageManager();
         var (l1, l2, root) = SplitTwoTabs(NewTab(tm, sm), NewTab(tm, sm));
 
         Assert.Same(l2, EditorLayoutTree.NextLeaf(root, l1.Id, 1));
@@ -312,7 +312,7 @@ public class EditorLayoutTreeTests
     {
         EnsureWpfResourcesForTabInfo();
         var tm = new ThemeManager();
-        var sm = new SyntaxManager();
+        var sm = new LanguageManager();
         var left1 = NewTab(tm, sm);
         var left2 = NewTab(tm, sm);
         var left3 = NewTab(tm, sm);
@@ -335,7 +335,7 @@ public class EditorLayoutTreeTests
     {
         EnsureWpfResourcesForTabInfo();
         var tm = new ThemeManager();
-        var sm = new SyntaxManager();
+        var sm = new LanguageManager();
         var first = NewTab(tm, sm);
         var middle = NewTab(tm, sm);
         var last = NewTab(tm, sm);
@@ -381,7 +381,7 @@ public class EditorLayoutTreeTests
     {
         EnsureWpfResourcesForTabInfo();
         var tm = new ThemeManager();
-        var sm = new SyntaxManager();
+        var sm = new LanguageManager();
         var tabs = new[] { NewTab(tm, sm), NewTab(tm, sm), NewTab(tm, sm) };
         var dto = new EditorLayoutSplitDto
         {

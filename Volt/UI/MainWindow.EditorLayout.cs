@@ -162,7 +162,7 @@ public partial class MainWindow
     {
         var leaf = EditorLayoutTree.FindLeafById(_editorLayoutRoot, _focusedLeafId)
                    ?? EditorLayoutTree.EnumerateLeaves(_editorLayoutRoot).First();
-        var tab = new TabInfo(ThemeManager, SyntaxManager) { FilePath = filePath };
+        var tab = new TabInfo(ThemeManager, LanguageManager) { FilePath = filePath };
         leaf.Tabs.Add(tab);
         tab.Editor.DirtyChanged += (_, _) => UpdateTabHeader(tab);
         tab.FileChangedExternally += OnFileChangedExternally;

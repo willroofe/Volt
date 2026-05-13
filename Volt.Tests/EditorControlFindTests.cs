@@ -10,7 +10,7 @@ public class EditorControlFindTests
     public async Task FindNext_WithPreserveSelection_KeepsFindInSelectionBounds()
     {
         const string selectedLine = "needle needle";
-        var editor = new EditorControl(new ThemeManager(), new SyntaxManager());
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
         editor.SetContent(selectedLine + "\noutside needle");
 
         SelectionManager selection = GetPrivateField<SelectionManager>(editor, "_selection");

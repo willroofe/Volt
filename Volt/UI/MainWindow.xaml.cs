@@ -126,7 +126,7 @@ public partial class MainWindow
     }
 
     private ThemeManager ThemeManager => App.Current.ThemeManager;
-    private SyntaxManager SyntaxManager => App.Current.SyntaxManager;
+    private LanguageManager LanguageManager => App.Current.LanguageManager;
 
     private const int WM_MOUSEHWHEEL = 0x020E;
     private const int WM_NCHITTEST = 0x0084;
@@ -708,7 +708,6 @@ public partial class MainWindow
         editor.WordWrapAtWords = _settings.Editor.WordWrapAtWords;
         editor.WordWrapIndent = _settings.Editor.WordWrapIndent;
         editor.WordWrap = _settings.Editor.WordWrap;
-        editor.IndentGuides = _settings.Editor.IndentGuides;
         editor.BlockCaret = _settings.Editor.Caret.BlockCaret;
         editor.CaretBlinkMs = _settings.Editor.Caret.BlinkMs;
         if (_settings.Editor.Font.Family != null) editor.FontFamilyName = _settings.Editor.Font.Family;
@@ -847,7 +846,7 @@ public partial class MainWindow
             if (string.Equals(tab.FilePath, oldPath, StringComparison.OrdinalIgnoreCase))
             {
                 tab.FilePath = newPath;
-                tab.Editor.SetGrammar(SyntaxManager.GetDefinition(Path.GetExtension(newPath)));
+                tab.Editor.SetLanguage(LanguageManager.GetService(Path.GetExtension(newPath)));
                 UpdateTabHeader(tab);
                 if (tab == _activeTab) UpdateTitle();
             }
@@ -1473,16 +1472,16 @@ public partial class MainWindow
         if (_activeTab!.LanguageOverride != null)
         {
             // Empty string = explicit "Plain Text" override; non-empty = language name
-            var grammar = _activeTab.LanguageOverride.Length > 0
-                ? SyntaxManager.GetDefinitionByName(_activeTab.LanguageOverride)
+            var language = _activeTab.LanguageOverride.Length > 0
+                ? LanguageManager.GetServiceByName(_activeTab.LanguageOverride)
                 : null;
-            editor.SetGrammar(grammar);
-            FileTypeText.Text = grammar?.Name ?? "Plain Text";
+            editor.SetLanguage(language);
+            FileTypeText.Text = language?.Name ?? "Plain Text";
         }
         else
         {
             var ext = _activeTab.FilePath != null ? Path.GetExtension(_activeTab.FilePath).ToLowerInvariant() : "";
-            editor.SetGrammar(SyntaxManager.GetDefinition(ext));
+            editor.SetLanguage(LanguageManager.GetService(ext));
             FileTypeText.Text = FileHelper.GetFileTypeName(ext);
         }
 
@@ -2044,7 +2043,7 @@ public partial class MainWindow
             editor.LineHeightMultiplier, _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition,
             _settings.Editor.Find.SeedWithSelection, _settings.Editor.FixedWidthTabs,
             _settings.Editor.WordWrap, _settings.Editor.WordWrapAtWords, _settings.Editor.WordWrapIndent,
-            _settings.Editor.IndentGuides, _settings.Application.CommandPalettePosition,
+            _settings.Application.CommandPalettePosition,
             _settings.Editor.Explorer.FileIcons, _settings.Editor.Explorer.RevealActiveFile,
             _keyBindingManager.GetAllBindings(),
             _settings.Editor.TerminalShellPath, _settings.Editor.TerminalShellArgs, _settings.Editor.TerminalScrollbackLines);
@@ -2071,7 +2070,6 @@ public partial class MainWindow
         _settings.Editor.WordWrap = dlg.WordWrap;
         _settings.Editor.WordWrapAtWords = dlg.WordWrapAtWords;
         _settings.Editor.WordWrapIndent = dlg.WordWrapIndent;
-        _settings.Editor.IndentGuides = dlg.IndentGuides;
         _settings.Editor.Explorer.FileIcons = dlg.ExplorerFileIcons;
         _settings.Editor.Explorer.RevealActiveFile = dlg.ExplorerRevealActiveFile;
         _settings.Editor.TerminalShellPath = dlg.TerminalShellPath;
@@ -2160,8 +2158,6 @@ public partial class MainWindow
             case VoltCommand.ToggleBottomPanel: Shell.ToggleRegion(PanelPlacement.Bottom); SyncViewMenuChecks(); break;
             case VoltCommand.SwitchTabForward: SwitchTab(+1); break;
             case VoltCommand.SwitchTabBackward: SwitchTab(-1); break;
-            case VoltCommand.FoldBlock: _activeTab?.Editor.FoldAtCaret(); break;
-            case VoltCommand.UnfoldBlock: _activeTab?.Editor.UnfoldAtCaret(); break;
             case VoltCommand.GoToLine: OpenGoToLine(); break;
             case VoltCommand.FocusExplorer: FocusExplorer(); break;
             case VoltCommand.ToggleTerminal: ToggleTerminalPanel(); break;
