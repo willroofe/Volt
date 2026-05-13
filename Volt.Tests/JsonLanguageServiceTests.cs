@@ -5,6 +5,22 @@ namespace Volt.Tests;
 
 public class JsonLanguageServiceTests
 {
+    public static TheoryData<string> DiagnosticAlignmentCases => new()
+    {
+        """{ "name": "Volt" }""",
+        """{ "missingColon" "value" }""",
+        """{ "trailing": true, }""",
+        """[1,]""",
+        """{ "badLiteral": truth }""",
+        """{ "badEscape": "\q" }""",
+        """{ "badUnicode": "\u12Z" }""",
+        """{ "badNumber": 01 }""",
+        "{ \"unterminatedString\": \"nope",
+        """true false""",
+        """@""",
+        """{ "array": [1, 2 }""",
+    };
+
     [Fact]
     public void Analyze_ValidObject_BuildsTreeAndClassifiesTokens()
     {
@@ -40,6 +56,29 @@ public class JsonLanguageServiceTests
         Assert.NotEmpty(snapshot.Diagnostics);
         Assert.Equal(JsonSyntaxKinds.Document, snapshot.Root.Kind);
         Assert.Contains(snapshot.Diagnostics, diagnostic => diagnostic.Message.Contains("Expected ':'"));
+    }
+
+    [Theory]
+    [MemberData(nameof(DiagnosticAlignmentCases))]
+    public void AnalyzeDiagnostics_MatchesFullAnalysisDiagnostics(string text)
+    {
+        var service = new JsonLanguageService();
+
+        LanguageSnapshot fullSnapshot = service.Analyze(text, sourceVersion: 1);
+        LanguageDiagnosticsSnapshot diagnosticsSnapshot = service.AnalyzeDiagnostics(
+            new StringLanguageTextSource(text),
+            sourceVersion: 1,
+            progress: null,
+            CancellationToken.None);
+
+        var fullDiagnostics = fullSnapshot.Diagnostics
+            .Select(diagnostic => (diagnostic.Range, diagnostic.Message))
+            .ToArray();
+        var streamingDiagnostics = diagnosticsSnapshot.Diagnostics
+            .Select(diagnostic => (diagnostic.Range, diagnostic.Message))
+            .ToArray();
+
+        Assert.Equal(fullDiagnostics, streamingDiagnostics);
     }
 
     [Fact]
@@ -273,6 +312,31 @@ public class JsonLanguageServiceTests
                 return 'a';
 
             return Suffix[column - paddingEnd];
+        }
+    }
+
+    private sealed class StringLanguageTextSource : ILanguageTextSource
+    {
+        private readonly string[] _lines;
+
+        public StringLanguageTextSource(string text)
+        {
+            _lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        }
+
+        public int LineCount => _lines.Length;
+        public long CharCountWithoutLineEndings => _lines.Sum(line => line.Length);
+
+        public int GetLineLength(int line) => _lines[line].Length;
+
+        public string GetLineSegment(int line, int startColumn, int length)
+        {
+            string value = _lines[line];
+            if (startColumn >= value.Length)
+                return "";
+
+            int count = Math.Min(length, value.Length - startColumn);
+            return value.Substring(startColumn, count);
         }
     }
 }

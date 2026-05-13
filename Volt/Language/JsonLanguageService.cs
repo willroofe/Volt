@@ -10,7 +10,9 @@ public sealed class JsonLanguageService : ILanguageService
         var lexer = new JsonLexer(text);
         IReadOnlyList<JsonToken> tokens = lexer.Lex();
 
-        var parser = new JsonParser(tokens, lexer.Diagnostics);
+        IReadOnlyList<ParseDiagnostic> diagnostics = AnalyzeTokenDiagnostics(tokens, lexer.Diagnostics);
+
+        var parser = new JsonParser(tokens);
         SyntaxNode root = parser.ParseDocument();
 
         IReadOnlySet<TextRange> propertyRanges = parser.PropertyNameRanges;
@@ -27,14 +29,14 @@ public sealed class JsonLanguageService : ILanguageService
                 JsonTokenKind.Number => LanguageTokenKind.Number,
                 JsonTokenKind.True or JsonTokenKind.False => LanguageTokenKind.Boolean,
                 JsonTokenKind.Null => LanguageTokenKind.Null,
-                JsonTokenKind.Invalid => LanguageTokenKind.Invalid,
+                JsonTokenKind.InvalidLiteral or JsonTokenKind.InvalidCharacter => LanguageTokenKind.Invalid,
                 _ => LanguageTokenKind.Punctuation,
             };
 
             publicTokens.Add(new LanguageToken(token.Range, kind, GetScope(kind), token.Text));
         }
 
-        return new LanguageSnapshot(Name, sourceVersion, root, publicTokens, parser.Diagnostics);
+        return new LanguageSnapshot(Name, sourceVersion, root, publicTokens, diagnostics);
     }
 
     public LanguageDiagnosticsSnapshot AnalyzeDiagnostics(
@@ -183,7 +185,7 @@ public sealed class JsonLanguageService : ILanguageService
             JsonTokenKind.Number => LanguageTokenKind.Number,
             JsonTokenKind.True or JsonTokenKind.False => LanguageTokenKind.Boolean,
             JsonTokenKind.Null => LanguageTokenKind.Null,
-            JsonTokenKind.Invalid => LanguageTokenKind.Invalid,
+            JsonTokenKind.InvalidLiteral or JsonTokenKind.InvalidCharacter => LanguageTokenKind.Invalid,
             _ => LanguageTokenKind.Punctuation,
         };
     }
@@ -225,6 +227,20 @@ public sealed class JsonLanguageService : ILanguageService
         LanguageTokenKind.Invalid => "invalid",
         _ => "operator",
     };
+
+    private static IReadOnlyList<ParseDiagnostic> AnalyzeTokenDiagnostics(
+        IReadOnlyList<JsonToken> tokens,
+        IReadOnlyList<ParseDiagnostic> lexerDiagnostics)
+    {
+        var diagnostics = new JsonDiagnosticSink();
+        diagnostics.AddRange(lexerDiagnostics);
+
+        var validator = new JsonGrammarValidator(diagnostics);
+        foreach (JsonToken token in tokens)
+            validator.Accept(token);
+
+        return diagnostics.Diagnostics;
+    }
 }
 
 internal static class JsonSyntaxKinds
@@ -255,7 +271,8 @@ internal enum JsonTokenKind
     True,
     False,
     Null,
-    Invalid,
+    InvalidLiteral,
+    InvalidCharacter,
     EndOfFile,
 }
 
@@ -323,7 +340,10 @@ internal sealed class JsonLexer
                     else if (char.IsLetter(current))
                         LexLiteralOrInvalid();
                     else
-                        AddInvalid(start, Advance().ToString(), "Unexpected character.");
+                    {
+                        char invalid = Advance();
+                        AddInvalid(start, invalid.ToString(), $"Unexpected character '{invalid}'.");
+                    }
                     break;
             }
         }
@@ -354,11 +374,11 @@ internal sealed class JsonLexer
             "true" => JsonTokenKind.True,
             "false" => JsonTokenKind.False,
             "null" => JsonTokenKind.Null,
-            _ => JsonTokenKind.Invalid,
+            _ => JsonTokenKind.InvalidLiteral,
         };
 
         _tokens.Add(new JsonToken(kind, new TextRange(start, Position), text));
-        if (kind == JsonTokenKind.Invalid)
+        if (kind == JsonTokenKind.InvalidLiteral)
             AddDiagnostic(new TextRange(start, Position), $"Unexpected literal '{text}'.");
     }
 
@@ -486,7 +506,7 @@ internal sealed class JsonLexer
     private void AddInvalid(TextPosition start, string text, string message)
     {
         TextRange range = new(start, Position);
-        _tokens.Add(new JsonToken(JsonTokenKind.Invalid, range, text));
+        _tokens.Add(new JsonToken(JsonTokenKind.InvalidCharacter, range, text));
         AddDiagnostic(range, message);
     }
 
@@ -531,239 +551,43 @@ internal sealed class JsonLexer
         value is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
 }
 
-internal sealed class JsonParser
+internal sealed class JsonDiagnosticSink
 {
-    private readonly IReadOnlyList<JsonToken> _tokens;
-    private readonly List<ParseDiagnostic> _diagnostics;
-    private readonly HashSet<TextRange> _propertyNameRanges = [];
-    private int _index;
+    private readonly int _maxDiagnostics;
+    private readonly List<ParseDiagnostic> _diagnostics = [];
 
-    public JsonParser(IReadOnlyList<JsonToken> tokens, IReadOnlyList<ParseDiagnostic> diagnostics)
+    public JsonDiagnosticSink(int maxDiagnostics = int.MaxValue)
     {
-        _tokens = tokens;
-        _diagnostics = [..diagnostics];
+        _maxDiagnostics = maxDiagnostics;
     }
 
     public IReadOnlyList<ParseDiagnostic> Diagnostics => _diagnostics;
-    public IReadOnlySet<TextRange> PropertyNameRanges => _propertyNameRanges;
+    public bool HasMoreDiagnostics { get; private set; }
 
-    public SyntaxNode ParseDocument()
+    public void Add(TextRange range, string message) =>
+        Add(new ParseDiagnostic(range, DiagnosticSeverity.Error, message));
+
+    public void Add(ParseDiagnostic diagnostic)
     {
-        TextPosition start = Current.Range.Start;
-        SyntaxNode value = Current.Kind == JsonTokenKind.EndOfFile
-            ? Missing("Expected JSON value.")
-            : ParseValue();
-
-        while (Current.Kind != JsonTokenKind.EndOfFile)
+        if (_diagnostics.Count < _maxDiagnostics)
         {
-            AddDiagnostic(Current.Range, "Only one top-level JSON value is allowed.");
-            Advance();
+            _diagnostics.Add(diagnostic);
         }
-
-        TextRange range = new(start, Current.Range.End);
-        return new SyntaxNode(JsonSyntaxKinds.Document, range, [value]);
-    }
-
-    private SyntaxNode ParseValue()
-    {
-        return Current.Kind switch
+        else
         {
-            JsonTokenKind.LeftBrace => ParseObject(),
-            JsonTokenKind.LeftBracket => ParseArray(),
-            JsonTokenKind.String => Leaf(JsonSyntaxKinds.String, Advance()),
-            JsonTokenKind.Number => Leaf(JsonSyntaxKinds.Number, Advance()),
-            JsonTokenKind.True => Leaf(JsonSyntaxKinds.True, Advance()),
-            JsonTokenKind.False => Leaf(JsonSyntaxKinds.False, Advance()),
-            JsonTokenKind.Null => Leaf(JsonSyntaxKinds.Null, Advance()),
-            JsonTokenKind.EndOfFile => Missing("Expected JSON value."),
-            _ => ErrorNode("Expected JSON value."),
-        };
-    }
-
-    private SyntaxNode ParseObject()
-    {
-        JsonToken open = Expect(JsonTokenKind.LeftBrace, "Expected '{'.");
-        var properties = new List<SyntaxNode>();
-
-        if (Match(JsonTokenKind.RightBrace, out JsonToken close))
-            return new SyntaxNode(JsonSyntaxKinds.Object, Combine(open.Range, close.Range), properties);
-
-        while (Current.Kind != JsonTokenKind.EndOfFile)
-        {
-            if (Current.Kind != JsonTokenKind.String)
-            {
-                properties.Add(ErrorNode("Expected property name."));
-                if (!RecoverObject())
-                    break;
-            }
-            else
-            {
-                JsonToken name = Advance();
-                _propertyNameRanges.Add(name.Range);
-
-                Expect(JsonTokenKind.Colon, "Expected ':' after property name.");
-                SyntaxNode value = Current.Kind == JsonTokenKind.EndOfFile
-                    ? Missing("Expected property value.")
-                    : ParseValue();
-
-                properties.Add(new SyntaxNode(JsonSyntaxKinds.Property,
-                    Combine(name.Range, value.Range), [Leaf(JsonSyntaxKinds.String, name), value]));
-            }
-
-            if (Match(JsonTokenKind.Comma, out JsonToken comma))
-            {
-                if (Current.Kind == JsonTokenKind.RightBrace)
-                    AddDiagnostic(comma.Range, "Trailing commas are not allowed in JSON objects.");
-                else
-                    continue;
-            }
-
-            if (Match(JsonTokenKind.RightBrace, out close))
-                return new SyntaxNode(JsonSyntaxKinds.Object, Combine(open.Range, close.Range), properties);
-
-            AddDiagnostic(Current.Range, "Expected ',' or '}' after object property.");
-            if (!RecoverObject())
-                break;
+            HasMoreDiagnostics = true;
         }
-
-        AddDiagnostic(open.Range, "Object is not terminated.");
-        return new SyntaxNode(JsonSyntaxKinds.Object, Combine(open.Range, Previous.Range), properties);
     }
 
-    private SyntaxNode ParseArray()
+    public void AddRange(IEnumerable<ParseDiagnostic> diagnostics)
     {
-        JsonToken open = Expect(JsonTokenKind.LeftBracket, "Expected '['.");
-        var items = new List<SyntaxNode>();
-
-        if (Match(JsonTokenKind.RightBracket, out JsonToken close))
-            return new SyntaxNode(JsonSyntaxKinds.Array, Combine(open.Range, close.Range), items);
-
-        while (Current.Kind != JsonTokenKind.EndOfFile)
-        {
-            items.Add(ParseValue());
-
-            if (Match(JsonTokenKind.Comma, out JsonToken comma))
-            {
-                if (Current.Kind == JsonTokenKind.RightBracket)
-                    AddDiagnostic(comma.Range, "Trailing commas are not allowed in JSON arrays.");
-                else
-                    continue;
-            }
-
-            if (Match(JsonTokenKind.RightBracket, out close))
-                return new SyntaxNode(JsonSyntaxKinds.Array, Combine(open.Range, close.Range), items);
-
-            AddDiagnostic(Current.Range, "Expected ',' or ']' after array item.");
-            if (!RecoverArray())
-                break;
-        }
-
-        AddDiagnostic(open.Range, "Array is not terminated.");
-        return new SyntaxNode(JsonSyntaxKinds.Array, Combine(open.Range, Previous.Range), items);
+        foreach (ParseDiagnostic diagnostic in diagnostics)
+            Add(diagnostic);
     }
-
-    private bool RecoverObject()
-    {
-        while (Current.Kind != JsonTokenKind.EndOfFile)
-        {
-            if (Current.Kind is JsonTokenKind.Comma or JsonTokenKind.RightBrace)
-                return true;
-            Advance();
-        }
-
-        return false;
-    }
-
-    private bool RecoverArray()
-    {
-        while (Current.Kind != JsonTokenKind.EndOfFile)
-        {
-            if (Current.Kind is JsonTokenKind.Comma or JsonTokenKind.RightBracket)
-                return true;
-            Advance();
-        }
-
-        return false;
-    }
-
-    private SyntaxNode Missing(string message)
-    {
-        AddDiagnostic(Current.Range, message);
-        return new SyntaxNode(JsonSyntaxKinds.Missing, new TextRange(Current.Range.Start, Current.Range.Start), []);
-    }
-
-    private SyntaxNode ErrorNode(string message)
-    {
-        AddDiagnostic(Current.Range, message);
-        JsonToken token = Advance();
-        return new SyntaxNode(JsonSyntaxKinds.Error, token.Range, [], token.Text);
-    }
-
-    private SyntaxNode Leaf(string kind, JsonToken token) =>
-        new(kind, token.Range, [], token.Text);
-
-    private bool Match(JsonTokenKind kind, out JsonToken token)
-    {
-        if (Current.Kind == kind)
-        {
-            token = Advance();
-            return true;
-        }
-
-        token = default;
-        return false;
-    }
-
-    private JsonToken Expect(JsonTokenKind kind, string message)
-    {
-        if (Current.Kind == kind)
-            return Advance();
-
-        AddDiagnostic(Current.Range, message);
-        return new JsonToken(kind, new TextRange(Current.Range.Start, Current.Range.Start), "");
-    }
-
-    private JsonToken Advance()
-    {
-        JsonToken token = Current;
-        if (Current.Kind != JsonTokenKind.EndOfFile)
-            _index++;
-        return token;
-    }
-
-    private JsonToken Current => _tokens[Math.Min(_index, _tokens.Count - 1)];
-    private JsonToken Previous => _tokens[Math.Max(0, Math.Min(_index - 1, _tokens.Count - 1))];
-
-    private void AddDiagnostic(TextRange range, string message) =>
-        _diagnostics.Add(new ParseDiagnostic(range, DiagnosticSeverity.Error, message));
-
-    private static TextRange Combine(TextRange start, TextRange end) =>
-        new(start.Start, end.End);
 }
 
-internal static class JsonDiagnosticsAnalyzer
+internal sealed class JsonGrammarValidator
 {
-    private const int SegmentSize = 64 * 1024;
-    private const int MaxDiagnostics = 1000;
-    private const long ProgressReportInterval = 1 * 1024 * 1024;
-
-    public static LanguageDiagnosticsSnapshot Analyze(
-        string languageName,
-        ILanguageTextSource source,
-        long sourceVersion,
-        IProgress<LanguageDiagnosticsProgress>? progress,
-        CancellationToken cancellationToken)
-    {
-        var analyzer = new Analyzer(source, progress, cancellationToken);
-        return new LanguageDiagnosticsSnapshot(
-            languageName,
-            sourceVersion,
-            analyzer.Analyze(),
-            IsComplete: true,
-            new LanguageDiagnosticsProgress(source.CharCountWithoutLineEndings, source.CharCountWithoutLineEndings),
-            analyzer.HasMoreDiagnostics);
-    }
-
     private enum ContainerKind
     {
         Object,
@@ -794,15 +618,511 @@ internal static class JsonDiagnosticsAnalyzer
         TextPosition Start,
         bool AfterComma);
 
+    private readonly JsonDiagnosticSink _diagnostics;
+    private readonly List<Frame> _stack = [];
+    private bool _rootHasValue;
+    private bool _finished;
+
+    public JsonGrammarValidator(JsonDiagnosticSink diagnostics)
+    {
+        _diagnostics = diagnostics;
+    }
+
+    public void Accept(JsonToken token) =>
+        Accept(token.Kind, token.Range);
+
+    public void Accept(JsonTokenKind kind, TextRange range)
+    {
+        switch (kind)
+        {
+            case JsonTokenKind.LeftBrace:
+                StartContainer(ContainerKind.Object, range);
+                break;
+            case JsonTokenKind.RightBrace:
+                CloseObject(range);
+                break;
+            case JsonTokenKind.LeftBracket:
+                StartContainer(ContainerKind.Array, range);
+                break;
+            case JsonTokenKind.RightBracket:
+                CloseArray(range);
+                break;
+            case JsonTokenKind.Colon:
+                HandleColon(range);
+                break;
+            case JsonTokenKind.Comma:
+                HandleComma(range);
+                break;
+            case JsonTokenKind.String:
+                HandleScalar(ScalarKind.String, range);
+                break;
+            case JsonTokenKind.Number:
+                HandleScalar(ScalarKind.Number, range);
+                break;
+            case JsonTokenKind.True:
+            case JsonTokenKind.False:
+            case JsonTokenKind.Null:
+                HandleScalar(ScalarKind.Literal, range);
+                break;
+            case JsonTokenKind.InvalidLiteral:
+                HandleScalar(ScalarKind.Invalid, range);
+                break;
+            case JsonTokenKind.InvalidCharacter:
+                break;
+            case JsonTokenKind.EndOfFile:
+                Finish(range.Start);
+                break;
+        }
+    }
+
+    public void Finish(TextPosition end)
+    {
+        if (_finished)
+            return;
+
+        _finished = true;
+        if (!_rootHasValue && _stack.Count == 0)
+            _diagnostics.Add(new TextRange(end, end), "Expected JSON value.");
+
+        for (int i = _stack.Count - 1; i >= 0; i--)
+        {
+            Frame frame = _stack[i];
+            _diagnostics.Add(new TextRange(frame.Start, new TextPosition(frame.Start.Line, frame.Start.Column + 1)),
+                frame.Kind == ContainerKind.Object
+                    ? "Object is not terminated."
+                    : "Array is not terminated.");
+        }
+    }
+
+    private void StartContainer(ContainerKind kind, TextRange range)
+    {
+        if (!CanStartValue(range.Start))
+            return;
+
+        _stack.Add(new Frame(
+            kind,
+            kind == ContainerKind.Object
+                ? ContainerState.ObjectPropertyOrEnd
+                : ContainerState.ArrayValueOrEnd,
+            range.Start,
+            AfterComma: false));
+    }
+
+    private void CloseObject(TextRange range)
+    {
+        if (_stack.Count == 0 || CurrentFrame.Kind != ContainerKind.Object)
+        {
+            _diagnostics.Add(range, "Unexpected '}'.");
+            return;
+        }
+
+        Frame frame = CurrentFrame;
+        if (frame.State == ContainerState.ObjectColon)
+            _diagnostics.Add(range, "Expected ':' after property name.");
+        else if (frame.State == ContainerState.ObjectValue)
+            _diagnostics.Add(range, "Expected property value.");
+        else if (frame.State == ContainerState.ObjectPropertyOrEnd && frame.AfterComma)
+            _diagnostics.Add(range, "Trailing commas are not allowed in JSON objects.");
+        else if (frame.State != ContainerState.ObjectPropertyOrEnd
+                 && frame.State != ContainerState.ObjectCommaOrEnd)
+            _diagnostics.Add(range, "Expected ',' or '}' after object property.");
+
+        _stack.RemoveAt(_stack.Count - 1);
+        CompleteValue(range);
+    }
+
+    private void CloseArray(TextRange range)
+    {
+        if (_stack.Count == 0 || CurrentFrame.Kind != ContainerKind.Array)
+        {
+            _diagnostics.Add(range, "Unexpected ']'.");
+            return;
+        }
+
+        Frame frame = CurrentFrame;
+        if (frame.State == ContainerState.ArrayValueOrEnd && frame.AfterComma)
+            _diagnostics.Add(range, "Trailing commas are not allowed in JSON arrays.");
+        else if (frame.State != ContainerState.ArrayValueOrEnd
+                 && frame.State != ContainerState.ArrayCommaOrEnd)
+            _diagnostics.Add(range, "Expected ',' or ']' after array item.");
+
+        _stack.RemoveAt(_stack.Count - 1);
+        CompleteValue(range);
+    }
+
+    private void HandleColon(TextRange range)
+    {
+        if (_stack.Count > 0
+            && CurrentFrame.Kind == ContainerKind.Object
+            && CurrentFrame.State == ContainerState.ObjectColon)
+        {
+            SetCurrentFrame(ContainerState.ObjectValue);
+            return;
+        }
+
+        _diagnostics.Add(range, "Unexpected ':'.");
+    }
+
+    private void HandleComma(TextRange range)
+    {
+        if (_stack.Count == 0)
+        {
+            _diagnostics.Add(range, "Unexpected ','.");
+            return;
+        }
+
+        Frame frame = CurrentFrame;
+        if (frame.Kind == ContainerKind.Object && frame.State == ContainerState.ObjectCommaOrEnd)
+        {
+            SetCurrentFrame(ContainerState.ObjectPropertyOrEnd, afterComma: true);
+            return;
+        }
+
+        if (frame.Kind == ContainerKind.Array && frame.State == ContainerState.ArrayCommaOrEnd)
+        {
+            SetCurrentFrame(ContainerState.ArrayValueOrEnd, afterComma: true);
+            return;
+        }
+
+        _diagnostics.Add(range,
+            frame.Kind == ContainerKind.Object
+                ? "Expected object property before ','."
+                : "Expected array item before ','.");
+    }
+
+    private void HandleScalar(ScalarKind kind, TextRange range)
+    {
+        if (_stack.Count == 0)
+        {
+            if (_rootHasValue)
+                _diagnostics.Add(range, "Only one top-level JSON value is allowed.");
+            else
+                _rootHasValue = true;
+            return;
+        }
+
+        Frame frame = CurrentFrame;
+        if (frame.Kind == ContainerKind.Object)
+        {
+            switch (frame.State)
+            {
+                case ContainerState.ObjectPropertyOrEnd:
+                    if (kind == ScalarKind.String)
+                    {
+                        SetCurrentFrame(ContainerState.ObjectColon);
+                    }
+                    else
+                    {
+                        _diagnostics.Add(range, "Expected property name.");
+                    }
+                    return;
+
+                case ContainerState.ObjectColon:
+                    _diagnostics.Add(range, "Expected ':' after property name.");
+                    SetCurrentFrame(ContainerState.ObjectCommaOrEnd);
+                    return;
+
+                case ContainerState.ObjectValue:
+                    SetCurrentFrame(ContainerState.ObjectCommaOrEnd);
+                    return;
+
+                case ContainerState.ObjectCommaOrEnd:
+                    _diagnostics.Add(range, "Expected ',' or '}' after object property.");
+                    return;
+            }
+        }
+
+        if (frame.Kind == ContainerKind.Array)
+        {
+            if (frame.State == ContainerState.ArrayValueOrEnd)
+            {
+                SetCurrentFrame(ContainerState.ArrayCommaOrEnd);
+            }
+            else
+            {
+                _diagnostics.Add(range, "Expected ',' or ']' after array item.");
+            }
+        }
+    }
+
+    private bool CanStartValue(TextPosition start)
+    {
+        if (_stack.Count == 0)
+        {
+            if (_rootHasValue)
+            {
+                _diagnostics.Add(new TextRange(start, new TextPosition(start.Line, start.Column + 1)),
+                    "Only one top-level JSON value is allowed.");
+                return false;
+            }
+
+            return true;
+        }
+
+        Frame frame = CurrentFrame;
+        if (frame.Kind == ContainerKind.Array && frame.State == ContainerState.ArrayValueOrEnd)
+            return true;
+        if (frame.Kind == ContainerKind.Object && frame.State == ContainerState.ObjectValue)
+            return true;
+
+        _diagnostics.Add(new TextRange(start, new TextPosition(start.Line, start.Column + 1)),
+            frame.Kind == ContainerKind.Object
+                ? ExpectedObjectMessage(frame.State)
+                : "Expected ',' or ']' after array item.");
+        return false;
+    }
+
+    private void CompleteValue(TextRange range)
+    {
+        if (_stack.Count == 0)
+        {
+            if (_rootHasValue)
+                _diagnostics.Add(range, "Only one top-level JSON value is allowed.");
+            else
+                _rootHasValue = true;
+            return;
+        }
+
+        Frame frame = CurrentFrame;
+        if (frame.Kind == ContainerKind.Object && frame.State == ContainerState.ObjectValue)
+        {
+            SetCurrentFrame(ContainerState.ObjectCommaOrEnd);
+            return;
+        }
+
+        if (frame.Kind == ContainerKind.Array && frame.State == ContainerState.ArrayValueOrEnd)
+            SetCurrentFrame(ContainerState.ArrayCommaOrEnd);
+    }
+
+    private Frame CurrentFrame
+    {
+        get => _stack[^1];
+        set => _stack[^1] = value;
+    }
+
+    private void SetCurrentFrame(ContainerState state, bool afterComma = false)
+    {
+        Frame frame = CurrentFrame;
+        CurrentFrame = frame with
+        {
+            State = state,
+            AfterComma = afterComma
+        };
+    }
+
+    private static string ExpectedObjectMessage(ContainerState state) => state switch
+    {
+        ContainerState.ObjectPropertyOrEnd => "Expected property name.",
+        ContainerState.ObjectColon => "Expected ':' after property name.",
+        ContainerState.ObjectValue => "Expected property value.",
+        _ => "Expected ',' or '}' after object property.",
+    };
+}
+
+internal sealed class JsonParser
+{
+    private readonly IReadOnlyList<JsonToken> _tokens;
+    private readonly HashSet<TextRange> _propertyNameRanges = [];
+    private int _index;
+
+    public JsonParser(IReadOnlyList<JsonToken> tokens)
+    {
+        _tokens = tokens;
+    }
+
+    public IReadOnlySet<TextRange> PropertyNameRanges => _propertyNameRanges;
+
+    public SyntaxNode ParseDocument()
+    {
+        TextPosition start = Current.Range.Start;
+        SyntaxNode value = Current.Kind == JsonTokenKind.EndOfFile
+            ? Missing()
+            : ParseValue();
+
+        while (Current.Kind != JsonTokenKind.EndOfFile)
+        {
+            Advance();
+        }
+
+        TextRange range = new(start, Current.Range.End);
+        return new SyntaxNode(JsonSyntaxKinds.Document, range, [value]);
+    }
+
+    private SyntaxNode ParseValue()
+    {
+        return Current.Kind switch
+        {
+            JsonTokenKind.LeftBrace => ParseObject(),
+            JsonTokenKind.LeftBracket => ParseArray(),
+            JsonTokenKind.String => Leaf(JsonSyntaxKinds.String, Advance()),
+            JsonTokenKind.Number => Leaf(JsonSyntaxKinds.Number, Advance()),
+            JsonTokenKind.True => Leaf(JsonSyntaxKinds.True, Advance()),
+            JsonTokenKind.False => Leaf(JsonSyntaxKinds.False, Advance()),
+            JsonTokenKind.Null => Leaf(JsonSyntaxKinds.Null, Advance()),
+            JsonTokenKind.EndOfFile => Missing(),
+            _ => ErrorNode(),
+        };
+    }
+
+    private SyntaxNode ParseObject()
+    {
+        JsonToken open = Expect(JsonTokenKind.LeftBrace);
+        var properties = new List<SyntaxNode>();
+
+        if (Match(JsonTokenKind.RightBrace, out JsonToken close))
+            return new SyntaxNode(JsonSyntaxKinds.Object, Combine(open.Range, close.Range), properties);
+
+        while (Current.Kind != JsonTokenKind.EndOfFile)
+        {
+            if (Current.Kind != JsonTokenKind.String)
+            {
+                properties.Add(ErrorNode());
+                if (!RecoverTo(JsonTokenKind.Comma, JsonTokenKind.RightBrace))
+                    break;
+            }
+            else
+            {
+                JsonToken name = Advance();
+                _propertyNameRanges.Add(name.Range);
+
+                Expect(JsonTokenKind.Colon);
+                SyntaxNode value = Current.Kind == JsonTokenKind.EndOfFile
+                    ? Missing()
+                    : ParseValue();
+
+                properties.Add(new SyntaxNode(JsonSyntaxKinds.Property,
+                    Combine(name.Range, value.Range), [Leaf(JsonSyntaxKinds.String, name), value]));
+            }
+
+            if (Match(JsonTokenKind.Comma, out _) && Current.Kind != JsonTokenKind.RightBrace)
+                continue;
+
+            if (Match(JsonTokenKind.RightBrace, out close))
+                return new SyntaxNode(JsonSyntaxKinds.Object, Combine(open.Range, close.Range), properties);
+
+            if (!RecoverTo(JsonTokenKind.Comma, JsonTokenKind.RightBrace))
+                break;
+        }
+
+        return new SyntaxNode(JsonSyntaxKinds.Object, Combine(open.Range, Previous.Range), properties);
+    }
+
+    private SyntaxNode ParseArray()
+    {
+        JsonToken open = Expect(JsonTokenKind.LeftBracket);
+        var items = new List<SyntaxNode>();
+
+        if (Match(JsonTokenKind.RightBracket, out JsonToken close))
+            return new SyntaxNode(JsonSyntaxKinds.Array, Combine(open.Range, close.Range), items);
+
+        while (Current.Kind != JsonTokenKind.EndOfFile)
+        {
+            items.Add(ParseValue());
+
+            if (Match(JsonTokenKind.Comma, out _) && Current.Kind != JsonTokenKind.RightBracket)
+                continue;
+
+            if (Match(JsonTokenKind.RightBracket, out close))
+                return new SyntaxNode(JsonSyntaxKinds.Array, Combine(open.Range, close.Range), items);
+
+            if (!RecoverTo(JsonTokenKind.Comma, JsonTokenKind.RightBracket))
+                break;
+        }
+
+        return new SyntaxNode(JsonSyntaxKinds.Array, Combine(open.Range, Previous.Range), items);
+    }
+
+    private bool RecoverTo(JsonTokenKind first, JsonTokenKind second)
+    {
+        while (Current.Kind != JsonTokenKind.EndOfFile)
+        {
+            if (Current.Kind == first || Current.Kind == second)
+                return true;
+            Advance();
+        }
+
+        return false;
+    }
+
+    private SyntaxNode Missing()
+    {
+        return new SyntaxNode(JsonSyntaxKinds.Missing, new TextRange(Current.Range.Start, Current.Range.Start), []);
+    }
+
+    private SyntaxNode ErrorNode()
+    {
+        JsonToken token = Advance();
+        return new SyntaxNode(JsonSyntaxKinds.Error, token.Range, [], token.Text);
+    }
+
+    private SyntaxNode Leaf(string kind, JsonToken token) =>
+        new(kind, token.Range, [], token.Text);
+
+    private bool Match(JsonTokenKind kind, out JsonToken token)
+    {
+        if (Current.Kind == kind)
+        {
+            token = Advance();
+            return true;
+        }
+
+        token = default;
+        return false;
+    }
+
+    private JsonToken Expect(JsonTokenKind kind)
+    {
+        if (Current.Kind == kind)
+            return Advance();
+
+        return new JsonToken(kind, new TextRange(Current.Range.Start, Current.Range.Start), "");
+    }
+
+    private JsonToken Advance()
+    {
+        JsonToken token = Current;
+        if (Current.Kind != JsonTokenKind.EndOfFile)
+            _index++;
+        return token;
+    }
+
+    private JsonToken Current => _tokens[Math.Min(_index, _tokens.Count - 1)];
+    private JsonToken Previous => _tokens[Math.Max(0, Math.Min(_index - 1, _tokens.Count - 1))];
+
+    private static TextRange Combine(TextRange start, TextRange end) =>
+        new(start.Start, end.End);
+}
+
+internal static class JsonDiagnosticsAnalyzer
+{
+    private const int SegmentSize = 64 * 1024;
+    private const int MaxDiagnostics = 1000;
+    private const long ProgressReportInterval = 1 * 1024 * 1024;
+
+    public static LanguageDiagnosticsSnapshot Analyze(
+        string languageName,
+        ILanguageTextSource source,
+        long sourceVersion,
+        IProgress<LanguageDiagnosticsProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var analyzer = new Analyzer(source, progress, cancellationToken);
+        return new LanguageDiagnosticsSnapshot(
+            languageName,
+            sourceVersion,
+            analyzer.Analyze(),
+            IsComplete: true,
+            new LanguageDiagnosticsProgress(source.CharCountWithoutLineEndings, source.CharCountWithoutLineEndings),
+            analyzer.HasMoreDiagnostics);
+    }
+
     private sealed class Analyzer
     {
         private readonly SourceCursor _cursor;
         private readonly IProgress<LanguageDiagnosticsProgress>? _progress;
         private readonly CancellationToken _cancellationToken;
-        private readonly List<ParseDiagnostic> _diagnostics = [];
-        private readonly List<Frame> _stack = [];
-        private bool _rootHasValue;
-        private bool _hasMoreDiagnostics;
+        private readonly JsonDiagnosticSink _diagnostics = new(MaxDiagnostics);
+        private readonly JsonGrammarValidator _grammar;
         private long _nextProgressReport = ProgressReportInterval;
 
         public Analyzer(
@@ -813,9 +1133,10 @@ internal static class JsonDiagnosticsAnalyzer
             _cursor = new SourceCursor(source);
             _progress = progress;
             _cancellationToken = cancellationToken;
+            _grammar = new JsonGrammarValidator(_diagnostics);
         }
 
-        public bool HasMoreDiagnostics => _hasMoreDiagnostics;
+        public bool HasMoreDiagnostics => _diagnostics.HasMoreDiagnostics;
 
         public IReadOnlyList<ParseDiagnostic> Analyze()
         {
@@ -827,6 +1148,9 @@ internal static class JsonDiagnosticsAnalyzer
 
                 if (_cursor.IsAtLineEnd)
                 {
+                    if (_cursor.IsAtLastLine)
+                        break;
+
                     _cursor.AdvanceLine();
                     continue;
                 }
@@ -843,27 +1167,27 @@ internal static class JsonDiagnosticsAnalyzer
                 {
                     case '{':
                         _cursor.Advance();
-                        StartContainer(ContainerKind.Object, start);
+                        Accept(JsonTokenKind.LeftBrace, start, _cursor.Position);
                         break;
                     case '}':
                         _cursor.Advance();
-                        CloseObject(start, _cursor.Position);
+                        Accept(JsonTokenKind.RightBrace, start, _cursor.Position);
                         break;
                     case '[':
                         _cursor.Advance();
-                        StartContainer(ContainerKind.Array, start);
+                        Accept(JsonTokenKind.LeftBracket, start, _cursor.Position);
                         break;
                     case ']':
                         _cursor.Advance();
-                        CloseArray(start, _cursor.Position);
+                        Accept(JsonTokenKind.RightBracket, start, _cursor.Position);
                         break;
                     case ':':
                         _cursor.Advance();
-                        HandleColon(start, _cursor.Position);
+                        Accept(JsonTokenKind.Colon, start, _cursor.Position);
                         break;
                     case ',':
                         _cursor.Advance();
-                        HandleComma(start, _cursor.Position);
+                        Accept(JsonTokenKind.Comma, start, _cursor.Position);
                         break;
                     case '"':
                         LexString();
@@ -882,129 +1206,9 @@ internal static class JsonDiagnosticsAnalyzer
                 }
             }
 
-            TextPosition end = _cursor.Position;
-            if (!_rootHasValue && _stack.Count == 0)
-                AddDiagnostic(new TextRange(end, end), "Expected JSON value.");
-
-            for (int i = _stack.Count - 1; i >= 0; i--)
-            {
-                Frame frame = _stack[i];
-                AddDiagnostic(new TextRange(frame.Start, new TextPosition(frame.Start.Line, frame.Start.Column + 1)),
-                    frame.Kind == ContainerKind.Object
-                        ? "Object is not terminated."
-                        : "Array is not terminated.");
-            }
-
+            _grammar.Finish(_cursor.Position);
             ReportProgress(force: true);
-            return _diagnostics;
-        }
-
-        private void StartContainer(ContainerKind kind, TextPosition start)
-        {
-            if (!CanStartValue(start))
-                return;
-
-            _stack.Add(new Frame(
-                kind,
-                kind == ContainerKind.Object
-                    ? ContainerState.ObjectPropertyOrEnd
-                    : ContainerState.ArrayValueOrEnd,
-                start,
-                AfterComma: false));
-        }
-
-        private void CloseObject(TextPosition start, TextPosition end)
-        {
-            if (_stack.Count == 0 || CurrentFrame.Kind != ContainerKind.Object)
-            {
-                AddDiagnostic(new TextRange(start, end), "Unexpected '}'.");
-                return;
-            }
-
-            Frame frame = CurrentFrame;
-            if (frame.State == ContainerState.ObjectColon)
-                AddDiagnostic(new TextRange(start, end), "Expected ':' after property name.");
-            else if (frame.State == ContainerState.ObjectValue)
-                AddDiagnostic(new TextRange(start, end), "Expected property value.");
-            else if (frame.State == ContainerState.ObjectPropertyOrEnd && frame.AfterComma)
-                AddDiagnostic(new TextRange(start, end), "Trailing commas are not allowed in JSON objects.");
-            else if (frame.State != ContainerState.ObjectPropertyOrEnd
-                     && frame.State != ContainerState.ObjectCommaOrEnd)
-                AddDiagnostic(new TextRange(start, end), "Expected ',' or '}' after object property.");
-
-            _stack.RemoveAt(_stack.Count - 1);
-            CompleteValue(start, end);
-        }
-
-        private void CloseArray(TextPosition start, TextPosition end)
-        {
-            if (_stack.Count == 0 || CurrentFrame.Kind != ContainerKind.Array)
-            {
-                AddDiagnostic(new TextRange(start, end), "Unexpected ']'.");
-                return;
-            }
-
-            Frame frame = CurrentFrame;
-            if (frame.State == ContainerState.ArrayValueOrEnd && frame.AfterComma)
-                AddDiagnostic(new TextRange(start, end), "Trailing commas are not allowed in JSON arrays.");
-            else if (frame.State != ContainerState.ArrayValueOrEnd
-                     && frame.State != ContainerState.ArrayCommaOrEnd)
-                AddDiagnostic(new TextRange(start, end), "Expected ',' or ']' after array item.");
-
-            _stack.RemoveAt(_stack.Count - 1);
-            CompleteValue(start, end);
-        }
-
-        private void HandleColon(TextPosition start, TextPosition end)
-        {
-            if (_stack.Count > 0
-                && CurrentFrame.Kind == ContainerKind.Object
-                && CurrentFrame.State == ContainerState.ObjectColon)
-            {
-                CurrentFrame = CurrentFrame with
-                {
-                    State = ContainerState.ObjectValue,
-                    AfterComma = false
-                };
-                return;
-            }
-
-            AddDiagnostic(new TextRange(start, end), "Unexpected ':'.");
-        }
-
-        private void HandleComma(TextPosition start, TextPosition end)
-        {
-            if (_stack.Count == 0)
-            {
-                AddDiagnostic(new TextRange(start, end), "Unexpected ','.");
-                return;
-            }
-
-            Frame frame = CurrentFrame;
-            if (frame.Kind == ContainerKind.Object && frame.State == ContainerState.ObjectCommaOrEnd)
-            {
-                CurrentFrame = frame with
-                {
-                    State = ContainerState.ObjectPropertyOrEnd,
-                    AfterComma = true
-                };
-                return;
-            }
-
-            if (frame.Kind == ContainerKind.Array && frame.State == ContainerState.ArrayCommaOrEnd)
-            {
-                CurrentFrame = frame with
-                {
-                    State = ContainerState.ArrayValueOrEnd,
-                    AfterComma = true
-                };
-                return;
-            }
-
-            AddDiagnostic(new TextRange(start, end),
-                frame.Kind == ContainerKind.Object
-                    ? "Expected object property before ','."
-                    : "Expected array item before ','.");
+            return _diagnostics.Diagnostics;
         }
 
         private void LexString()
@@ -1017,7 +1221,7 @@ internal static class JsonDiagnosticsAnalyzer
                 if (_cursor.IsAtLineEnd)
                 {
                     AddDiagnostic(new TextRange(start, _cursor.Position), "String literal is not terminated.");
-                    HandleScalar(ScalarKind.String, start, _cursor.Position);
+                    Accept(JsonTokenKind.String, start, _cursor.Position);
                     return;
                 }
 
@@ -1025,7 +1229,7 @@ internal static class JsonDiagnosticsAnalyzer
                 if (current == '"')
                 {
                     _cursor.Advance();
-                    HandleScalar(ScalarKind.String, start, _cursor.Position);
+                    Accept(JsonTokenKind.String, start, _cursor.Position);
                     return;
                 }
 
@@ -1035,7 +1239,7 @@ internal static class JsonDiagnosticsAnalyzer
                     if (_cursor.IsAtEnd || _cursor.IsAtLineEnd)
                     {
                         AddDiagnostic(new TextRange(start, _cursor.Position), "String literal is not terminated.");
-                        HandleScalar(ScalarKind.String, start, _cursor.Position);
+                        Accept(JsonTokenKind.String, start, _cursor.Position);
                         return;
                     }
 
@@ -1078,7 +1282,7 @@ internal static class JsonDiagnosticsAnalyzer
             }
 
             AddDiagnostic(new TextRange(start, _cursor.Position), "String literal is not terminated.");
-            HandleScalar(ScalarKind.String, start, _cursor.Position);
+            Accept(JsonTokenKind.String, start, _cursor.Position);
         }
 
         private void LexNumber()
@@ -1090,7 +1294,7 @@ internal static class JsonDiagnosticsAnalyzer
             if (_cursor.IsAtEnd || _cursor.IsAtLineEnd || !char.IsDigit(_cursor.Current))
             {
                 AddDiagnostic(new TextRange(start, _cursor.Position), "Expected digit after minus sign.");
-                HandleScalar(ScalarKind.Number, start, _cursor.Position);
+                Accept(JsonTokenKind.Number, start, _cursor.Position);
                 return;
             }
 
@@ -1124,20 +1328,24 @@ internal static class JsonDiagnosticsAnalyzer
                 ReadDigits();
             }
 
-            HandleScalar(ScalarKind.Number, start, _cursor.Position);
+            Accept(JsonTokenKind.Number, start, _cursor.Position);
         }
 
         private void LexLiteral()
         {
             TextPosition start = _cursor.Position;
             string text = ReadLetters();
-            ScalarKind kind = text is "true" or "false" or "null"
-                ? ScalarKind.Literal
-                : ScalarKind.Invalid;
-            if (kind == ScalarKind.Invalid)
+            JsonTokenKind kind = text switch
+            {
+                "true" => JsonTokenKind.True,
+                "false" => JsonTokenKind.False,
+                "null" => JsonTokenKind.Null,
+                _ => JsonTokenKind.InvalidLiteral,
+            };
+            if (kind == JsonTokenKind.InvalidLiteral)
                 AddDiagnostic(new TextRange(start, _cursor.Position), $"Unexpected literal '{text}'.");
 
-            HandleScalar(kind, start, _cursor.Position);
+            Accept(kind, start, _cursor.Position);
         }
 
         private void LexUnexpectedCharacter()
@@ -1148,141 +1356,8 @@ internal static class JsonDiagnosticsAnalyzer
             AddDiagnostic(new TextRange(start, _cursor.Position), $"Unexpected character '{current}'.");
         }
 
-        private void HandleScalar(ScalarKind kind, TextPosition start, TextPosition end)
-        {
-            if (_stack.Count == 0)
-            {
-                if (_rootHasValue)
-                    AddDiagnostic(new TextRange(start, end), "Only one top-level JSON value is allowed.");
-                else
-                    _rootHasValue = true;
-                return;
-            }
-
-            Frame frame = CurrentFrame;
-            if (frame.Kind == ContainerKind.Object)
-            {
-                switch (frame.State)
-                {
-                    case ContainerState.ObjectPropertyOrEnd:
-                        if (kind == ScalarKind.String)
-                        {
-                            CurrentFrame = frame with
-                            {
-                                State = ContainerState.ObjectColon,
-                                AfterComma = false
-                            };
-                        }
-                        else
-                        {
-                            AddDiagnostic(new TextRange(start, end), "Expected property name.");
-                        }
-                        return;
-
-                    case ContainerState.ObjectColon:
-                        AddDiagnostic(new TextRange(start, end), "Expected ':' after property name.");
-                        CurrentFrame = frame with
-                        {
-                            State = ContainerState.ObjectCommaOrEnd,
-                            AfterComma = false
-                        };
-                        return;
-
-                    case ContainerState.ObjectValue:
-                        CurrentFrame = frame with
-                        {
-                            State = ContainerState.ObjectCommaOrEnd,
-                            AfterComma = false
-                        };
-                        return;
-
-                    case ContainerState.ObjectCommaOrEnd:
-                        AddDiagnostic(new TextRange(start, end), "Expected ',' or '}' after object property.");
-                        return;
-                }
-            }
-
-            if (frame.Kind == ContainerKind.Array)
-            {
-                if (frame.State == ContainerState.ArrayValueOrEnd)
-                {
-                    CurrentFrame = frame with
-                    {
-                        State = ContainerState.ArrayCommaOrEnd,
-                        AfterComma = false
-                    };
-                }
-                else
-                {
-                    AddDiagnostic(new TextRange(start, end), "Expected ',' or ']' after array item.");
-                }
-            }
-        }
-
-        private bool CanStartValue(TextPosition start)
-        {
-            if (_stack.Count == 0)
-            {
-                if (_rootHasValue)
-                {
-                    AddDiagnostic(new TextRange(start, new TextPosition(start.Line, start.Column + 1)),
-                        "Only one top-level JSON value is allowed.");
-                    return false;
-                }
-
-                return true;
-            }
-
-            Frame frame = CurrentFrame;
-            if (frame.Kind == ContainerKind.Array && frame.State == ContainerState.ArrayValueOrEnd)
-                return true;
-            if (frame.Kind == ContainerKind.Object && frame.State == ContainerState.ObjectValue)
-                return true;
-
-            AddDiagnostic(new TextRange(start, new TextPosition(start.Line, start.Column + 1)),
-                frame.Kind == ContainerKind.Object
-                    ? ExpectedObjectMessage(frame.State)
-                    : "Expected ',' or ']' after array item.");
-            return false;
-        }
-
-        private void CompleteValue(TextPosition start, TextPosition end)
-        {
-            if (_stack.Count == 0)
-            {
-                if (_rootHasValue)
-                    AddDiagnostic(new TextRange(start, end), "Only one top-level JSON value is allowed.");
-                else
-                    _rootHasValue = true;
-                return;
-            }
-
-            Frame frame = CurrentFrame;
-            if (frame.Kind == ContainerKind.Object && frame.State == ContainerState.ObjectValue)
-            {
-                CurrentFrame = frame with
-                {
-                    State = ContainerState.ObjectCommaOrEnd,
-                    AfterComma = false
-                };
-                return;
-            }
-
-            if (frame.Kind == ContainerKind.Array && frame.State == ContainerState.ArrayValueOrEnd)
-            {
-                CurrentFrame = frame with
-                {
-                    State = ContainerState.ArrayCommaOrEnd,
-                    AfterComma = false
-                };
-            }
-        }
-
-        private Frame CurrentFrame
-        {
-            get => _stack[^1];
-            set => _stack[^1] = value;
-        }
+        private void Accept(JsonTokenKind kind, TextPosition start, TextPosition end) =>
+            _grammar.Accept(kind, new TextRange(start, end));
 
         private void ReadDigits()
         {
@@ -1301,16 +1376,7 @@ internal static class JsonDiagnosticsAnalyzer
         }
 
         private void AddDiagnostic(TextRange range, string message)
-        {
-            if (_diagnostics.Count < MaxDiagnostics)
-            {
-                _diagnostics.Add(new ParseDiagnostic(range, DiagnosticSeverity.Error, message));
-            }
-            else
-            {
-                _hasMoreDiagnostics = true;
-            }
-        }
+            => _diagnostics.Add(range, message);
 
         private void ReportProgress(bool force)
         {
@@ -1325,14 +1391,6 @@ internal static class JsonDiagnosticsAnalyzer
                 _cursor.CharactersRead,
                 _cursor.TotalCharacters));
         }
-
-        private static string ExpectedObjectMessage(ContainerState state) => state switch
-        {
-            ContainerState.ObjectPropertyOrEnd => "Expected property name.",
-            ContainerState.ObjectColon => "Expected ':' after property name.",
-            ContainerState.ObjectValue => "Expected property value.",
-            _ => "Expected ',' or '}' after object property.",
-        };
     }
 
     private sealed class SourceCursor
@@ -1354,6 +1412,7 @@ internal static class JsonDiagnosticsAnalyzer
         public long CharactersRead { get; private set; }
         public long TotalCharacters { get; }
         public bool IsAtEnd => Line >= _source.LineCount;
+        public bool IsAtLastLine => Line >= _source.LineCount - 1;
         public TextPosition Position => new(Line, Column);
 
         public bool IsAtLineEnd
