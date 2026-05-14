@@ -302,23 +302,58 @@ public class WrapLayoutTests
         Assert.Equal(firstReadCount, source.LineLengthReads);
     }
 
+    [Fact]
+    public void Recalculate_DetailedWrapUsesSequentialLineEnumeration()
+    {
+        var source = new CountingLengthTextSource(lineCount: 2_000, line: "    alpha beta gamma delta");
+        var buf = new TextBuffer();
+        buf.SetPreparedContent(new TextBuffer.PreparedContent
+        {
+            Source = source,
+            LineEnding = "\n"
+        });
+        var wrap = new WrapLayout();
+
+        wrap.Recalculate(wordWrap: true, breakAtWords: true, wrapIndent: true, buf, textAreaWidth: 96, charWidth: 8);
+        wrap.Recalculate(wordWrap: true, breakAtWords: true, wrapIndent: true, buf, textAreaWidth: 160, charWidth: 8);
+
+        Assert.Equal(0, source.LineReads);
+        Assert.Equal(0, source.LineLengthReads);
+        Assert.Equal(4_000, source.EnumeratedLines);
+        Assert.Equal(15, wrap.WrapColStart(wordWrap: true, 0, 1));
+        Assert.Equal(32, wrap.WrapIndentPx(wordWrap: true, 0, 1, charWidth: 8));
+    }
+
     private sealed class CountingLengthTextSource : ITextSource
     {
         private readonly string _line;
         private int _lineLengthReads;
+        private int _lineReads;
+        private int _enumeratedLines;
 
         public CountingLengthTextSource(int lineCount, int lineLength)
+            : this(lineCount, new string('x', lineLength))
+        {
+        }
+
+        public CountingLengthTextSource(int lineCount, string line)
         {
             LineCount = lineCount;
-            _line = new string('x', lineLength);
+            _line = line;
         }
 
         public int LineCount { get; }
         public int LineLengthReads => _lineLengthReads;
+        public int LineReads => _lineReads;
+        public int EnumeratedLines => _enumeratedLines;
         public long CharCountWithoutLineEndings => (long)LineCount * _line.Length;
         public int MaxLineLength => _line.Length;
 
-        public string GetLine(int line) => _line;
+        public string GetLine(int line)
+        {
+            _lineReads++;
+            return _line;
+        }
 
         public int GetLineLength(int line)
         {
@@ -332,7 +367,10 @@ public class WrapLayoutTests
         public IEnumerable<string> EnumerateLines(int startLine, int count, bool cache = true)
         {
             for (int i = 0; i < count && startLine + i < LineCount; i++)
+            {
+                _enumeratedLines++;
                 yield return _line;
+            }
         }
 
         public int GetMaxLineLength(int startLine, int count) => _line.Length;

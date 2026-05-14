@@ -52,7 +52,14 @@ internal class WrapLayout
         int charsPerVisualLine = wordWrap
             ? Math.Max(1, (int)(textAreaWidth / charWidth))
             : 0;
-        if (IsCurrent(wordWrap, breakAtWords, wrapIndent, buffer, charsPerVisualLine))
+
+        // Very long physical lines use arithmetic wrapping to avoid allocating
+        // per-wrap-line column starts for files such as minified JSON.
+        bool useArithmeticWrap = wordWrap && buffer.MaxLineLength > LongLineThreshold;
+        bool effectiveBreakAtWords = breakAtWords && !useArithmeticWrap;
+        bool effectiveWrapIndent = wrapIndent && !useArithmeticWrap;
+
+        if (IsCurrent(wordWrap, effectiveBreakAtWords, effectiveWrapIndent, buffer, charsPerVisualLine))
             return;
 
         if (!wordWrap)
@@ -62,7 +69,7 @@ internal class WrapLayout
             _wrapColStarts = null;
             _wrapIndent = null;
             _totalVisualLines = buffer.Count;
-            StoreCurrent(wordWrap, breakAtWords, wrapIndent, buffer, charsPerVisualLine);
+            StoreCurrent(wordWrap, effectiveBreakAtWords, effectiveWrapIndent, buffer, charsPerVisualLine);
             return;
         }
 
@@ -70,33 +77,21 @@ internal class WrapLayout
 
         int count = buffer.Count;
         EnsureArrays(count);
-        bool hasVeryLongLine = buffer.MaxLineLength > LongLineThreshold;
-        if (hasVeryLongLine)
-        {
-            // Avoid per-wrap-line column-start arrays for files such as large
-            // minified JSON where one physical line may span millions of visual
-            // rows. For those lines, wrap mapping is arithmetic.
-            breakAtWords = false;
-            wrapIndent = false;
-        }
+        EnsureWrapIndent(effectiveWrapIndent, count);
 
-        if (wrapIndent)
+        if (effectiveBreakAtWords)
         {
-            if (_wrapIndent == null || _wrapIndent.Length < count || _wrapIndent.Length > count * 2)
-                _wrapIndent = new int[count];
-            ComputeIndents(buffer, count);
+            RecalcWordBreak(buffer, count, effectiveWrapIndent);
         }
         else
         {
-            _wrapIndent = null;
-        }
+            if (effectiveWrapIndent)
+                ComputeIndents(buffer, count);
 
-        if (breakAtWords)
-            RecalcWordBreak(buffer, count);
-        else
             RecalcCharBreak(buffer, count);
+        }
 
-        StoreCurrent(wordWrap, breakAtWords, wrapIndent, buffer, charsPerVisualLine);
+        StoreCurrent(wordWrap, effectiveBreakAtWords, effectiveWrapIndent, buffer, charsPerVisualLine);
     }
 
     private bool IsCurrent(
@@ -142,10 +137,29 @@ internal class WrapLayout
         return indent;
     }
 
+    private void EnsureWrapIndent(bool enabled, int count)
+    {
+        if (!enabled)
+        {
+            _wrapIndent = null;
+            return;
+        }
+
+        if (_wrapIndent == null || _wrapIndent.Length < count || _wrapIndent.Length > count * 2)
+            _wrapIndent = new int[count];
+    }
+
     private void ComputeIndents(TextBuffer buffer, int count)
     {
-        for (int i = 0; i < count; i++)
-            _wrapIndent![i] = buffer.GetLineLength(i) > LongLineThreshold ? 0 : MeasureIndent(buffer[i]);
+        int lineIndex = 0;
+        foreach (string line in buffer.EnumerateLines(0, count))
+        {
+            _wrapIndent![lineIndex] = MeasureIndent(line);
+            lineIndex++;
+        }
+
+        for (; lineIndex < count; lineIndex++)
+            _wrapIndent![lineIndex] = 0;
     }
 
     /// <summary>
@@ -219,14 +233,19 @@ internal class WrapLayout
 
     private readonly List<int> _colStartBuffer = new();
 
-    private void RecalcWordBreak(TextBuffer buffer, int count)
+    private void RecalcWordBreak(TextBuffer buffer, int count, bool updateIndent)
     {
         _colStartBuffer.Clear();
         int cumul = 0;
+        using IEnumerator<string> lines = buffer.EnumerateLines(0, count).GetEnumerator();
         for (int i = 0; i < count; i++)
         {
+            string line = lines.MoveNext() ? lines.Current : "";
+            if (updateIndent)
+                _wrapIndent![i] = MeasureIndent(line);
+
             _wrapCumulOffset![i] = cumul;
-            int len = buffer.GetLineLength(i);
+            int len = line.Length;
 
             if (len <= _charsPerVisualLine)
             {
@@ -236,18 +255,8 @@ internal class WrapLayout
                 continue;
             }
 
-            if (len > LongLineThreshold)
-            {
-                _wrapLineCount![i] = 1 + (len - 1) / _charsPerVisualLine;
-                for (int colStart = 0; colStart < len; colStart += _charsPerVisualLine)
-                    _colStartBuffer.Add(colStart);
-                cumul += _wrapLineCount[i];
-                continue;
-            }
-
             int subLines = 0;
             int pos = 0;
-            string line = buffer[i];
             var span = line.AsSpan();
             while (pos < len)
             {
