@@ -15,6 +15,7 @@ internal class WrapLayout
     private int[]? _wrapCumulOffset;    // cumulative visual line offset
     private int[]? _wrapColStarts;      // starting column for each visual line (word-break mode only)
     private int[]? _wrapIndent;         // indent chars per logical line (wrap-indent mode only)
+    private readonly List<int> _colStartBuffer = new();
     private int _totalVisualLines;
     private bool _hasCurrentLayout;
     private bool _lastWordWrap;
@@ -53,9 +54,11 @@ internal class WrapLayout
             ? Math.Max(1, (int)(textAreaWidth / charWidth))
             : 0;
 
+        int maxLineLength = wordWrap ? buffer.MaxLineLength : 0;
+
         // Very long physical lines use arithmetic wrapping to avoid allocating
         // per-wrap-line column starts for files such as minified JSON.
-        bool useArithmeticWrap = wordWrap && buffer.MaxLineLength > LongLineThreshold;
+        bool useArithmeticWrap = wordWrap && maxLineLength > LongLineThreshold;
         bool effectiveBreakAtWords = breakAtWords && !useArithmeticWrap;
         bool effectiveWrapIndent = wrapIndent && !useArithmeticWrap;
 
@@ -77,6 +80,14 @@ internal class WrapLayout
 
         int count = buffer.Count;
         EnsureArrays(count);
+
+        if (maxLineLength <= charsPerVisualLine)
+        {
+            RecalcUnwrappedLines(count);
+            StoreCurrent(wordWrap, effectiveBreakAtWords, effectiveWrapIndent, buffer, charsPerVisualLine);
+            return;
+        }
+
         EnsureWrapIndent(effectiveWrapIndent, count);
 
         if (effectiveBreakAtWords)
@@ -124,6 +135,20 @@ internal class WrapLayout
         _lastCharsPerVisualLine = charsPerVisualLine;
     }
 
+    private void RecalcUnwrappedLines(int count)
+    {
+        _wrapColStarts = null;
+        _wrapIndent = null;
+
+        for (int i = 0; i < count; i++)
+        {
+            _wrapCumulOffset![i] = i;
+            _wrapLineCount![i] = 1;
+        }
+
+        _totalVisualLines = count;
+    }
+
     private static int MeasureIndent(string line)
     {
         int indent = 0;
@@ -152,7 +177,7 @@ internal class WrapLayout
     private void ComputeIndents(TextBuffer buffer, int count)
     {
         int lineIndex = 0;
-        foreach (string line in buffer.EnumerateLines(0, count))
+        foreach (string line in buffer.EnumerateLines(0, count, cache: false))
         {
             _wrapIndent![lineIndex] = MeasureIndent(line);
             lineIndex++;
@@ -222,22 +247,27 @@ internal class WrapLayout
                     break;
                 pos += avail;
             }
+
             _wrapLineCount![i] = subLines;
             cumul += subLines;
         }
-        _totalVisualLines = cumul;
-        if (_wrapColStarts == null || _wrapColStarts.Length < cumul || _wrapColStarts.Length > cumul * 2)
-            _wrapColStarts = new int[cumul];
-        _colStartBuffer.CopyTo(0, _wrapColStarts, 0, cumul);
+
+        CommitColumnStarts(cumul);
     }
 
-    private readonly List<int> _colStartBuffer = new();
+    private void CommitColumnStarts(int count)
+    {
+        _totalVisualLines = count;
+        if (_wrapColStarts == null || _wrapColStarts.Length < count || _wrapColStarts.Length > count * 2)
+            _wrapColStarts = new int[count];
+        _colStartBuffer.CopyTo(0, _wrapColStarts, 0, count);
+    }
 
     private void RecalcWordBreak(TextBuffer buffer, int count, bool updateIndent)
     {
         _colStartBuffer.Clear();
         int cumul = 0;
-        using IEnumerator<string> lines = buffer.EnumerateLines(0, count).GetEnumerator();
+        using IEnumerator<string> lines = buffer.EnumerateLines(0, count, cache: false).GetEnumerator();
         for (int i = 0; i < count; i++)
         {
             string line = lines.MoveNext() ? lines.Current : "";
@@ -246,7 +276,6 @@ internal class WrapLayout
 
             _wrapCumulOffset![i] = cumul;
             int len = line.Length;
-
             if (len <= _charsPerVisualLine)
             {
                 _wrapLineCount![i] = 1;
@@ -275,11 +304,7 @@ internal class WrapLayout
             _wrapLineCount![i] = subLines;
             cumul += subLines;
         }
-        _totalVisualLines = cumul;
-        // Copy to array for O(1) lookup
-        if (_wrapColStarts == null || _wrapColStarts.Length < cumul || _wrapColStarts.Length > cumul * 2)
-            _wrapColStarts = new int[cumul];
-        _colStartBuffer.CopyTo(0, _wrapColStarts, 0, cumul);
+        CommitColumnStarts(cumul);
     }
 
     /// <summary>
@@ -300,17 +325,8 @@ internal class WrapLayout
         if (logLine >= _wrapCumulOffset.Length) return logLine;
         if (_wrapColStarts != null)
         {
+            int wrapIndex = GetWrapIndexForColumn(logLine, col);
             int baseVis = _wrapCumulOffset[logLine];
-            int subCount = _wrapLineCount![logLine];
-            int wrapIndex = 0;
-            for (int s = subCount - 1; s > 0; s--)
-            {
-                if (col >= _wrapColStarts[baseVis + s])
-                {
-                    wrapIndex = s;
-                    break;
-                }
-            }
             return baseVis + wrapIndex;
         }
         int wi = _charsPerVisualLine > 0 ? Math.Min(col / _charsPerVisualLine, _wrapLineCount![logLine] - 1) : 0;
@@ -388,16 +404,7 @@ internal class WrapLayout
         if (_wrapColStarts != null)
         {
             int baseVis = _wrapCumulOffset[line];
-            int subCount = _wrapLineCount![line];
-            wrapIndex = 0;
-            for (int s = subCount - 1; s > 0; s--)
-            {
-                if (col >= _wrapColStarts[baseVis + s])
-                {
-                    wrapIndex = s;
-                    break;
-                }
-            }
+            wrapIndex = GetWrapIndexForColumn(line, col);
             colInWrap = col - _wrapColStarts[baseVis + wrapIndex];
         }
         else
@@ -410,6 +417,24 @@ internal class WrapLayout
         double x = gutterWidth + gutterPadding + indentPx + colInWrap * charWidth;
         double y = (_wrapCumulOffset[line] + wrapIndex) * lineHeight - offsetY;
         return (x, y);
+    }
+
+    private int GetWrapIndexForColumn(int logLine, int col)
+    {
+        int baseVis = _wrapCumulOffset![logLine];
+        int lo = 0;
+        int hi = _wrapLineCount![logLine] - 1;
+
+        while (lo < hi)
+        {
+            int mid = lo + (hi - lo + 1) / 2;
+            if (col >= _wrapColStarts![baseVis + mid])
+                lo = mid;
+            else
+                hi = mid - 1;
+        }
+
+        return lo;
     }
 
     /// <summary>Cumulative visual line offset for a logical line. Used by rendering code.</summary>

@@ -582,7 +582,11 @@ public class TextBuffer
         _editGeneration++;
     }
 
-    internal IEnumerable<string> EnumerateLines(int startLine, int count)
+    /// <summary>
+    /// Enumerate logical lines. Pass cache: false for one-pass scans that should
+    /// not evict the interactive file-backed line cache.
+    /// </summary>
+    internal IEnumerable<string> EnumerateLines(int startLine, int count, bool cache = true)
     {
         if (count <= 0)
             yield break;
@@ -596,7 +600,7 @@ public class TextBuffer
             var (pieceIndex, offset) = FindPiece(currentLine);
             LinePiece piece = _pieces[pieceIndex];
             int take = Math.Min(remaining, piece.LineCount - offset);
-            foreach (string line in piece.Source.EnumerateLines(piece.StartLine + offset, take))
+            foreach (string line in piece.Source.EnumerateLines(piece.StartLine + offset, take, cache))
                 yield return line;
 
             currentLine += take;

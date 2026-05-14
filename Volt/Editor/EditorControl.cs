@@ -1867,8 +1867,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (sourceEndColumn <= sourceStartColumn)
             return;
 
-        IReadOnlyList<LanguageToken>? tokens = GetTokensForRenderedSegment(
-            sourceLine, sourceStartColumn, sourceEndColumn, text, textColumnOffset, languageSnapshot);
+        IReadOnlyList<LanguageToken>? tokens = GetTokensForRenderedLine(
+            sourceLine, sourceStartColumn, sourceEndColumn, text, textColumnOffset,
+            languageSnapshot, out int tokenStartIndex);
         if (tokens == null || tokens.Count == 0)
         {
             DrawGlyphRange(dc, text, sourceStartColumn, sourceEndColumn,
@@ -1877,7 +1878,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
 
         DrawLanguageTokenRuns(dc, text, sourceLine, sourceStartColumn, sourceEndColumn,
-            textColumnOffset, x, y, tokens);
+            textColumnOffset, x, y, tokens, tokenStartIndex);
     }
 
     private void DrawLanguageTokenRuns(
@@ -1889,11 +1890,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
         int textColumnOffset,
         double x,
         double y,
-        IReadOnlyList<LanguageToken> tokens)
+        IReadOnlyList<LanguageToken> tokens,
+        int tokenStartIndex)
     {
         int cursor = sourceStartColumn;
-        foreach (LanguageToken token in tokens)
+        for (int tokenIndex = tokenStartIndex; tokenIndex < tokens.Count; tokenIndex++)
         {
+            LanguageToken token = tokens[tokenIndex];
             if (token.Range.End.Line < sourceLine)
                 continue;
             if (token.Range.Start.Line > sourceLine)
@@ -1924,18 +1927,59 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
     }
 
-    private IReadOnlyList<LanguageToken>? GetTokensForRenderedSegment(
+    private IReadOnlyList<LanguageToken>? GetTokensForRenderedLine(
         int sourceLine,
         int sourceStartColumn,
         int sourceEndColumn,
         string text,
         int textColumnOffset,
-        LanguageSnapshot? languageSnapshot)
+        LanguageSnapshot? languageSnapshot,
+        out int tokenStartIndex)
+    {
+        tokenStartIndex = 0;
+        if (languageSnapshot is not { Tokens.Count: > 0 })
+        {
+            return GetTokensForRenderedSegment(
+                sourceLine, sourceStartColumn, sourceEndColumn, text, textColumnOffset);
+        }
+
+        IReadOnlyList<LanguageToken> tokens = languageSnapshot.Tokens;
+        // Full snapshots are document-wide, so jump to the first plausible
+        // token instead of scanning every token before the visible line.
+        tokenStartIndex = FindFirstTokenEndingAtOrAfterLine(tokens, sourceLine);
+        return tokens;
+    }
+
+    internal static int FindFirstTokenEndingAtOrAfterLine(IReadOnlyList<LanguageToken> tokens, int line)
+    {
+        int low = 0;
+        int high = tokens.Count - 1;
+        int result = tokens.Count;
+        while (low <= high)
+        {
+            int mid = low + (high - low) / 2;
+            if (tokens[mid].Range.End.Line >= line)
+            {
+                result = mid;
+                high = mid - 1;
+            }
+            else
+            {
+                low = mid + 1;
+            }
+        }
+
+        return result;
+    }
+
+    private IReadOnlyList<LanguageToken>? GetTokensForRenderedSegment(
+        int sourceLine,
+        int sourceStartColumn,
+        int sourceEndColumn,
+        string text,
+        int textColumnOffset)
     {
         using var profile = VoltProfiler.Span("Editor.GetTokensForRenderedSegment");
-        if (languageSnapshot is { Tokens.Count: > 0 })
-            return languageSnapshot.Tokens;
-
         if (_languageService == null)
             return null;
 

@@ -282,6 +282,48 @@ public class WrapLayoutTests
     }
 
     [Fact]
+    public void Recalculate_WideWrapSkipsLineEnumerationWhenAllLinesFit()
+    {
+        var source = new CountingLengthTextSource(lineCount: 2_000, lineLength: 20);
+        var buf = new TextBuffer();
+        buf.SetPreparedContent(new TextBuffer.PreparedContent
+        {
+            Source = source,
+            LineEnding = "\n"
+        });
+        var wrap = new WrapLayout();
+
+        wrap.Recalculate(wordWrap: true, breakAtWords: true, wrapIndent: true, buf, textAreaWidth: 800, charWidth: 8);
+
+        Assert.Equal(0, source.LineReads);
+        Assert.Equal(0, source.LineLengthReads);
+        Assert.Equal(0, source.EnumeratedLines);
+        Assert.Equal(2_000, wrap.TotalVisualLines);
+        Assert.Equal(1, wrap.VisualLineCount(wordWrap: true, 1_999));
+        Assert.Equal(1_999, wrap.CumulOffset(1_999));
+    }
+
+    [Fact]
+    public void LogicalToVisualLine_DetailedWrapHandlesManySegments()
+    {
+        string line = string.Join(' ', Enumerable.Repeat("word", 2_000));
+        var buf = TestHelpers.MakeBuffer(line);
+        var wrap = new WrapLayout();
+
+        wrap.Recalculate(wordWrap: true, breakAtWords: true, wrapIndent: false, buf, textAreaWidth: 80, charWidth: 8);
+
+        int lastColumn = line.Length - 1;
+        int lastVisualLine = wrap.VisualLineCount(wordWrap: true, 0) - 1;
+        var (_, y) = wrap.GetPixelForPosition(
+            wordWrap: true, line: 0, col: lastColumn,
+            gutterWidth: 40, gutterPadding: 8, charWidth: 8, lineHeight: 20,
+            offsetX: 0, offsetY: 0);
+
+        Assert.Equal(lastVisualLine, wrap.LogicalToVisualLine(wordWrap: true, 0, lastColumn));
+        Assert.Equal(lastVisualLine * 20.0, y);
+    }
+
+    [Fact]
     public void Recalculate_WithSameInputs_ReusesExistingLayout()
     {
         var source = new CountingLengthTextSource(lineCount: 1_000, lineLength: 20);
@@ -320,6 +362,8 @@ public class WrapLayoutTests
         Assert.Equal(0, source.LineReads);
         Assert.Equal(0, source.LineLengthReads);
         Assert.Equal(4_000, source.EnumeratedLines);
+        Assert.Equal(0, source.CacheEnabledEnumeratedLines);
+        Assert.Equal(4_000, source.CacheDisabledEnumeratedLines);
         Assert.Equal(15, wrap.WrapColStart(wordWrap: true, 0, 1));
         Assert.Equal(32, wrap.WrapIndentPx(wordWrap: true, 0, 1, charWidth: 8));
     }
@@ -346,6 +390,8 @@ public class WrapLayoutTests
         public int LineLengthReads => _lineLengthReads;
         public int LineReads => _lineReads;
         public int EnumeratedLines => _enumeratedLines;
+        public int CacheEnabledEnumeratedLines { get; private set; }
+        public int CacheDisabledEnumeratedLines { get; private set; }
         public long CharCountWithoutLineEndings => (long)LineCount * _line.Length;
         public int MaxLineLength => _line.Length;
 
@@ -369,6 +415,10 @@ public class WrapLayoutTests
             for (int i = 0; i < count && startLine + i < LineCount; i++)
             {
                 _enumeratedLines++;
+                if (cache)
+                    CacheEnabledEnumeratedLines++;
+                else
+                    CacheDisabledEnumeratedLines++;
                 yield return _line;
             }
         }

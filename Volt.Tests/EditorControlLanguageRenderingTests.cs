@@ -59,6 +59,23 @@ public class EditorControlLanguageRenderingTests
             token => token.Kind == LanguageTokenKind.Boolean && token.Text == "true");
     }
 
+    [Fact]
+    public void FindFirstTokenEndingAtOrAfterLine_SkipsEarlierSnapshotTokens()
+    {
+        LanguageToken[] tokens =
+        [
+            Token(0, 0, 0, 1),
+            Token(4, 2, 8, 5),
+            Token(9, 0, 9, 1),
+            Token(12, 0, 12, 1),
+        ];
+
+        Assert.Equal(0, EditorControl.FindFirstTokenEndingAtOrAfterLine(tokens, 0));
+        Assert.Equal(1, EditorControl.FindFirstTokenEndingAtOrAfterLine(tokens, 7));
+        Assert.Equal(2, EditorControl.FindFirstTokenEndingAtOrAfterLine(tokens, 9));
+        Assert.Equal(4, EditorControl.FindFirstTokenEndingAtOrAfterLine(tokens, 13));
+    }
+
     [StaFact]
     public void RenderLargeDocument_UsesSegmentTokenizationInsteadOfFullAnalysis()
     {
@@ -82,6 +99,13 @@ public class EditorControlLanguageRenderingTests
         Assert.Equal(0, service.AnalyzeCalls);
         Assert.True(service.TokenizeForRenderingCalls > 0);
     }
+
+    private static LanguageToken Token(int startLine, int startColumn, int endLine, int endColumn) =>
+        new(
+            TextRange.FromBounds(startLine, startColumn, endLine, endColumn),
+            LanguageTokenKind.Punctuation,
+            "",
+            "{}");
 
     [StaFact]
     public void RenderLongLine_ProvidesStringStateForSegmentTokenization()
