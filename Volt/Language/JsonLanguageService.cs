@@ -632,6 +632,7 @@ internal sealed class JsonGrammarValidator
 
     private readonly JsonDiagnosticSink _diagnostics;
     private readonly List<Frame> _stack = [];
+    private int _ignoredContainerDepth;
     private bool _rootHasValue;
     private bool _finished;
 
@@ -645,6 +646,9 @@ internal sealed class JsonGrammarValidator
 
     public void Accept(JsonTokenKind kind, TextRange range)
     {
+        if (TryConsumeIgnoredContainer(kind))
+            return;
+
         switch (kind)
         {
             case JsonTokenKind.LeftBrace:
@@ -709,7 +713,10 @@ internal sealed class JsonGrammarValidator
     private void StartContainer(ContainerKind kind, TextRange range)
     {
         if (!CanStartValue(range.Start))
+        {
+            _ignoredContainerDepth = 1;
             return;
+        }
 
         _stack.Add(new Frame(
             kind,
@@ -840,6 +847,8 @@ internal sealed class JsonGrammarValidator
 
                 case ContainerState.ObjectCommaOrEnd:
                     _diagnostics.Add(range, "Expected ',' or '}' after object property.");
+                    if (kind == ScalarKind.String)
+                        SetCurrentFrame(ContainerState.ObjectColon);
                     return;
             }
         }
@@ -853,6 +862,7 @@ internal sealed class JsonGrammarValidator
             else
             {
                 _diagnostics.Add(range, "Expected ',' or ']' after array item.");
+                SetCurrentFrame(ContainerState.ArrayCommaOrEnd);
             }
         }
     }
@@ -876,6 +886,12 @@ internal sealed class JsonGrammarValidator
             return true;
         if (frame.Kind == ContainerKind.Object && frame.State == ContainerState.ObjectValue)
             return true;
+        if (frame.Kind == ContainerKind.Array && frame.State == ContainerState.ArrayCommaOrEnd)
+        {
+            _diagnostics.Add(new TextRange(start, new TextPosition(start.Line, start.Column + 1)),
+                "Expected ',' or ']' after array item.");
+            return true;
+        }
 
         _diagnostics.Add(new TextRange(start, new TextPosition(start.Line, start.Column + 1)),
             frame.Kind == ContainerKind.Object
@@ -920,6 +936,21 @@ internal sealed class JsonGrammarValidator
             State = state,
             AfterComma = afterComma
         };
+    }
+
+    private bool TryConsumeIgnoredContainer(JsonTokenKind kind)
+    {
+        if (_ignoredContainerDepth == 0)
+            return false;
+        if (kind == JsonTokenKind.EndOfFile)
+            return false;
+
+        if (kind is JsonTokenKind.LeftBrace or JsonTokenKind.LeftBracket)
+            _ignoredContainerDepth++;
+        else if (kind is JsonTokenKind.RightBrace or JsonTokenKind.RightBracket)
+            _ignoredContainerDepth--;
+
+        return true;
     }
 
     private static string ExpectedObjectMessage(ContainerState state) => state switch

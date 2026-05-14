@@ -19,6 +19,9 @@ public class JsonLanguageServiceTests
         """{ "badNumber": 01 }""",
         "{ \"unterminatedString\": \"nope",
         """true false""",
+        """{ "first": true "second": false }""",
+        """[1 { "nested": true }]""",
+        """{} {}""",
         """@""",
         """{ "array": [1, 2 }""",
     };
@@ -143,6 +146,26 @@ public class JsonLanguageServiceTests
             CancellationToken.None);
 
         Assert.Contains(snapshot.Diagnostics, diagnostic => diagnostic.Message.Contains("Only one top-level"));
+    }
+
+    [Theory]
+    [InlineData("""{ "first": true "second": false }""", "Expected ',' or '}' after object property.")]
+    [InlineData("""[1 { "nested": true }]""", "Expected ',' or ']' after array item.")]
+    [InlineData("""{} {}""", "Only one top-level JSON value is allowed.")]
+    public void AnalyzeDiagnostics_RecoversFromCommonMalformedJson_WithoutSecondaryNoise(
+        string text,
+        string expectedMessage)
+    {
+        var service = new JsonLanguageService();
+
+        LanguageDiagnosticsSnapshot snapshot = service.AnalyzeDiagnostics(
+            CreateSource(text),
+            sourceVersion: 1,
+            progress: null,
+            CancellationToken.None);
+
+        Assert.Collection(snapshot.Diagnostics,
+            diagnostic => Assert.Equal(expectedMessage, diagnostic.Message));
     }
 
     [Fact]
