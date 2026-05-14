@@ -59,6 +59,26 @@ public sealed class JsonLanguageService : ILanguageService
         return pairs;
     }
 
+    public IReadOnlyList<LanguagePairHighlight> GetMatchingPairs(
+        ILanguageTextSource source,
+        TextPosition caret,
+        CancellationToken cancellationToken)
+    {
+        if (caret.Line < 0 || caret.Line >= source.LineCount)
+            return Array.Empty<LanguagePairHighlight>();
+
+        int lineLength = source.GetLineLength(caret.Line);
+        if (caret.Column < 0 || caret.Column > lineLength)
+            return Array.Empty<LanguagePairHighlight>();
+
+        return JsonPairScanner.GetMatchingPairs(source, caret, cancellationToken);
+    }
+
+    public LanguagePairIndex CreateMatchingPairIndex(
+        ILanguageTextSource source,
+        CancellationToken cancellationToken) =>
+        JsonPairScanner.CreateIndex(source, cancellationToken);
+
     public LanguageRenderState GetRenderState(LanguageTextSegment segment, LanguageRenderState initialState)
     {
         bool inString = IsStringState(initialState);
@@ -350,6 +370,216 @@ public sealed class JsonLanguageService : ILanguageService
         return lineComparison != 0
             ? lineComparison
             : left.Column.CompareTo(right.Column);
+    }
+
+    private sealed class JsonPairScanner
+    {
+        private const int SegmentSize = 64 * 1024;
+
+        private readonly ILanguageTextSource _source;
+        private readonly CancellationToken _cancellationToken;
+        private readonly Stack<OpenPair> _openPairs = new();
+        private readonly List<LanguagePairHighlight> _pairs = [];
+        private bool _inString;
+        private bool _isEscaped;
+        private bool _isInvalid;
+        private TextPosition _stringStart;
+
+        private JsonPairScanner(
+            ILanguageTextSource source,
+            CancellationToken cancellationToken)
+        {
+            _source = source;
+            _cancellationToken = cancellationToken;
+        }
+
+        public static IReadOnlyList<LanguagePairHighlight> GetMatchingPairs(
+            ILanguageTextSource source,
+            TextPosition caret,
+            CancellationToken cancellationToken)
+        {
+            return CreateIndex(source, cancellationToken).GetMatchingPairs(caret);
+        }
+
+        public static LanguagePairIndex CreateIndex(
+            ILanguageTextSource source,
+            CancellationToken cancellationToken)
+        {
+            var scanner = new JsonPairScanner(source, cancellationToken);
+            return scanner.Scan();
+        }
+
+        private LanguagePairIndex Scan()
+        {
+            if (ScanStream())
+                return CreateIndex();
+
+            ScanLines();
+            return CreateIndex();
+        }
+
+        private bool ScanStream()
+        {
+            if (_source is not ILanguageTextStreamSource streamSource
+                || !streamSource.TryCreateTextStream(0, _source.LineCount, out ILanguageTextStream stream))
+            {
+                return false;
+            }
+
+            using (stream)
+            {
+                while (true)
+                {
+                    _cancellationToken.ThrowIfCancellationRequested();
+                    LanguageTextReadSegment segment = stream.ReadSegment(SegmentSize, _cancellationToken);
+                    if (segment.IsEnd)
+                        break;
+
+                    VisitSegment(segment.Line, segment.StartColumn, segment.Text, includesLineBreaks: true);
+                    if (_isInvalid)
+                        return true;
+                }
+            }
+
+            return true;
+        }
+
+        private void ScanLines()
+        {
+            for (int line = 0; line < _source.LineCount; line++)
+            {
+                int lineLength = _source.GetLineLength(line);
+                for (int column = 0; column < lineLength;)
+                {
+                    _cancellationToken.ThrowIfCancellationRequested();
+                    int requested = Math.Min(SegmentSize, lineLength - column);
+                    string segment = _source.GetLineSegment(line, column, requested);
+                    if (segment.Length == 0)
+                        break;
+
+                    VisitSegment(line, column, segment, includesLineBreaks: false);
+                    column += segment.Length;
+                }
+
+                if (_inString)
+                {
+                    _isInvalid = true;
+                    return;
+                }
+            }
+        }
+
+        private LanguagePairIndex CreateIndex()
+        {
+            if (_isInvalid || _inString || _pairs.Count == 0)
+                return LanguagePairIndex.Empty;
+
+            return new LanguagePairIndex(_pairs);
+        }
+
+        private void VisitSegment(int line, int column, string text, bool includesLineBreaks)
+        {
+            for (int i = 0; i < text.Length; i++)
+            {
+                char current = text[i];
+                if (includesLineBreaks && current is '\r' or '\n')
+                {
+                    if (_inString)
+                    {
+                        _isInvalid = true;
+                        return;
+                    }
+
+                    if (current == '\r' && i + 1 < text.Length && text[i + 1] == '\n')
+                        i++;
+                    line++;
+                    column = 0;
+                    continue;
+                }
+
+                Visit(current, line, column);
+                column++;
+            }
+        }
+
+        private void Visit(char current, int line, int column)
+        {
+            if (_inString)
+            {
+                VisitStringCharacter(current, line, column);
+                return;
+            }
+
+            switch (current)
+            {
+                case '"':
+                    _inString = true;
+                    _isEscaped = false;
+                    _stringStart = new TextPosition(line, column);
+                    break;
+                case '{':
+                    _openPairs.Push(new OpenPair(LanguagePairKind.Object, new TextPosition(line, column), '}'));
+                    break;
+                case '[':
+                    _openPairs.Push(new OpenPair(LanguagePairKind.Array, new TextPosition(line, column), ']'));
+                    break;
+                case '}':
+                case ']':
+                    TryClosePair(current, line, column);
+                    break;
+            }
+        }
+
+        private void VisitStringCharacter(char current, int line, int column)
+        {
+            if (_isEscaped)
+            {
+                _isEscaped = false;
+                return;
+            }
+
+            if (current == '\\')
+            {
+                _isEscaped = true;
+                return;
+            }
+
+            if (current != '"')
+                return;
+
+            TextPosition position = new(line, column);
+            TextPosition end = new(position.Line, position.Column + 1);
+            _pairs.Add(new LanguagePairHighlight(
+                LanguagePairKind.String,
+                new TextRange(_stringStart, new TextPosition(_stringStart.Line, _stringStart.Column + 1)),
+                new TextRange(position, end)));
+
+            _inString = false;
+            _isEscaped = false;
+        }
+
+        private void TryClosePair(char current, int line, int column)
+        {
+            if (_openPairs.Count == 0)
+                return;
+
+            OpenPair open = _openPairs.Peek();
+            if (open.CloseCharacter != current)
+                return;
+
+            _openPairs.Pop();
+            TextPosition position = new(line, column);
+            TextPosition end = new(position.Line, position.Column + 1);
+            _pairs.Add(new LanguagePairHighlight(
+                open.Kind,
+                new TextRange(open.Position, new TextPosition(open.Position.Line, open.Position.Column + 1)),
+                new TextRange(position, end)));
+        }
+
+        private readonly record struct OpenPair(
+            LanguagePairKind Kind,
+            TextPosition Position,
+            char CloseCharacter);
     }
 
     private static IReadOnlyList<ParseDiagnostic> AnalyzeTokenDiagnostics(

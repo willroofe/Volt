@@ -28,6 +28,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private ILanguageService? _languageService;
     private LanguageSnapshot? _languageSnapshot;
     private long _languageSnapshotGeneration = -1;
+    private LanguagePairIndex? _largeDocumentMatchingPairIndex;
+    private long _largeDocumentMatchingPairIndexGeneration = -1;
+    private ILanguageService? _largeDocumentMatchingPairIndexLanguageService;
     private readonly Dictionary<int, SortedList<int, LanguageRenderState>> _languageRenderStateCache = [];
     private long _languageRenderStateGeneration = -1;
     private LanguageDiagnosticsSnapshot? _diagnosticsSnapshot;
@@ -1009,6 +1012,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
     {
         _languageSnapshot = null;
         _languageSnapshotGeneration = -1;
+        _largeDocumentMatchingPairIndex = null;
+        _largeDocumentMatchingPairIndexGeneration = -1;
+        _largeDocumentMatchingPairIndexLanguageService = null;
         _languageRenderStateCache.Clear();
         _languageRenderStateGeneration = -1;
 
@@ -1539,18 +1545,39 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private IReadOnlyList<LanguagePairHighlight> GetMatchingPairsForCaret()
     {
-        if (_languageService == null)
-            return Array.Empty<LanguagePairHighlight>();
-
-        LanguageSnapshot? snapshot = GetLanguageSnapshot();
-        if (snapshot == null)
+        ILanguageService? languageService = _languageService;
+        if (languageService == null)
             return Array.Empty<LanguagePairHighlight>();
 
         TextBuffer.LineSnapshot source = _buffer.SnapshotLines(0, _buffer.Count);
-        return _languageService.GetMatchingPairs(
-            snapshot,
+        LanguageSnapshot? snapshot = GetLanguageSnapshot();
+        if (snapshot != null)
+        {
+            return languageService.GetMatchingPairs(
+                snapshot,
+                source,
+                new TextPosition(_caretLine, _caretCol));
+        }
+
+        if (source.CharCountWithoutLineEndings > AutomaticJsonDiagnosticsCharLimit)
+            return Array.Empty<LanguagePairHighlight>();
+
+        TextPosition caret = new(_caretLine, _caretCol);
+        long generation = _buffer.EditGeneration;
+        if (_largeDocumentMatchingPairIndex != null
+            && _largeDocumentMatchingPairIndexGeneration == generation
+            && ReferenceEquals(_largeDocumentMatchingPairIndexLanguageService, languageService))
+        {
+            return _largeDocumentMatchingPairIndex.GetMatchingPairs(caret);
+        }
+
+        _largeDocumentMatchingPairIndex = languageService.CreateMatchingPairIndex(
             source,
-            new TextPosition(_caretLine, _caretCol));
+            CancellationToken.None)
+            ?? LanguagePairIndex.Empty;
+        _largeDocumentMatchingPairIndexGeneration = generation;
+        _largeDocumentMatchingPairIndexLanguageService = languageService;
+        return _largeDocumentMatchingPairIndex.GetMatchingPairs(caret);
     }
 
     private void DrawPairCellHighlight(DrawingContext dc, TextPosition position, MatchingPairPaint paint)

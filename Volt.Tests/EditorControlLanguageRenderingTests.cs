@@ -218,7 +218,7 @@ public class EditorControlLanguageRenderingTests
     }
 
     [StaFact]
-    public void MatchingPairs_LargeJsonWithoutFullSyntaxSnapshot_ReturnsEmpty()
+    public void MatchingPairs_LargeJsonWithoutFullSyntaxSnapshot_UsesLargeDocumentMatcher()
     {
         var editor = new EditorControl(new ThemeManager(), new LanguageManager());
         editor.SetLanguage(new JsonLanguageService());
@@ -232,7 +232,53 @@ public class EditorControlLanguageRenderingTests
         var pairs = Assert.IsAssignableFrom<IReadOnlyList<LanguagePairHighlight>>(
             InvokePrivate(editor, "GetMatchingPairsForCaret"));
 
+        LanguagePairHighlight pair = Assert.Single(pairs);
+        Assert.Equal(LanguagePairKind.String, pair.Kind);
+        Assert.Equal(TextRange.FromBounds(0, 0, 0, 1), pair.OpenRange);
+        Assert.Equal(TextRange.FromBounds(0, 2_099_999, 0, 2_100_000), pair.CloseRange);
+    }
+
+    [StaFact]
+    public void MatchingPairs_AboveJsonFeatureLimit_ReturnsEmptyWithoutScanning()
+    {
+        var source = new LongJsonStringTextSource((50 * 1024 * 1024) + 1);
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
+        editor.SetLanguage(new JsonLanguageService());
+        editor.SetPreparedContent(new TextBuffer.PreparedContent
+        {
+            Source = source,
+            LineEnding = "\n"
+        });
+        editor.SetCaretPosition(0, 100);
+
+        var pairs = Assert.IsAssignableFrom<IReadOnlyList<LanguagePairHighlight>>(
+            InvokePrivate(editor, "GetMatchingPairsForCaret"));
+
         Assert.Empty(pairs);
+        Assert.Equal(0, source.SegmentRequestCount);
+    }
+
+    [StaFact]
+    public void MatchingPairs_LargeDocumentCachesPairIndexAcrossCaretMoves()
+    {
+        var service = new IndexCountingLanguageService();
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
+        editor.SetLanguage(service);
+        editor.SetPreparedContent(new TextBuffer.PreparedContent
+        {
+            Source = new LongJsonStringTextSource(2_100_000),
+            LineEnding = "\n"
+        });
+
+        editor.SetCaretPosition(0, 100);
+        IReadOnlyList<LanguagePairHighlight> first = editor.GetMatchingPairsForRendering();
+
+        editor.SetCaretPosition(0, 200);
+        IReadOnlyList<LanguagePairHighlight> second = editor.GetMatchingPairsForRendering();
+
+        Assert.Single(first);
+        Assert.Single(second);
+        Assert.Equal(1, service.CreateMatchingPairIndexCalls);
     }
 
     [StaFact]
@@ -461,6 +507,46 @@ public class EditorControlLanguageRenderingTests
         }
     }
 
+    private sealed class IndexCountingLanguageService : ILanguageService
+    {
+        public int CreateMatchingPairIndexCalls { get; private set; }
+        public string Name => "Index counting";
+        public IReadOnlyList<string> Extensions { get; } = [".json"];
+
+        public LanguageSnapshot Analyze(string text, long sourceVersion) =>
+            throw new InvalidOperationException("Large-file matching should not request full-document analysis.");
+
+        public LanguageDiagnosticsSnapshot AnalyzeDiagnostics(
+            ILanguageTextSource source,
+            long sourceVersion,
+            IProgress<LanguageDiagnosticsProgress>? progress,
+            CancellationToken cancellationToken) =>
+            new(Name, sourceVersion, Array.Empty<ParseDiagnostic>(), true, null, false);
+
+        public LanguageRenderState GetRenderState(LanguageTextSegment segment, LanguageRenderState initialState) =>
+            LanguageRenderState.Default;
+
+        public IReadOnlyList<LanguageToken> TokenizeForRendering(
+            LanguageTextSegment segment,
+            LanguageRenderState initialState) =>
+            Array.Empty<LanguageToken>();
+
+        public LanguagePairIndex CreateMatchingPairIndex(
+            ILanguageTextSource source,
+            CancellationToken cancellationToken)
+        {
+            CreateMatchingPairIndexCalls++;
+            int closeColumn = source.GetLineLength(0) - 1;
+            return new LanguagePairIndex(
+            [
+                new LanguagePairHighlight(
+                    LanguagePairKind.String,
+                    TextRange.FromBounds(0, 0, 0, 1),
+                    TextRange.FromBounds(0, closeColumn, 0, closeColumn + 1))
+            ]);
+        }
+    }
+
     private sealed class CountingLanguageService : ILanguageService
     {
         private readonly JsonLanguageService _json = new();
@@ -644,12 +730,14 @@ public class EditorControlLanguageRenderingTests
         public int LineCount => 1;
         public long CharCountWithoutLineEndings => _lineLength;
         public int MaxLineLength => _lineLength;
+        public int SegmentRequestCount { get; private set; }
 
         public string GetLine(int line) => GetLineSegment(line, 0, _lineLength);
         public int GetLineLength(int line) => _lineLength;
 
         public string GetLineSegment(int line, int startColumn, int length)
         {
+            SegmentRequestCount++;
             if (length <= 0 || startColumn >= _lineLength)
                 return "";
 

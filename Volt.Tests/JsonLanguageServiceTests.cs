@@ -498,6 +498,75 @@ public class JsonLanguageServiceTests
         Assert.Empty(pairs);
     }
 
+    [Fact]
+    public void GetMatchingPairs_SourceOnlyNestedJson_ReturnsAllContainingPairs()
+    {
+        var service = new JsonLanguageService();
+        const string text = """{ "items": ["abc"] }""";
+        TextBuffer.LineSnapshot source = CreateSource(text);
+
+        IReadOnlyList<LanguagePairHighlight> pairs = service.GetMatchingPairs(
+            source,
+            new TextPosition(0, 14),
+            CancellationToken.None);
+
+        Assert.Collection(pairs,
+            pair => AssertPair(pair, LanguagePairKind.Object, 0, 19),
+            pair => AssertPair(pair, LanguagePairKind.Array, 11, 17),
+            pair => AssertPair(pair, LanguagePairKind.String, 12, 16));
+    }
+
+    [Fact]
+    public void GetMatchingPairs_SourceOnlyIgnoresBracketsInsideStrings()
+    {
+        var service = new JsonLanguageService();
+        const string text = """{ "text": "[{}]" }""";
+        TextBuffer.LineSnapshot source = CreateSource(text);
+
+        IReadOnlyList<LanguagePairHighlight> pairs = service.GetMatchingPairs(
+            source,
+            new TextPosition(0, 12),
+            CancellationToken.None);
+
+        Assert.Collection(pairs,
+            pair => AssertPair(pair, LanguagePairKind.Object, 0, 17),
+            pair => AssertPair(pair, LanguagePairKind.String, 10, 15));
+    }
+
+    [Fact]
+    public void GetMatchingPairs_SourceOnlyUnterminatedString_ReturnsEmpty()
+    {
+        var service = new JsonLanguageService();
+        const string text = "[\"abc]";
+        TextBuffer.LineSnapshot source = CreateSource(text);
+
+        IReadOnlyList<LanguagePairHighlight> pairs = service.GetMatchingPairs(
+            source,
+            new TextPosition(0, 3),
+            CancellationToken.None);
+
+        Assert.Empty(pairs);
+    }
+
+    [Fact]
+    public void GetMatchingPairs_SourceOnlyUsesStreamingSourceWhenAvailable()
+    {
+        var service = new JsonLanguageService();
+        var source = new StreamingSingleLineJsonSource("""{ "items": ["abc"] }""");
+
+        IReadOnlyList<LanguagePairHighlight> pairs = service.GetMatchingPairs(
+            source,
+            new TextPosition(0, 14),
+            CancellationToken.None);
+
+        Assert.Collection(pairs,
+            pair => AssertPair(pair, LanguagePairKind.Object, 0, 19),
+            pair => AssertPair(pair, LanguagePairKind.Array, 11, 17),
+            pair => AssertPair(pair, LanguagePairKind.String, 12, 16));
+        Assert.True(source.StreamReadCount > 0);
+        Assert.Equal(0, source.FallbackSegmentRequestCount);
+    }
+
     private static TextBuffer.LineSnapshot CreateSource(string text)
     {
         var buffer = new TextBuffer();
