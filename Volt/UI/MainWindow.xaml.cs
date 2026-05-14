@@ -75,16 +75,23 @@ public partial class MainWindow
         CancellationToken cancellationToken,
         IProgress<FileLoadProgress>? progress = null) => Task.Run(() =>
     {
+        using var profile = VoltProfiler.Span("FileLoad.LoadFileData", "file", Path.GetFileName(path));
         cancellationToken.ThrowIfCancellationRequested();
         progress?.Report(FileLoadProgress.Indeterminate("Detecting encoding"));
-        var enc = FileHelper.DetectEncoding(path);
+        Encoding enc;
+        using (VoltProfiler.Span("FileLoad.DetectEncoding"))
+            enc = FileHelper.DetectEncoding(path);
         cancellationToken.ThrowIfCancellationRequested();
-        var prep = TextBuffer.PrepareContentFromFile(path, enc, tabSize, progress, cancellationToken);
+        TextBuffer.PreparedContent prep;
+        using (VoltProfiler.Span("FileLoad.PrepareContentFromFile"))
+            prep = TextBuffer.PrepareContentFromFile(path, enc, tabSize, progress, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         var info = new FileInfo(path);
         var size = info.Length;
         progress?.Report(FileLoadProgress.ForBytes("Finalizing", size, size));
-        var tail = FileHelper.ReadTailVerifyBytes(path, size);
+        byte[]? tail;
+        using (VoltProfiler.Span("FileLoad.ReadTailVerifyBytes"))
+            tail = FileHelper.ReadTailVerifyBytes(path, size);
         cancellationToken.ThrowIfCancellationRequested();
         progress?.Report(FileLoadProgress.Complete("Loaded file", size));
         return new FileLoadResult(enc, prep, size, tail, info.LastWriteTimeUtc);
@@ -110,6 +117,7 @@ public partial class MainWindow
 
     private void ApplyFileLoadResult(TabInfo tab, FileLoadResult result, TabInfo.LoadOperation load)
     {
+        using var profile = VoltProfiler.Span("MainWindow.ApplyFileLoadResult", "file", Path.GetFileName(tab.FilePath ?? ""));
         tab.FileEncoding = result.Encoding;
         tab.Editor.SetPreparedContent(result.Prepared);
         tab.LastKnownFileSize = result.FileSize;
@@ -229,6 +237,7 @@ public partial class MainWindow
 
     private void OnFirstContentRendered(object? sender, EventArgs e)
     {
+        using var profile = VoltProfiler.Span("MainWindow.OnFirstContentRendered");
         ContentRendered -= OnFirstContentRendered;
         RestoreSession();
 
@@ -287,6 +296,7 @@ public partial class MainWindow
 
     private void UpdateActiveTabHooks(TabInfo tab)
     {
+        using var profile = VoltProfiler.Span("MainWindow.UpdateActiveTabHooks", "file", Path.GetFileName(tab.FilePath ?? ""));
         if (_activeTab != null)
         {
             _activeTab.Editor.DirtyChanged -= OnActiveDirtyChanged;
@@ -300,14 +310,21 @@ public partial class MainWindow
         tab.Editor.CaretMoved += OnActiveCaretMoved;
         tab.Editor.DiagnosticsChanged += OnActiveDiagnosticsChanged;
 
-        FindBarControl.SetEditor(tab.Editor);
-        FindBarControl.RefreshSearch();
+        using (VoltProfiler.Span("MainWindow.UpdateActiveTabHooks.FindBar"))
+        {
+            FindBarControl.SetEditor(tab.Editor);
+            FindBarControl.RefreshSearch();
+        }
 
-        ApplySettingsToEditor(tab.Editor);
+        using (VoltProfiler.Span("MainWindow.UpdateActiveTabHooks.ApplySettings"))
+            ApplySettingsToEditor(tab.Editor);
 
-        UpdateTitle();
-        UpdateFileType();
-        UpdateCaretPos();
+        using (VoltProfiler.Span("MainWindow.UpdateActiveTabHooks.Status"))
+        {
+            UpdateTitle();
+            UpdateFileType();
+            UpdateCaretPos();
+        }
     }
 
     private async void CloseTab(TabInfo tab) => await CloseTabAsync(tab);
@@ -707,6 +724,7 @@ public partial class MainWindow
 
     private void ApplySettingsToEditor(EditorControl editor)
     {
+        using var profile = VoltProfiler.Span("MainWindow.ApplySettingsToEditor");
         editor.TabSize = _settings.Editor.TabSize;
         editor.WordWrapAtWords = _settings.Editor.WordWrapAtWords;
         editor.WordWrapIndent = _settings.Editor.WordWrapIndent;
@@ -1480,6 +1498,7 @@ public partial class MainWindow
 
     private void UpdateFileType()
     {
+        using var profile = VoltProfiler.Span("MainWindow.UpdateFileType");
         if (Editor is not { } editor) return;
 
         if (_activeTab!.LanguageOverride != null)

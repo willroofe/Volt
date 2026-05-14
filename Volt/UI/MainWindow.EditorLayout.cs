@@ -179,17 +179,26 @@ public partial class MainWindow
 
     private void ActivateTab(TabInfo tab)
     {
+        using var profile = VoltProfiler.Span("MainWindow.ActivateTab", "file", Path.GetFileName(tab.FilePath ?? ""));
         var leaf = EditorLayoutTree.FindLeafForTab(_editorLayoutRoot, tab);
         if (leaf == null) return;
         leaf.ActiveTab = tab;
         _focusedLeafId = leaf.Id;
-        UpdateActiveTabHooks(tab);
-        RefreshEditorHostsAndVisibility();
-        UpdateAllTabHeaders();
-        tab.HeaderElement.BringIntoView();
+        using (VoltProfiler.Span("MainWindow.ActivateTab.UpdateHooks"))
+            UpdateActiveTabHooks(tab);
+        using (VoltProfiler.Span("MainWindow.ActivateTab.RefreshHosts"))
+            RefreshEditorHostsAndVisibility();
+        using (VoltProfiler.Span("MainWindow.ActivateTab.UpdateHeaders"))
+            UpdateAllTabHeaders();
+        using (VoltProfiler.Span("MainWindow.ActivateTab.BringHeaderIntoView"))
+            tab.HeaderElement.BringIntoView();
         if (_settings.Editor.Explorer.RevealActiveFile)
-            _explorerPanel.SelectFile(tab.FilePath);
-        Keyboard.Focus(tab.Editor);
+        {
+            using (VoltProfiler.Span("MainWindow.ActivateTab.RevealActiveFile"))
+                _explorerPanel.SelectFile(tab.FilePath);
+        }
+        using (VoltProfiler.Span("MainWindow.ActivateTab.FocusEditor"))
+            Keyboard.Focus(tab.Editor);
     }
 
     private void ActivateTabAsSinglePane(TabInfo tab) => ActivateTab(tab);

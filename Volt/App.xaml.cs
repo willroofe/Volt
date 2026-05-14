@@ -34,6 +34,8 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        using var profile = VoltProfiler.Span("App.OnStartup");
+
         Resources.MergedDictionaries.Add(new ResourceDictionary
         {
             Source = new Uri("pack://application:,,,/Volt;component/UI/Icons/Icons.xaml", UriKind.Absolute)
@@ -71,6 +73,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        VoltProfiler.Flush();
         _singleInstance?.Dispose();
         base.OnExit(e);
     }

@@ -10,6 +10,7 @@ public sealed class JsonLanguageService : ILanguageService
 
     public LanguageSnapshot Analyze(string text, long sourceVersion)
     {
+        using var profile = VoltProfiler.Span("Json.Analyze");
         var lexer = new JsonLexer(text);
         IReadOnlyList<JsonToken> tokens = lexer.Lex();
 
@@ -61,11 +62,15 @@ public sealed class JsonLanguageService : ILanguageService
 
     public LanguagePairIndex CreateMatchingPairIndex(
         ILanguageTextSource source,
-        CancellationToken cancellationToken) =>
-        JsonPairScanner.CreateIndex(source, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        using var profile = VoltProfiler.Span("Json.CreateMatchingPairIndex");
+        return JsonPairScanner.CreateIndex(source, cancellationToken);
+    }
 
     public LanguageRenderState GetRenderState(LanguageTextSegment segment, LanguageRenderState initialState)
     {
+        using var profile = VoltProfiler.Span("Json.GetRenderState");
         bool inString = IsStringState(initialState);
         TextPosition stringStart = inString ? initialState.TokenStart : default;
         bool isEscaped = inString && initialState.IsEscaped;
@@ -109,6 +114,7 @@ public sealed class JsonLanguageService : ILanguageService
         LanguageTextSegment segment,
         LanguageRenderState initialState)
     {
+        using var profile = VoltProfiler.Span("Json.TokenizeForRendering");
         if (segment.Text.Length == 0)
             return Array.Empty<LanguageToken>();
 
@@ -388,6 +394,7 @@ public sealed class JsonLanguageService : ILanguageService
 
         private LanguagePairIndex Scan()
         {
+            using var profile = VoltProfiler.Span("Json.PairScanner.Scan");
             if (ScanStream())
                 return BuildIndex();
 

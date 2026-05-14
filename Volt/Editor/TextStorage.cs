@@ -498,6 +498,7 @@ internal sealed class FileTextSource : ITextSource, IFastLiteralMatchCounter, IL
 
     private IEnumerable<string> ReadLinesFromFile(int startLine, int count)
     {
+        using var profile = VoltProfiler.Span("FileTextSource.ReadLinesFromFile", "lineCount", count);
         if (count <= 0)
             yield break;
 

@@ -860,6 +860,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
     private void UpdateExtent()
     {
+        using var profile = VoltProfiler.Span("Editor.UpdateExtent");
         // Anchor scroll to the top visible logical line across wrap recalculations
         int anchorLine = -1;
         int anchorWrap = 0;
@@ -910,6 +911,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private void RecalcWrapData()
     {
+        using var profile = VoltProfiler.Span("Editor.RecalcWrapData");
         double textAreaWidth = _viewport.Width - _gutterWidth - GutterPadding;
         _wrap.Recalculate(_wordWrap, _wordWrapAtWords, _wordWrapIndent, _buffer, textAreaWidth, _font.CharWidth);
     }
@@ -1290,6 +1292,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     protected override void OnRender(DrawingContext dc)
     {
+        using var profile = VoltProfiler.Span("Editor.OnRender");
         if (_isBusy)
         {
             dc.DrawRectangle(ThemeManager.EditorBg, null,
@@ -1482,6 +1485,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private void RenderMatchingPairHighlights(DrawingContext dc)
     {
+        using var profile = VoltProfiler.Span("Editor.RenderMatchingPairHighlights");
         IReadOnlyList<MatchingPairRenderHighlight> highlights = GetMatchingPairHighlightsForRendering();
         if (highlights.Count == 0 || _font.CharWidth <= 0 || _font.LineHeight <= 0)
             return;
@@ -1552,6 +1556,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private IReadOnlyList<LanguagePairHighlight> GetMatchingPairsForCaret()
     {
+        using var profile = VoltProfiler.Span("Editor.GetMatchingPairsForCaret");
         ILanguageService? languageService = _languageService;
         if (languageService == null)
             return Array.Empty<LanguagePairHighlight>();
@@ -1614,7 +1619,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             CancellationToken token = cancellation.Token;
             LanguagePairIndex index = await Task.Run(
-                () => languageService.CreateMatchingPairIndex(source, token) ?? LanguagePairIndex.Empty,
+                () =>
+                {
+                    using var scanProfile = VoltProfiler.Span("Editor.CreateMatchingPairIndex");
+                    return languageService.CreateMatchingPairIndex(source, token) ?? LanguagePairIndex.Empty;
+                },
                 token);
 
             if (token.IsCancellationRequested
@@ -1738,9 +1747,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private void RenderTextVisual(int firstLine, int lastLine)
     {
+        using var profile = VoltProfiler.Span("Editor.RenderTextVisual");
         int drawFirst = Math.Max(0, firstLine - RenderBufferLines);
         int drawLast = Math.Min(_buffer.Count - 1, lastLine + RenderBufferLines);
-        LanguageSnapshot? languageSnapshot = GetLanguageSnapshot();
+        LanguageSnapshot? languageSnapshot;
+        using (VoltProfiler.Span("Editor.RenderTextVisual.GetLanguageSnapshot"))
+            languageSnapshot = GetLanguageSnapshot();
 
         using var dc = _textVisual.RenderOpen();
 
@@ -1920,6 +1932,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         int textColumnOffset,
         LanguageSnapshot? languageSnapshot)
     {
+        using var profile = VoltProfiler.Span("Editor.GetTokensForRenderedSegment");
         if (languageSnapshot is { Tokens.Count: > 0 })
             return languageSnapshot.Tokens;
 
@@ -1943,6 +1956,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private LanguageRenderState GetRenderStateAt(int sourceLine, int sourceColumn)
     {
+        using var profile = VoltProfiler.Span("Editor.GetRenderStateAt");
         if (_languageService == null || sourceColumn <= 0)
             return LanguageRenderState.Default;
 
@@ -3232,12 +3246,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
     /// </summary>
     public void SetPreparedContent(TextBuffer.PreparedContent prepared)
     {
+        using var profile = VoltProfiler.Span("Editor.SetPreparedContent");
         _buffer.SetPreparedContent(prepared);
         ResetAfterContentLoad();
     }
 
     private void ResetAfterContentLoad()
     {
+        using var profile = VoltProfiler.Span("Editor.ResetAfterContentLoad");
         _caretLine = 0;
         _caretCol = 0;
         _selection.Clear();

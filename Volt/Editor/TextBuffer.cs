@@ -462,12 +462,15 @@ public class TextBuffer
         IProgress<FileLoadProgress>? progress,
         CancellationToken cancellationToken = default)
     {
+        using var profile = VoltProfiler.Span("TextBuffer.PrepareContentFromFile", "file", Path.GetFileName(path));
         cancellationToken.ThrowIfCancellationRequested();
         long fileSize = new FileInfo(path).Length;
         if (FileTextSource.SupportsEncoding(encoding))
         {
             progress?.Report(FileLoadProgress.ForBytes("Indexing file", 0, fileSize));
-            LargeFileLineIndex index = LargeFileLineIndex.Build(path, encoding, progress, cancellationToken);
+            LargeFileLineIndex index;
+            using (VoltProfiler.Span("TextBuffer.BuildLargeFileLineIndex"))
+                index = LargeFileLineIndex.Build(path, encoding, progress, cancellationToken);
             progress?.Report(FileLoadProgress.Complete("File indexed", fileSize));
             return new PreparedContent
             {

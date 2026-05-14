@@ -171,6 +171,7 @@ public class FindManager
         bool useRegex = false, bool wholeWord = false,
         (int startLine, int startCol, int endLine, int endCol)? selectionBounds = null)
     {
+        using var profile = VoltProfiler.Span("Find.StartSearch");
         _syncContext = SynchronizationContext.Current;
         long bufferGeneration = buffer.EditGeneration;
         var normalizedSelection = NormalizeSelection(selectionBounds, buffer.Count);
@@ -380,6 +381,7 @@ public class FindManager
         int firstColumn = 0,
         int lastColumn = int.MaxValue)
     {
+        using var profile = VoltProfiler.Span("Find.GetMatchesInRange");
         FindSession? session = CurrentSession();
         if (session == null)
         {
@@ -612,6 +614,7 @@ public class FindManager
 
     private async Task CountMatchesAsync(FindSession session)
     {
+        using var profile = VoltProfiler.Span("Find.CountMatchesAsync");
         try
         {
             if (!TryCreateMatcher(session.Query, out _, out _))
@@ -1187,6 +1190,7 @@ public class FindManager
 
     private void ScanPageInBackground(FindSession session, int page)
     {
+        using var profile = VoltProfiler.Span("Find.ScanPageInBackground");
         try
         {
             var matches = ScanPage(session, page, session.Cancellation.Token);
@@ -1235,6 +1239,7 @@ public class FindManager
 
     private static List<(int Line, int Col, int Length)> ScanPage(FindSession session, int page, CancellationToken token)
     {
+        using var profile = VoltProfiler.Span("Find.ScanPage");
         int pageStartLine = page * PageLineCount;
         if (pageStartLine >= session.Snapshot.Count || session.SearchLineCount <= 0)
             return [];
