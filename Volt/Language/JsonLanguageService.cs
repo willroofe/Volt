@@ -59,21 +59,6 @@ public sealed class JsonLanguageService : ILanguageService
         return pairs;
     }
 
-    public IReadOnlyList<LanguagePairHighlight> GetMatchingPairs(
-        ILanguageTextSource source,
-        TextPosition caret,
-        CancellationToken cancellationToken)
-    {
-        if (caret.Line < 0 || caret.Line >= source.LineCount)
-            return Array.Empty<LanguagePairHighlight>();
-
-        int lineLength = source.GetLineLength(caret.Line);
-        if (caret.Column < 0 || caret.Column > lineLength)
-            return Array.Empty<LanguagePairHighlight>();
-
-        return JsonPairScanner.GetMatchingPairs(source, caret, cancellationToken);
-    }
-
     public LanguagePairIndex CreateMatchingPairIndex(
         ILanguageTextSource source,
         CancellationToken cancellationToken) =>
@@ -393,14 +378,6 @@ public sealed class JsonLanguageService : ILanguageService
             _cancellationToken = cancellationToken;
         }
 
-        public static IReadOnlyList<LanguagePairHighlight> GetMatchingPairs(
-            ILanguageTextSource source,
-            TextPosition caret,
-            CancellationToken cancellationToken)
-        {
-            return CreateIndex(source, cancellationToken).GetMatchingPairs(caret);
-        }
-
         public static LanguagePairIndex CreateIndex(
             ILanguageTextSource source,
             CancellationToken cancellationToken)
@@ -412,10 +389,10 @@ public sealed class JsonLanguageService : ILanguageService
         private LanguagePairIndex Scan()
         {
             if (ScanStream())
-                return CreateIndex();
+                return BuildIndex();
 
             ScanLines();
-            return CreateIndex();
+            return BuildIndex();
         }
 
         private bool ScanStream()
@@ -469,7 +446,7 @@ public sealed class JsonLanguageService : ILanguageService
             }
         }
 
-        private LanguagePairIndex CreateIndex()
+        private LanguagePairIndex BuildIndex()
         {
             if (_isInvalid || _inString || _pairs.Count == 0)
                 return LanguagePairIndex.Empty;

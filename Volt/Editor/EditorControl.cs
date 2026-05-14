@@ -1516,32 +1516,32 @@ public class EditorControl : FrameworkElement, IScrollInfo
         if (pairs.Count == 0)
             return Array.Empty<MatchingPairRenderHighlight>();
 
-        var paletteIndexes = pairs
+        IEnumerable<MatchingPairRenderHighlight> nearestFirst = pairs
             .OrderBy(pair => pair.OpenRange.Start.Line)
             .ThenBy(pair => pair.OpenRange.Start.Column)
             .ThenByDescending(pair => pair.CloseRange.Start.Line)
             .ThenByDescending(pair => pair.CloseRange.Start.Column)
-            .Select((pair, index) => (pair, index))
-            .ToDictionary(item => item.pair, item => item.index);
-
-        int? maxLevels = _bracketHighlightLevels;
-        IEnumerable<MatchingPairRenderHighlight> nearestFirst = pairs
+            .Select((pair, paletteIndex) => new MatchingPairRenderHighlight(pair, paletteIndex))
             .OrderBy(GetPairLineSpan)
             .ThenBy(GetPairColumnSpan)
-            .Select(pair => new MatchingPairRenderHighlight(pair, paletteIndexes[pair]));
-        if (maxLevels is > 0)
-            nearestFirst = nearestFirst.Take(maxLevels.Value);
+            .ThenBy(highlight => highlight.PaletteIndex);
+
+        if (_bracketHighlightLevels is > 0)
+            nearestFirst = nearestFirst.Take(_bracketHighlightLevels.Value);
 
         return nearestFirst.ToList();
     }
 
-    private static int GetPairLineSpan(LanguagePairHighlight pair)
-        => Math.Abs(pair.CloseRange.Start.Line - pair.OpenRange.Start.Line);
+    private static int GetPairLineSpan(MatchingPairRenderHighlight highlight)
+        => Math.Abs(highlight.Pair.CloseRange.Start.Line - highlight.Pair.OpenRange.Start.Line);
 
-    private static int GetPairColumnSpan(LanguagePairHighlight pair)
-        => GetPairLineSpan(pair) == 0
+    private static int GetPairColumnSpan(MatchingPairRenderHighlight highlight)
+    {
+        LanguagePairHighlight pair = highlight.Pair;
+        return pair.OpenRange.Start.Line == pair.CloseRange.Start.Line
             ? Math.Abs(pair.CloseRange.Start.Column - pair.OpenRange.Start.Column)
             : pair.CloseRange.Start.Column;
+    }
 
     private IReadOnlyList<LanguagePairHighlight> GetMatchingPairsForCaret()
     {

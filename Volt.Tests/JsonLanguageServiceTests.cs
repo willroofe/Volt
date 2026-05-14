@@ -499,16 +499,15 @@ public class JsonLanguageServiceTests
     }
 
     [Fact]
-    public void GetMatchingPairs_SourceOnlyNestedJson_ReturnsAllContainingPairs()
+    public void CreateMatchingPairIndex_NestedJson_ReturnsAllContainingPairs()
     {
         var service = new JsonLanguageService();
         const string text = """{ "items": ["abc"] }""";
         TextBuffer.LineSnapshot source = CreateSource(text);
 
-        IReadOnlyList<LanguagePairHighlight> pairs = service.GetMatchingPairs(
-            source,
-            new TextPosition(0, 14),
-            CancellationToken.None);
+        IReadOnlyList<LanguagePairHighlight> pairs = service
+            .CreateMatchingPairIndex(source, CancellationToken.None)
+            .GetMatchingPairs(new TextPosition(0, 14));
 
         Assert.Collection(pairs,
             pair => AssertPair(pair, LanguagePairKind.Object, 0, 19),
@@ -517,16 +516,15 @@ public class JsonLanguageServiceTests
     }
 
     [Fact]
-    public void GetMatchingPairs_SourceOnlyIgnoresBracketsInsideStrings()
+    public void CreateMatchingPairIndex_IgnoresBracketsInsideStrings()
     {
         var service = new JsonLanguageService();
         const string text = """{ "text": "[{}]" }""";
         TextBuffer.LineSnapshot source = CreateSource(text);
 
-        IReadOnlyList<LanguagePairHighlight> pairs = service.GetMatchingPairs(
-            source,
-            new TextPosition(0, 12),
-            CancellationToken.None);
+        IReadOnlyList<LanguagePairHighlight> pairs = service
+            .CreateMatchingPairIndex(source, CancellationToken.None)
+            .GetMatchingPairs(new TextPosition(0, 12));
 
         Assert.Collection(pairs,
             pair => AssertPair(pair, LanguagePairKind.Object, 0, 17),
@@ -534,30 +532,28 @@ public class JsonLanguageServiceTests
     }
 
     [Fact]
-    public void GetMatchingPairs_SourceOnlyUnterminatedString_ReturnsEmpty()
+    public void CreateMatchingPairIndex_UnterminatedString_ReturnsEmpty()
     {
         var service = new JsonLanguageService();
         const string text = "[\"abc]";
         TextBuffer.LineSnapshot source = CreateSource(text);
 
-        IReadOnlyList<LanguagePairHighlight> pairs = service.GetMatchingPairs(
-            source,
-            new TextPosition(0, 3),
-            CancellationToken.None);
+        IReadOnlyList<LanguagePairHighlight> pairs = service
+            .CreateMatchingPairIndex(source, CancellationToken.None)
+            .GetMatchingPairs(new TextPosition(0, 3));
 
         Assert.Empty(pairs);
     }
 
     [Fact]
-    public void GetMatchingPairs_SourceOnlyUsesStreamingSourceWhenAvailable()
+    public void CreateMatchingPairIndex_UsesStreamingSourceWhenAvailable()
     {
         var service = new JsonLanguageService();
         var source = new StreamingSingleLineJsonSource("""{ "items": ["abc"] }""");
 
-        IReadOnlyList<LanguagePairHighlight> pairs = service.GetMatchingPairs(
-            source,
-            new TextPosition(0, 14),
-            CancellationToken.None);
+        IReadOnlyList<LanguagePairHighlight> pairs = service
+            .CreateMatchingPairIndex(source, CancellationToken.None)
+            .GetMatchingPairs(new TextPosition(0, 14));
 
         Assert.Collection(pairs,
             pair => AssertPair(pair, LanguagePairKind.Object, 0, 19),
