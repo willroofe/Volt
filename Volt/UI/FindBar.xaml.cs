@@ -203,7 +203,7 @@ public partial class FindBar : UserControl
 
     public void RefreshSearch()
     {
-        if (IsVisible) UpdateSearch();
+        if (IsVisible) ScheduleSearch();
     }
 
     // ──────────────────────────────────────────────────────────────────

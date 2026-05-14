@@ -14,6 +14,7 @@ public class FindManager
     private const int ReplaceAllChunkLineCount = 65_536;
     private const int ImmediateFindProgressThresholdLines = 8_192;
     private const int DeferredFindProgressDelayMilliseconds = 160;
+    private const long AsyncVisibleFindScanThresholdChars = 1L * 1024 * 1024;
     private const long ImmediateFindProgressThresholdChars = 8L * 1024 * 1024;
     private const int SelectionProgressLengthProbeLimit = 512;
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
@@ -171,6 +172,11 @@ public class FindManager
         (int startLine, int startCol, int endLine, int endCol)? selectionBounds = null)
     {
         _syncContext = SynchronizationContext.Current;
+        long bufferGeneration = buffer.EditGeneration;
+        var normalizedSelection = NormalizeSelection(selectionBounds, buffer.Count);
+        if (IsCurrentSearch(bufferGeneration, query, matchCase, useRegex, wholeWord, normalizedSelection))
+            return;
+
         LastQuery = query;
         LastMatchCase = matchCase;
         LastUseRegex = useRegex;
@@ -193,12 +199,12 @@ public class FindManager
             return;
         }
 
-        var normalizedSelection = NormalizeSelection(selectionBounds, buffer.Count);
         var findQuery = new FindQuery(query, matchCase, useRegex, wholeWord, normalizedSelection, Regex: null);
         if (!TryCreateMatcher(findQuery, out Regex? regex, out _))
         {
             var invalidSession = new FindSession(
                 Interlocked.Increment(ref _nextSessionId),
+                bufferGeneration,
                 buffer.SnapshotLines(0, buffer.Count),
                 findQuery,
                 showProgressImmediately: false);
@@ -215,6 +221,7 @@ public class FindManager
         TextBuffer.LineSnapshot snapshot = buffer.SnapshotLines(0, buffer.Count);
         var session = new FindSession(
             Interlocked.Increment(ref _nextSessionId),
+            bufferGeneration,
             snapshot,
             findQuery,
             ShouldShowFindProgressImmediately(buffer, normalizedSelection));
@@ -227,6 +234,17 @@ public class FindManager
 
         _ = Task.Run(() => CountMatchesAsync(session));
     }
+
+    internal bool IsCurrentSearch(TextBuffer buffer, string query, bool matchCase,
+        bool useRegex = false, bool wholeWord = false,
+        (int startLine, int startCol, int endLine, int endCol)? selectionBounds = null) =>
+        IsCurrentSearch(
+            buffer.EditGeneration,
+            query,
+            matchCase,
+            useRegex,
+            wholeWord,
+            NormalizeSelection(selectionBounds, buffer.Count));
 
     /// <summary>
     /// Compatibility synchronous search used by existing unit tests and small-file callers.
@@ -398,14 +416,22 @@ public class FindManager
         int firstPage = firstLine / PageLineCount;
         int lastPage = lastLine / PageLineCount;
         bool fullColumns = firstColumn <= 0 && lastColumn == int.MaxValue;
+        bool scanSynchronously = ShouldScanVisiblePagesSynchronously(session);
         for (int page = firstPage; page <= lastPage; page++)
         {
             IReadOnlyList<(int Line, int Col, int Length)> pageMatches;
             try
             {
-                pageMatches = fullColumns
-                    ? GetOrScanPage(session, page)
-                    : ScanPage(session, page, session.Cancellation.Token);
+                if (scanSynchronously)
+                {
+                    pageMatches = fullColumns
+                        ? GetOrScanPage(session, page)
+                        : ScanPage(session, page, session.Cancellation.Token);
+                }
+                else
+                {
+                    pageMatches = GetCachedOrRequestPage(session, page);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -729,6 +755,36 @@ public class FindManager
             RaiseChanged();
         }
     }
+
+    private bool IsCurrentSearch(
+        long bufferGeneration,
+        string query,
+        bool matchCase,
+        bool useRegex,
+        bool wholeWord,
+        (int startLine, int startCol, int endLine, int endCol)? selectionBounds)
+    {
+        lock (_gate)
+        {
+            return _session != null
+                && !_session.Cancellation.IsCancellationRequested
+                && _session.BufferGeneration == bufferGeneration
+                && HasSameSearch(_session.Query, query, matchCase, useRegex, wholeWord, selectionBounds);
+        }
+    }
+
+    private static bool HasSameSearch(
+        FindQuery query,
+        string text,
+        bool matchCase,
+        bool useRegex,
+        bool wholeWord,
+        (int startLine, int startCol, int endLine, int endCol)? selectionBounds) =>
+        query.Text == text
+        && query.MatchCase == matchCase
+        && query.UseRegex == useRegex
+        && query.WholeWord == wholeWord
+        && query.SelectionBounds == selectionBounds;
 
     private static ReplaceAllResult CreateReplaceAllSnapshot(
         FindSession session,
@@ -1109,16 +1165,73 @@ public class FindManager
             if (session.PageMatchCache.TryGetValue(page, out var cached))
                 return cached;
 
-            session.PageMatchCache[page] = matches;
-            session.PageCacheOrder.Enqueue(page);
-            while (session.PageMatchCache.Count > CachedPageLimit && session.PageCacheOrder.Count > 0)
-            {
-                int evict = session.PageCacheOrder.Dequeue();
-                session.PageMatchCache.Remove(evict);
-            }
+            CachePageNoLock(session, page, matches);
         }
         return matches;
     }
+
+    private IReadOnlyList<(int Line, int Col, int Length)> GetCachedOrRequestPage(FindSession session, int page)
+    {
+        lock (session.Gate)
+        {
+            if (session.PageMatchCache.TryGetValue(page, out var cached))
+                return cached;
+
+            if (!session.PendingPageScans.Add(page))
+                return Array.Empty<(int Line, int Col, int Length)>();
+        }
+
+        _ = Task.Run(() => ScanPageInBackground(session, page));
+        return Array.Empty<(int Line, int Col, int Length)>();
+    }
+
+    private void ScanPageInBackground(FindSession session, int page)
+    {
+        try
+        {
+            var matches = ScanPage(session, page, session.Cancellation.Token);
+            bool changed = false;
+            lock (_gate)
+            {
+                if (ReferenceEquals(_session, session) && !session.Cancellation.IsCancellationRequested)
+                {
+                    lock (session.Gate)
+                    {
+                        if (!session.PageMatchCache.ContainsKey(page))
+                        {
+                            CachePageNoLock(session, page, matches);
+                            changed = true;
+                        }
+                    }
+                }
+            }
+
+            if (changed)
+                RaiseChanged();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            lock (session.Gate)
+                session.PendingPageScans.Remove(page);
+        }
+    }
+
+    private static void CachePageNoLock(FindSession session, int page, List<(int Line, int Col, int Length)> matches)
+    {
+        session.PageMatchCache[page] = matches;
+        session.PageCacheOrder.Enqueue(page);
+        while (session.PageMatchCache.Count > CachedPageLimit && session.PageCacheOrder.Count > 0)
+        {
+            int evict = session.PageCacheOrder.Dequeue();
+            session.PageMatchCache.Remove(evict);
+        }
+    }
+
+    private static bool ShouldScanVisiblePagesSynchronously(FindSession session) =>
+        session.Snapshot.CharCountWithoutLineEndings < AsyncVisibleFindScanThresholdChars;
 
     private static List<(int Line, int Col, int Length)> ScanPage(FindSession session, int page, CancellationToken token)
     {
@@ -2039,11 +2152,13 @@ public class FindManager
     {
         public FindSession(
             int id,
+            long bufferGeneration,
             TextBuffer.LineSnapshot snapshot,
             FindQuery query,
             bool showProgressImmediately)
         {
             Id = id;
+            BufferGeneration = bufferGeneration;
             Snapshot = snapshot;
             Query = query;
             ProgressTextVisible = showProgressImmediately;
@@ -2051,6 +2166,7 @@ public class FindManager
         }
 
         public int Id { get; }
+        public long BufferGeneration { get; }
         public TextBuffer.LineSnapshot Snapshot { get; }
         public FindQuery Query { get; }
         public CancellationTokenSource Cancellation { get; } = new();
@@ -2058,6 +2174,7 @@ public class FindManager
         public Dictionary<int, long> PageCounts { get; } = new();
         public Dictionary<int, List<(int Line, int Col, int Length)>> PageMatchCache { get; } = new();
         public Queue<int> PageCacheOrder { get; } = new();
+        public HashSet<int> PendingPageScans { get; } = [];
         public int HighestCountedPage { get; set; } = -1;
         public long KnownMatchCount { get; set; }
         public int SearchedLineCount { get; set; }

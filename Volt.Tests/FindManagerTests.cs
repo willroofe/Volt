@@ -651,6 +651,30 @@ public class FindManagerTests
     }
 
     [Fact]
+    public async Task StartSearch_SameQueryAndGenerationReusesCurrentSession()
+    {
+        var source = new CountingTextSource(lineCount: 2_000, "haystack");
+        var buffer = new TextBuffer();
+        buffer.SetPreparedContent(new TextBuffer.PreparedContent
+        {
+            Source = source,
+            LineEnding = "\n"
+        });
+        var find = new FindManager();
+
+        find.StartSearch(buffer, "needle", matchCase: false, caretLine: 0, caretCol: 0);
+        await WaitUntil(() => find.HasExactMatchCount);
+        int firstReadCount = source.EnumeratedLineReads;
+
+        find.StartSearch(buffer, "needle", matchCase: false, caretLine: 0, caretCol: 0);
+        await Task.Delay(100);
+
+        Assert.Equal(2_000, firstReadCount);
+        Assert.Equal(firstReadCount, source.EnumeratedLineReads);
+        find.Clear();
+    }
+
+    [Fact]
     public void GetMatchesInRange_ReturnsOnlyViewportMatches()
     {
         var buf = TestHelpers.MakeBuffer(string.Join('\n', Enumerable.Range(0, 100)
@@ -663,6 +687,36 @@ public class FindManagerTests
 
         Assert.Equal([(20, 0, 6), (30, 0, 6)], visible);
         find.Clear();
+    }
+
+    [Fact]
+    public void GetMatchesInRange_LargeSearchDoesNotSynchronouslyScanMissingPage()
+    {
+        using var release = new ManualResetEventSlim();
+        var source = new BlockingTextSource(lineCount: 500_000, release);
+        var buffer = new TextBuffer();
+        buffer.SetPreparedContent(new TextBuffer.PreparedContent
+        {
+            Source = source,
+            LineEnding = "\n"
+        });
+        var find = new FindManager();
+        var sw = Stopwatch.StartNew();
+
+        try
+        {
+            find.StartSearch(buffer, "needle", matchCase: false, caretLine: 0, caretCol: 0);
+
+            var visible = find.GetMatchesInRange(0, 0);
+
+            Assert.Empty(visible);
+            Assert.True(sw.ElapsedMilliseconds < 250);
+        }
+        finally
+        {
+            find.Clear();
+            release.Set();
+        }
     }
 
     [Fact]

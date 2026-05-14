@@ -31,6 +31,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private LanguagePairIndex? _largeDocumentMatchingPairIndex;
     private long _largeDocumentMatchingPairIndexGeneration = -1;
     private ILanguageService? _largeDocumentMatchingPairIndexLanguageService;
+    private CancellationTokenSource? _largeDocumentMatchingPairIndexCancellation;
+    private long _largeDocumentMatchingPairIndexBuildGeneration = -1;
+    private ILanguageService? _largeDocumentMatchingPairIndexBuildLanguageService;
     private readonly Dictionary<int, SortedList<int, LanguageRenderState>> _languageRenderStateCache = [];
     private long _languageRenderStateGeneration = -1;
     private LanguageDiagnosticsSnapshot? _diagnosticsSnapshot;
@@ -44,6 +47,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     public void SetLanguage(ILanguageService? languageService)
     {
+        if (ReferenceEquals(_languageService, languageService))
+            return;
+
         _languageService = languageService;
         InvalidateLanguageAnalysis();
         InvalidateText();
@@ -1015,6 +1021,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _largeDocumentMatchingPairIndex = null;
         _largeDocumentMatchingPairIndexGeneration = -1;
         _largeDocumentMatchingPairIndexLanguageService = null;
+        CancelLargeDocumentMatchingPairIndexBuild();
         _languageRenderStateCache.Clear();
         _languageRenderStateGeneration = -1;
 
@@ -1571,13 +1578,89 @@ public class EditorControl : FrameworkElement, IScrollInfo
             return _largeDocumentMatchingPairIndex.GetMatchingPairs(caret);
         }
 
-        _largeDocumentMatchingPairIndex = languageService.CreateMatchingPairIndex(
-            source,
-            CancellationToken.None)
-            ?? LanguagePairIndex.Empty;
-        _largeDocumentMatchingPairIndexGeneration = generation;
-        _largeDocumentMatchingPairIndexLanguageService = languageService;
-        return _largeDocumentMatchingPairIndex.GetMatchingPairs(caret);
+        if (_largeDocumentMatchingPairIndexCancellation != null
+            && _largeDocumentMatchingPairIndexBuildGeneration == generation
+            && ReferenceEquals(_largeDocumentMatchingPairIndexBuildLanguageService, languageService))
+        {
+            return Array.Empty<LanguagePairHighlight>();
+        }
+
+        StartLargeDocumentMatchingPairIndexBuild(languageService, source, generation);
+        return Array.Empty<LanguagePairHighlight>();
+    }
+
+    private void StartLargeDocumentMatchingPairIndexBuild(
+        ILanguageService languageService,
+        TextBuffer.LineSnapshot source,
+        long generation)
+    {
+        CancelLargeDocumentMatchingPairIndexBuild();
+
+        var cancellation = new CancellationTokenSource();
+        _largeDocumentMatchingPairIndexCancellation = cancellation;
+        _largeDocumentMatchingPairIndexBuildGeneration = generation;
+        _largeDocumentMatchingPairIndexBuildLanguageService = languageService;
+
+        _ = BuildLargeDocumentMatchingPairIndexAsync(languageService, source, generation, cancellation);
+    }
+
+    private async Task BuildLargeDocumentMatchingPairIndexAsync(
+        ILanguageService languageService,
+        TextBuffer.LineSnapshot source,
+        long generation,
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            CancellationToken token = cancellation.Token;
+            LanguagePairIndex index = await Task.Run(
+                () => languageService.CreateMatchingPairIndex(source, token) ?? LanguagePairIndex.Empty,
+                token);
+
+            if (token.IsCancellationRequested
+                || generation != _buffer.EditGeneration
+                || !ReferenceEquals(languageService, _languageService))
+            {
+                return;
+            }
+
+            _largeDocumentMatchingPairIndex = index;
+            _largeDocumentMatchingPairIndexGeneration = generation;
+            _largeDocumentMatchingPairIndexLanguageService = languageService;
+            InvalidateVisual();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+            if (generation == _buffer.EditGeneration
+                && ReferenceEquals(languageService, _languageService))
+            {
+                _largeDocumentMatchingPairIndex = LanguagePairIndex.Empty;
+                _largeDocumentMatchingPairIndexGeneration = generation;
+                _largeDocumentMatchingPairIndexLanguageService = languageService;
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_largeDocumentMatchingPairIndexCancellation, cancellation))
+            {
+                _largeDocumentMatchingPairIndexCancellation = null;
+                _largeDocumentMatchingPairIndexBuildGeneration = -1;
+                _largeDocumentMatchingPairIndexBuildLanguageService = null;
+            }
+
+            cancellation.Dispose();
+        }
+    }
+
+    private void CancelLargeDocumentMatchingPairIndexBuild()
+    {
+        _largeDocumentMatchingPairIndexCancellation?.Cancel();
+        _largeDocumentMatchingPairIndexCancellation = null;
+        _largeDocumentMatchingPairIndexBuildGeneration = -1;
+        _largeDocumentMatchingPairIndexBuildLanguageService = null;
     }
 
     private void DrawPairCellHighlight(DrawingContext dc, TextPosition position, MatchingPairPaint paint)
@@ -3328,6 +3411,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public void SetFindMatches(string query, bool matchCase, bool useRegex = false, bool wholeWord = false,
         (int, int, int, int)? selectionBounds = null, bool preserveSelection = false)
     {
+        if (_find.IsCurrentSearch(_buffer, query, matchCase, useRegex, wholeWord, selectionBounds))
+        {
+            InvalidateVisual();
+            return;
+        }
+
         int version = ++_findNavigationVersion;
         int caretLine = _caretLine;
         int caretCol = _caretCol;

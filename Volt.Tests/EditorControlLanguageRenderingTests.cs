@@ -22,6 +22,28 @@ public class EditorControlLanguageRenderingTests
     }
 
     [StaFact]
+    public void SetLanguage_SameService_PreservesLargeDocumentPairIndex()
+    {
+        var service = new IndexCountingLanguageService();
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
+        editor.SetLanguage(service);
+        editor.SetPreparedContent(new TextBuffer.PreparedContent
+        {
+            Source = new LongJsonStringTextSource(2_100_000),
+            LineEnding = "\n"
+        });
+        editor.SetCaretPosition(0, 100);
+
+        Assert.Single(WaitForMatchingPairs(editor));
+
+        editor.SetLanguage(service);
+        editor.SetCaretPosition(0, 200);
+
+        Assert.Single(editor.GetMatchingPairsForRendering());
+        Assert.Equal(1, service.CreateMatchingPairIndexCalls);
+    }
+
+    [StaFact]
     public void GetLanguageSnapshot_ReturnsAssignedLanguageTokens()
     {
         var editor = new EditorControl(new ThemeManager(), new LanguageManager());
@@ -229,8 +251,7 @@ public class EditorControlLanguageRenderingTests
         });
         editor.SetCaretPosition(0, 100);
 
-        var pairs = Assert.IsAssignableFrom<IReadOnlyList<LanguagePairHighlight>>(
-            InvokePrivate(editor, "GetMatchingPairsForCaret"));
+        IReadOnlyList<LanguagePairHighlight> pairs = WaitForMatchingPairs(editor);
 
         LanguagePairHighlight pair = Assert.Single(pairs);
         Assert.Equal(LanguagePairKind.String, pair.Kind);
@@ -271,13 +292,38 @@ public class EditorControlLanguageRenderingTests
         });
 
         editor.SetCaretPosition(0, 100);
-        IReadOnlyList<LanguagePairHighlight> first = editor.GetMatchingPairsForRendering();
+        IReadOnlyList<LanguagePairHighlight> first = WaitForMatchingPairs(editor);
 
         editor.SetCaretPosition(0, 200);
         IReadOnlyList<LanguagePairHighlight> second = editor.GetMatchingPairsForRendering();
 
         Assert.Single(first);
         Assert.Single(second);
+        Assert.Equal(1, service.CreateMatchingPairIndexCalls);
+    }
+
+    [StaFact]
+    public void MatchingPairs_LargeDocumentBuildsPairIndexAsynchronously()
+    {
+        var service = new BlockingIndexLanguageService();
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
+        editor.SetLanguage(service);
+        editor.SetPreparedContent(new TextBuffer.PreparedContent
+        {
+            Source = new LongJsonStringTextSource(2_100_000),
+            LineEnding = "\n"
+        });
+        editor.SetCaretPosition(0, 100);
+
+        Assert.Empty(editor.GetMatchingPairsForRendering());
+        Assert.True(service.Started.Wait(TimeSpan.FromSeconds(5)));
+
+        Assert.Empty(editor.GetMatchingPairsForRendering());
+        Assert.Equal(1, service.CreateMatchingPairIndexCalls);
+
+        service.Release();
+
+        Assert.Single(WaitForMatchingPairs(editor));
         Assert.Equal(1, service.CreateMatchingPairIndexCalls);
     }
 
@@ -445,6 +491,17 @@ public class EditorControlLanguageRenderingTests
         }
     }
 
+    private static IReadOnlyList<LanguagePairHighlight> WaitForMatchingPairs(EditorControl editor)
+    {
+        IReadOnlyList<LanguagePairHighlight> pairs = Array.Empty<LanguagePairHighlight>();
+        WaitUntil(() =>
+        {
+            pairs = editor.GetMatchingPairsForRendering();
+            return pairs.Count > 0;
+        });
+        return pairs;
+    }
+
     private static void AssertPaintColors(EditorControl.MatchingPairPaint paint, string fill, string border)
     {
         AssertBrushColor(fill, paint.Fill);
@@ -536,6 +593,54 @@ public class EditorControlLanguageRenderingTests
             CancellationToken cancellationToken)
         {
             CreateMatchingPairIndexCalls++;
+            int closeColumn = source.GetLineLength(0) - 1;
+            return new LanguagePairIndex(
+            [
+                new LanguagePairHighlight(
+                    LanguagePairKind.String,
+                    TextRange.FromBounds(0, 0, 0, 1),
+                    TextRange.FromBounds(0, closeColumn, 0, closeColumn + 1))
+            ]);
+        }
+    }
+
+    private sealed class BlockingIndexLanguageService : ILanguageService
+    {
+        private readonly ManualResetEventSlim _release = new();
+
+        public int CreateMatchingPairIndexCalls { get; private set; }
+        public ManualResetEventSlim Started { get; } = new();
+        public string Name => "Blocking index";
+        public IReadOnlyList<string> Extensions { get; } = [".json"];
+
+        public void Release() => _release.Set();
+
+        public LanguageSnapshot Analyze(string text, long sourceVersion) =>
+            throw new InvalidOperationException("Large-file matching should not request full-document analysis.");
+
+        public LanguageDiagnosticsSnapshot AnalyzeDiagnostics(
+            ILanguageTextSource source,
+            long sourceVersion,
+            IProgress<LanguageDiagnosticsProgress>? progress,
+            CancellationToken cancellationToken) =>
+            new(Name, sourceVersion, Array.Empty<ParseDiagnostic>(), true, null, false);
+
+        public LanguageRenderState GetRenderState(LanguageTextSegment segment, LanguageRenderState initialState) =>
+            LanguageRenderState.Default;
+
+        public IReadOnlyList<LanguageToken> TokenizeForRendering(
+            LanguageTextSegment segment,
+            LanguageRenderState initialState) =>
+            Array.Empty<LanguageToken>();
+
+        public LanguagePairIndex CreateMatchingPairIndex(
+            ILanguageTextSource source,
+            CancellationToken cancellationToken)
+        {
+            CreateMatchingPairIndexCalls++;
+            Started.Set();
+            _release.Wait(cancellationToken);
+
             int closeColumn = source.GetLineLength(0) - 1;
             return new LanguagePairIndex(
             [
