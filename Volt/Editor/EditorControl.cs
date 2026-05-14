@@ -55,6 +55,32 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ── Settings ───────────────────────────────────────────────────────
     public int TabSize { get; set; } = 4;
     public bool BlockCaret { get; set; }
+    private string _bracketHighlightMode = AppSettings.BracketHighlightModeColourised;
+    public string BracketHighlightMode
+    {
+        get => _bracketHighlightMode;
+        set
+        {
+            string normalized = AppSettings.NormalizeBracketHighlightMode(value);
+            if (_bracketHighlightMode == normalized) return;
+            _bracketHighlightMode = normalized;
+            InvalidateVisual();
+        }
+    }
+
+    private int? _bracketHighlightLevels;
+    public int? BracketHighlightLevels
+    {
+        get => _bracketHighlightLevels;
+        set
+        {
+            int? normalized = AppSettings.NormalizeBracketHighlightLevels(value);
+            if (_bracketHighlightLevels == normalized) return;
+            _bracketHighlightLevels = normalized;
+            InvalidateVisual();
+        }
+    }
+
     private bool _wordWrapAtWords = true;
     public bool WordWrapAtWords
     {
@@ -197,15 +223,6 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private const int SyntaxRenderContextChars = 512;
     private const int SyntaxStateChunkChars = 16 * 1024;
     private const int MaxEagerWordWrapLines = 1_000_000;
-    private static readonly Color[] MatchingPairPalette =
-    [
-        Color.FromRgb(0x56, 0x8A, 0xF2),
-        Color.FromRgb(0xD1, 0x9A, 0x66),
-        Color.FromRgb(0x56, 0xB6, 0xC2),
-        Color.FromRgb(0x98, 0xC3, 0x79),
-        Color.FromRgb(0xC6, 0x78, 0xDD),
-        Color.FromRgb(0xE0, 0x6C, 0x75),
-    ];
     // Track rendered scroll region for long-line viewport clamping
     private double _renderedScrollX = double.NaN;
     private double _renderedScrollY = double.NaN;
@@ -1452,8 +1469,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private void RenderMatchingPairHighlights(DrawingContext dc)
     {
-        IReadOnlyList<LanguagePairHighlight> pairs = GetMatchingPairsForCaret();
-        if (pairs.Count == 0 || _font.CharWidth <= 0 || _font.LineHeight <= 0)
+        IReadOnlyList<MatchingPairRenderHighlight> highlights = GetMatchingPairHighlightsForRendering();
+        if (highlights.Count == 0 || _font.CharWidth <= 0 || _font.LineHeight <= 0)
             return;
 
         double textLeft = _gutterWidth + GutterPadding;
@@ -1465,10 +1482,10 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         try
         {
-            for (int i = 0; i < pairs.Count; i++)
+            foreach (MatchingPairRenderHighlight highlight in highlights)
             {
-                LanguagePairHighlight pair = pairs[i];
-                var paint = CreateMatchingPairPaint(i);
+                LanguagePairHighlight pair = highlight.Pair;
+                MatchingPairPaint paint = CreateMatchingPairPaint(highlight.PaletteIndex);
                 DrawPairCellHighlight(dc, pair.OpenRange.Start, paint);
                 DrawPairCellHighlight(dc, pair.CloseRange.Start, paint);
             }
@@ -1478,6 +1495,47 @@ public class EditorControl : FrameworkElement, IScrollInfo
             dc.Pop();
         }
     }
+
+    internal IReadOnlyList<LanguagePairHighlight> GetMatchingPairsForRendering()
+        => GetMatchingPairHighlightsForRendering()
+            .Select(highlight => highlight.Pair)
+            .ToList();
+
+    internal IReadOnlyList<MatchingPairRenderHighlight> GetMatchingPairHighlightsForRendering()
+    {
+        if (_bracketHighlightMode == AppSettings.BracketHighlightModeDisabled)
+            return Array.Empty<MatchingPairRenderHighlight>();
+
+        IReadOnlyList<LanguagePairHighlight> pairs = GetMatchingPairsForCaret();
+        if (pairs.Count == 0)
+            return Array.Empty<MatchingPairRenderHighlight>();
+
+        var paletteIndexes = pairs
+            .OrderBy(pair => pair.OpenRange.Start.Line)
+            .ThenBy(pair => pair.OpenRange.Start.Column)
+            .ThenByDescending(pair => pair.CloseRange.Start.Line)
+            .ThenByDescending(pair => pair.CloseRange.Start.Column)
+            .Select((pair, index) => (pair, index))
+            .ToDictionary(item => item.pair, item => item.index);
+
+        int? maxLevels = _bracketHighlightLevels;
+        IEnumerable<MatchingPairRenderHighlight> nearestFirst = pairs
+            .OrderBy(GetPairLineSpan)
+            .ThenBy(GetPairColumnSpan)
+            .Select(pair => new MatchingPairRenderHighlight(pair, paletteIndexes[pair]));
+        if (maxLevels is > 0)
+            nearestFirst = nearestFirst.Take(maxLevels.Value);
+
+        return nearestFirst.ToList();
+    }
+
+    private static int GetPairLineSpan(LanguagePairHighlight pair)
+        => Math.Abs(pair.CloseRange.Start.Line - pair.OpenRange.Start.Line);
+
+    private static int GetPairColumnSpan(LanguagePairHighlight pair)
+        => GetPairLineSpan(pair) == 0
+            ? Math.Abs(pair.CloseRange.Start.Column - pair.OpenRange.Start.Column)
+            : pair.CloseRange.Start.Column;
 
     private IReadOnlyList<LanguagePairHighlight> GetMatchingPairsForCaret()
     {
@@ -1516,21 +1574,35 @@ public class EditorControl : FrameworkElement, IScrollInfo
             dc.DrawRectangle(null, paint.Border, borderRect);
     }
 
-    private static MatchingPairPaint CreateMatchingPairPaint(int index)
+    internal MatchingPairPaint CreateMatchingPairPaint(int index)
     {
-        Color color = MatchingPairPalette[index % MatchingPairPalette.Length];
+        if (_bracketHighlightMode == AppSettings.BracketHighlightModeSingleColour)
+            return CreateMatchingPairPaint(ThemeManager.MatchingBracketBrush, ThemeManager.MatchingBracketBorderBrush);
+
+        Color[] palette = ThemeManager.MatchingBracketPalette;
+        if (palette.Length == 0)
+            palette = ThemeManager.DefaultMatchingBracketPalette.ToArray();
+
+        Color color = palette[index % palette.Length];
         var fill = new SolidColorBrush(Color.FromArgb(0x26, color.R, color.G, color.B));
         var borderBrush = new SolidColorBrush(color);
-        var border = new Pen(borderBrush, 1);
 
         if (fill.CanFreeze) fill.Freeze();
         if (borderBrush.CanFreeze) borderBrush.Freeze();
-        if (border.CanFreeze) border.Freeze();
 
+        return CreateMatchingPairPaint(fill, borderBrush);
+    }
+
+    private static MatchingPairPaint CreateMatchingPairPaint(Brush fill, Brush borderBrush)
+    {
+        var border = new Pen(borderBrush, 1);
+        if (border.CanFreeze) border.Freeze();
         return new MatchingPairPaint(fill, border);
     }
 
-    private readonly record struct MatchingPairPaint(Brush Fill, Pen Border);
+    internal readonly record struct MatchingPairPaint(Brush Fill, Pen Border);
+
+    internal readonly record struct MatchingPairRenderHighlight(LanguagePairHighlight Pair, int PaletteIndex);
 
     private Rect GetCharacterCellRect(int line, int column)
     {

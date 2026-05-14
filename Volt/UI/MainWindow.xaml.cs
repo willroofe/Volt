@@ -711,6 +711,8 @@ public partial class MainWindow
         editor.WordWrapAtWords = _settings.Editor.WordWrapAtWords;
         editor.WordWrapIndent = _settings.Editor.WordWrapIndent;
         editor.WordWrap = _settings.Editor.WordWrap;
+        editor.BracketHighlightMode = _settings.Editor.BracketHighlightMode;
+        editor.BracketHighlightLevels = _settings.Editor.BracketHighlightLevels;
         editor.BlockCaret = _settings.Editor.Caret.BlockCaret;
         editor.CaretBlinkMs = _settings.Editor.Caret.BlinkMs;
         if (_settings.Editor.Font.Family != null) editor.FontFamilyName = _settings.Editor.Font.Family;
@@ -2055,6 +2057,7 @@ public partial class MainWindow
             editor.LineHeightMultiplier, _settings.Application.ColorTheme, _settings.Editor.Find.BarPosition,
             _settings.Editor.Find.SeedWithSelection, _settings.Editor.FixedWidthTabs,
             _settings.Editor.WordWrap, _settings.Editor.WordWrapAtWords, _settings.Editor.WordWrapIndent,
+            _settings.Editor.BracketHighlightMode, _settings.Editor.BracketHighlightLevels,
             _settings.Application.CommandPalettePosition,
             _settings.Editor.Explorer.FileIcons, _settings.Editor.Explorer.RevealActiveFile,
             _keyBindingManager.GetAllBindings(),
@@ -2082,6 +2085,8 @@ public partial class MainWindow
         _settings.Editor.WordWrap = dlg.WordWrap;
         _settings.Editor.WordWrapAtWords = dlg.WordWrapAtWords;
         _settings.Editor.WordWrapIndent = dlg.WordWrapIndent;
+        _settings.Editor.BracketHighlightMode = dlg.BracketHighlightMode;
+        _settings.Editor.BracketHighlightLevels = dlg.BracketHighlightLevels;
         _settings.Editor.Explorer.FileIcons = dlg.ExplorerFileIcons;
         _settings.Editor.Explorer.RevealActiveFile = dlg.ExplorerRevealActiveFile;
         _settings.Editor.TerminalShellPath = dlg.TerminalShellPath;

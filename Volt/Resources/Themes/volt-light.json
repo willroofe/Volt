@@ -10,6 +10,10 @@
     "currentLine": "#F2F5FA",
     "matchingBracket": "#DDE4F0",
     "matchingBracketBorder": "#2B6CB0",
+    "matchingBracketColors": [
+      "#568AF2", "#D19A66", "#56B6C2", "#98C379",
+      "#C678DD", "#E06C75"
+    ],
     "findMatch": "#503878C8",
     "findMatchCurrent": "#80E0A040",
     "indentGuide": "#122B6CB0"

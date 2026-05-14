@@ -12,6 +12,7 @@ public record SettingsSnapshot(
     double LineHeight, string ColorTheme, string FindBarPosition,
     bool FindSeedWithSelection, bool FixedWidthTabs,
     bool WordWrap, bool WordWrapAtWords, bool WordWrapIndent,
+    string BracketHighlightMode, int? BracketHighlightLevels,
     string CommandPalettePosition,
     string ExplorerFileIcons, bool ExplorerRevealActiveFile,
     Dictionary<VoltCommand, KeyCombo> KeyBindings,
@@ -33,6 +34,8 @@ public partial class SettingsWindow : Window
     public bool WordWrap { get; private set; }
     public bool WordWrapAtWords { get; private set; }
     public bool WordWrapIndent { get; private set; }
+    public string BracketHighlightMode { get; private set; }
+    public int? BracketHighlightLevels { get; private set; }
     public string CommandPalettePosition { get; private set; }
     public string ExplorerFileIcons { get; private set; }
     public bool ExplorerRevealActiveFile { get; private set; }
@@ -41,7 +44,7 @@ public partial class SettingsWindow : Window
     public string? TerminalShellArgs { get; private set; }
     public int TerminalScrollbackLines { get; private set; }
 
-    private enum SettingsSection { Theme, CommandPalette, Keybinds, Font, Caret, Tabs, Find, Indentation, WordWrap, Explorer, Terminal }
+    private enum SettingsSection { Theme, CommandPalette, Keybinds, Font, Caret, Brackets, Tabs, Find, Indentation, WordWrap, Explorer, Terminal }
 
     private sealed record SettingsSectionInfo(
         SettingsSection Section,
@@ -114,6 +117,11 @@ public partial class SettingsWindow : Window
         FindSeedSelBox.SelectedIndex = snapshot.FindSeedWithSelection ? 0 : 1;
         FixedWidthTabs = snapshot.FixedWidthTabs;
         FixedWidthTabsBox.SelectedIndex = snapshot.FixedWidthTabs ? 0 : 1;
+        BracketHighlightMode = AppSettings.NormalizeBracketHighlightMode(snapshot.BracketHighlightMode);
+        BracketHighlightModeBox.SelectedIndex = Array.IndexOf(AppSettings.BracketHighlightModeOptions, BracketHighlightMode);
+        BracketHighlightLevels = AppSettings.NormalizeBracketHighlightLevels(snapshot.BracketHighlightLevels);
+        BracketHighlightLevelsBox.SelectedIndex = GetBracketHighlightLevelIndex(BracketHighlightLevels);
+        UpdateBracketHighlightLevelsEnabled();
         WordWrap = snapshot.WordWrap;
         WordWrapBox.SelectedIndex = snapshot.WordWrap ? 0 : 1;
         WordWrapAtWords = snapshot.WordWrapAtWords;
@@ -460,6 +468,7 @@ public partial class SettingsWindow : Window
         new(SettingsSection.Keybinds, NavKeybinds, KeybindsSection, ["keybinds", "key bindings", "keybindings", "bindings", "shortcuts", "hotkeys", "keyboard"], IsKeybinds: true),
         new(SettingsSection.Font, NavFont, FontSection, ["font", "typeface", "text"]),
         new(SettingsSection.Caret, NavCaret, CaretSection, ["caret", "cursor"]),
+        new(SettingsSection.Brackets, NavBrackets, BracketsSection, ["brackets", "bracket highlighters", "matching bracket", "pair highlighting"]),
         new(SettingsSection.Tabs, NavTabs, TabsSection, ["tabs"]),
         new(SettingsSection.Find, NavFind, FindSection, ["find", "search"]),
         new(SettingsSection.Indentation, NavIndentation, IndentationSection, ["indentation", "indent"]),
@@ -478,6 +487,8 @@ public partial class SettingsWindow : Window
         new(SettingsSection.Font, LineHeightRow, ["font", "line height", "line spacing", "spacing"]),
         new(SettingsSection.Caret, CaretStyleRow, ["caret", "caret style", "cursor", "bar", "block"]),
         new(SettingsSection.Caret, CaretBlinkRow, ["caret", "caret blink", "blink", "cursor blink"]),
+        new(SettingsSection.Brackets, BracketHighlightModeRow, ["brackets", "bracket highlighters", "matching bracket", "colourised", "single colour", "disabled"]),
+        new(SettingsSection.Brackets, BracketHighlightLevelsRow, ["brackets", "highlight levels", "matching bracket levels", "unlimited"]),
         new(SettingsSection.Tabs, TabsFixedWidthRow, ["tabs", "fixed width tabs", "fixed tabs"]),
         new(SettingsSection.Find, FindBarPositionRow, ["find", "find bar position", "search position", "top", "bottom"]),
         new(SettingsSection.Find, FindSeedSelectionRow, ["find", "selection", "add selection to find", "seed selection"]),
@@ -595,6 +606,7 @@ public partial class SettingsWindow : Window
     private void OnNavKeybinds(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Keybinds);
     private void OnNavFont(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Font);
     private void OnNavCaret(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Caret);
+    private void OnNavBrackets(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Brackets);
     private void OnNavTabs(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Tabs);
     private void OnNavFind(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Find);
     private void OnNavExplorer(object sender, RoutedEventArgs e) => SelectNav(SettingsSection.Explorer);
@@ -683,7 +695,7 @@ public partial class SettingsWindow : Window
     {
         SetHeaderVisibility(NavApplicationHeader, SettingsSection.Theme, SettingsSection.CommandPalette, SettingsSection.Keybinds);
         SetHeaderVisibility(NavEditorHeader, SettingsSection.Font, SettingsSection.Caret, SettingsSection.Tabs,
-            SettingsSection.Find, SettingsSection.Indentation, SettingsSection.WordWrap);
+            SettingsSection.Brackets, SettingsSection.Find, SettingsSection.Indentation, SettingsSection.WordWrap);
         SetHeaderVisibility(NavPanelsHeader, SettingsSection.Explorer, SettingsSection.Terminal);
     }
 
@@ -720,6 +732,8 @@ public partial class SettingsWindow : Window
         CommandPalettePosition = CmdPalettePosBox.SelectedIndex == 0 ? "Top" : "Center";
         FindSeedWithSelection = FindSeedSelBox.SelectedIndex == 0;
         FixedWidthTabs = FixedWidthTabsBox.SelectedIndex == 0;
+        BracketHighlightMode = AppSettings.BracketHighlightModeOptions[Math.Max(0, BracketHighlightModeBox.SelectedIndex)];
+        BracketHighlightLevels = GetBracketHighlightLevelValue(BracketHighlightLevelsBox.SelectedIndex);
         WordWrap = WordWrapBox.SelectedIndex == 0;
         WordWrapAtWords = WordWrapAtWordsBox.SelectedIndex == 0;
         WordWrapIndent = WordWrapIndentBox.SelectedIndex == 0;
@@ -734,6 +748,36 @@ public partial class SettingsWindow : Window
         if (!int.TryParse(TerminalScrollbackBox.Text.Trim(), out int sb) || sb < 100)
             sb = 10_000;
         TerminalScrollbackLines = Math.Clamp(sb, 100, 1_000_000);
+    }
+
+    private static int GetBracketHighlightLevelIndex(int? levels)
+    {
+        int? normalized = AppSettings.NormalizeBracketHighlightLevels(levels);
+        for (int i = 0; i < AppSettings.BracketHighlightLevelOptions.Length; i++)
+        {
+            if (AppSettings.BracketHighlightLevelOptions[i] == normalized)
+                return i;
+        }
+
+        return 0;
+    }
+
+    private static int? GetBracketHighlightLevelValue(int selectedIndex)
+    {
+        int index = Math.Clamp(selectedIndex, 0, AppSettings.BracketHighlightLevelOptions.Length - 1);
+        return AppSettings.BracketHighlightLevelOptions[index];
+    }
+
+    private void OnBracketHighlightModeChanged(object sender, SelectionChangedEventArgs e)
+        => UpdateBracketHighlightLevelsEnabled();
+
+    private void UpdateBracketHighlightLevelsEnabled()
+    {
+        if (BracketHighlightLevelsBox == null || BracketHighlightModeBox == null)
+            return;
+
+        string mode = AppSettings.BracketHighlightModeOptions[Math.Max(0, BracketHighlightModeBox.SelectedIndex)];
+        BracketHighlightLevelsBox.IsEnabled = mode != AppSettings.BracketHighlightModeDisabled;
     }
 
     private void OnApply(object sender, RoutedEventArgs e)

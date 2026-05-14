@@ -235,6 +235,117 @@ public class EditorControlLanguageRenderingTests
         Assert.Empty(pairs);
     }
 
+    [StaFact]
+    public void MatchingPairs_DisabledModeSkipsLanguageService()
+    {
+        var service = new CountingMatchingLanguageService();
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager())
+        {
+            BracketHighlightMode = AppSettings.BracketHighlightModeDisabled
+        };
+        editor.SetLanguage(service);
+        editor.SetContent("[]");
+        editor.SetCaretPosition(0, 1);
+
+        IReadOnlyList<LanguagePairHighlight> pairs = editor.GetMatchingPairsForRendering();
+
+        Assert.Empty(pairs);
+        Assert.Equal(0, service.AnalyzeCalls);
+        Assert.Equal(0, service.GetMatchingPairsCalls);
+    }
+
+    [StaFact]
+    public void MatchingPairs_RenderingUsesNearestPairsFirstAndLevelLimit()
+    {
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
+        editor.SetLanguage(new JsonLanguageService());
+        editor.SetContent("""{ "items": ["abc"] }""");
+        editor.SetCaretPosition(0, 14);
+
+        IReadOnlyList<LanguagePairHighlight> pairs = editor.GetMatchingPairsForRendering();
+
+        Assert.Collection(pairs,
+            pair => Assert.Equal(LanguagePairKind.String, pair.Kind),
+            pair => Assert.Equal(LanguagePairKind.Array, pair.Kind),
+            pair => Assert.Equal(LanguagePairKind.Object, pair.Kind));
+
+        editor.BracketHighlightLevels = 1;
+
+        LanguagePairHighlight pair = Assert.Single(editor.GetMatchingPairsForRendering());
+        Assert.Equal(LanguagePairKind.String, pair.Kind);
+    }
+
+    [StaFact]
+    public void MatchingPairHighlights_ColourisedPaletteIndexesUseStableNestingDepth()
+    {
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
+        editor.SetLanguage(new JsonLanguageService());
+        editor.SetContent("""{ "items": ["abc"] }""");
+        editor.SetCaretPosition(0, 14);
+
+        IReadOnlyList<EditorControl.MatchingPairRenderHighlight> highlights = editor.GetMatchingPairHighlightsForRendering();
+
+        Assert.Collection(highlights,
+            highlight =>
+            {
+                Assert.Equal(LanguagePairKind.String, highlight.Pair.Kind);
+                Assert.Equal(2, highlight.PaletteIndex);
+            },
+            highlight =>
+            {
+                Assert.Equal(LanguagePairKind.Array, highlight.Pair.Kind);
+                Assert.Equal(1, highlight.PaletteIndex);
+            },
+            highlight =>
+            {
+                Assert.Equal(LanguagePairKind.Object, highlight.Pair.Kind);
+                Assert.Equal(0, highlight.PaletteIndex);
+            });
+
+        editor.BracketHighlightLevels = 1;
+
+        EditorControl.MatchingPairRenderHighlight limited = Assert.Single(editor.GetMatchingPairHighlightsForRendering());
+        Assert.Equal(LanguagePairKind.String, limited.Pair.Kind);
+        Assert.Equal(2, limited.PaletteIndex);
+    }
+
+    [StaFact]
+    public void MatchingPairPaint_ColourisedUsesThemePaletteAndCycles()
+    {
+        var theme = new ColorTheme
+        {
+            Editor = new EditorColors
+            {
+                MatchingBracketColors = ["#112233", "#445566"]
+            }
+        };
+        var editor = new EditorControl(new ThemeManager(theme), new LanguageManager());
+
+        AssertPaintColors(editor.CreateMatchingPairPaint(0), fill: "#26112233", border: "#112233");
+        AssertPaintColors(editor.CreateMatchingPairPaint(1), fill: "#26445566", border: "#445566");
+        AssertPaintColors(editor.CreateMatchingPairPaint(2), fill: "#26112233", border: "#112233");
+    }
+
+    [StaFact]
+    public void MatchingPairPaint_SingleColourUsesThemeBrushes()
+    {
+        var theme = new ColorTheme
+        {
+            Editor = new EditorColors
+            {
+                MatchingBracket = "#112233",
+                MatchingBracketBorder = "#445566"
+            }
+        };
+        var editor = new EditorControl(new ThemeManager(theme), new LanguageManager())
+        {
+            BracketHighlightMode = AppSettings.BracketHighlightModeSingleColour
+        };
+
+        AssertPaintColors(editor.CreateMatchingPairPaint(0), fill: "#112233", border: "#445566");
+        AssertPaintColors(editor.CreateMatchingPairPaint(3), fill: "#112233", border: "#445566");
+    }
+
     private static T GetPrivateField<T>(object instance, string name)
     {
         var field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
@@ -285,6 +396,68 @@ public class EditorControlLanguageRenderingTests
                 new Action(() => frame.Continue = false));
             Dispatcher.PushFrame(frame);
             Thread.Sleep(10);
+        }
+    }
+
+    private static void AssertPaintColors(EditorControl.MatchingPairPaint paint, string fill, string border)
+    {
+        AssertBrushColor(fill, paint.Fill);
+        AssertBrushColor(border, paint.Border.Brush);
+    }
+
+    private static void AssertBrushColor(string expectedHex, Brush brush)
+    {
+        var solid = Assert.IsType<SolidColorBrush>(brush);
+        var expected = (Color)ColorConverter.ConvertFromString(expectedHex)!;
+        Assert.Equal(expected, solid.Color);
+    }
+
+    private sealed class CountingMatchingLanguageService : ILanguageService
+    {
+        public int AnalyzeCalls { get; private set; }
+        public int GetMatchingPairsCalls { get; private set; }
+        public string Name => "Counting pairs";
+        public IReadOnlyList<string> Extensions { get; } = [".json"];
+
+        public LanguageSnapshot Analyze(string text, long sourceVersion)
+        {
+            AnalyzeCalls++;
+            return new LanguageSnapshot(
+                Name,
+                sourceVersion,
+                new SyntaxNode("Root", TextRange.FromBounds(0, 0, 0, text.Length), Array.Empty<SyntaxNode>()),
+                Array.Empty<LanguageToken>(),
+                Array.Empty<ParseDiagnostic>());
+        }
+
+        public LanguageDiagnosticsSnapshot AnalyzeDiagnostics(
+            ILanguageTextSource source,
+            long sourceVersion,
+            IProgress<LanguageDiagnosticsProgress>? progress,
+            CancellationToken cancellationToken) =>
+            new(Name, sourceVersion, Array.Empty<ParseDiagnostic>(), true, null, false);
+
+        public LanguageRenderState GetRenderState(LanguageTextSegment segment, LanguageRenderState initialState) =>
+            LanguageRenderState.Default;
+
+        public IReadOnlyList<LanguageToken> TokenizeForRendering(
+            LanguageTextSegment segment,
+            LanguageRenderState initialState) =>
+            Array.Empty<LanguageToken>();
+
+        public IReadOnlyList<LanguagePairHighlight> GetMatchingPairs(
+            LanguageSnapshot snapshot,
+            ILanguageTextSource source,
+            TextPosition caret)
+        {
+            GetMatchingPairsCalls++;
+            return
+            [
+                new LanguagePairHighlight(
+                    LanguagePairKind.Array,
+                    TextRange.FromBounds(0, 0, 0, 1),
+                    TextRange.FromBounds(0, 1, 0, 2))
+            ];
         }
     }
 

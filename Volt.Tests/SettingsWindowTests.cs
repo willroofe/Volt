@@ -27,6 +27,15 @@ public class SettingsWindowTests
     }
 
     [StaFact]
+    public void BracketSettings_DefaultToColourisedAndUnlimited()
+    {
+        var settings = new AppSettings();
+
+        Assert.Equal(AppSettings.BracketHighlightModeColourised, settings.Editor.BracketHighlightMode);
+        Assert.Null(settings.Editor.BracketHighlightLevels);
+    }
+
+    [StaFact]
     public void SearchExplorerIcons_FiltersToExplorerIconSetting()
     {
         var window = CreateWindow();
@@ -62,6 +71,62 @@ public class SettingsWindowTests
 
             Assert.Equal("Off", window.ExplorerFileIcons);
             Assert.True(window.ExplorerRevealActiveFile);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [StaFact]
+    public void BracketSettings_RoundTripFromControls()
+    {
+        var window = CreateWindow();
+        try
+        {
+            var modeBox = Field<ComboBox>(window, "BracketHighlightModeBox");
+            var levelsBox = Field<ComboBox>(window, "BracketHighlightLevelsBox");
+
+            Assert.Equal(
+                ["Colourised", "Single Colour", "Disabled"],
+                ComboBoxItemContents(modeBox));
+            Assert.Equal(
+                ["Unlimited", "1", "2", "3", "4", "5", "10"],
+                ComboBoxItemContents(levelsBox));
+
+            modeBox.SelectedIndex = 1;
+            levelsBox.SelectedIndex = 3;
+
+            Field<Button>(window, "ApplyButton").RaiseEvent(
+                new RoutedEventArgs(Button.ClickEvent));
+
+            Assert.Equal(AppSettings.BracketHighlightModeSingleColour, window.BracketHighlightMode);
+            Assert.Equal(3, window.BracketHighlightLevels);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [StaFact]
+    public void BracketHighlightLevels_DisabledWhenModeDisabled()
+    {
+        var window = CreateWindow();
+        try
+        {
+            var modeBox = Field<ComboBox>(window, "BracketHighlightModeBox");
+            var levelsBox = Field<ComboBox>(window, "BracketHighlightLevelsBox");
+
+            Assert.True(levelsBox.IsEnabled);
+
+            modeBox.SelectedIndex = 2;
+
+            Assert.False(levelsBox.IsEnabled);
+
+            modeBox.SelectedIndex = 0;
+
+            Assert.True(levelsBox.IsEnabled);
         }
         finally
         {
@@ -288,6 +353,8 @@ public class SettingsWindowTests
             WordWrap: false,
             WordWrapAtWords: true,
             WordWrapIndent: true,
+            BracketHighlightMode: AppSettings.BracketHighlightModeColourised,
+            BracketHighlightLevels: null,
             CommandPalettePosition: "Top",
             ExplorerFileIcons: "Full",
             ExplorerRevealActiveFile: false,
@@ -306,6 +373,9 @@ public class SettingsWindowTests
         var value = field.GetValue(window);
         return Assert.IsAssignableFrom<T>(value);
     }
+
+    private static string[] ComboBoxItemContents(ComboBox box)
+        => box.Items.Cast<ComboBoxItem>().Select(item => Assert.IsType<string>(item.Content)).ToArray();
 
     private static void DrainDispatcher()
     {

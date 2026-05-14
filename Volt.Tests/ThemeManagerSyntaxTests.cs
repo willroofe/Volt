@@ -75,6 +75,35 @@ public class ThemeManagerSyntaxTests
     }
 
     [Fact]
+    public void MatchingBracketPalette_UsesThemeColorArray()
+    {
+        var theme = new ColorTheme
+        {
+            Editor = new EditorColors
+            {
+                MatchingBracketColors = ["#112233", "#445566"]
+            }
+        };
+        var manager = new ThemeManager(theme);
+
+        Assert.Equal(2, manager.MatchingBracketPalette.Length);
+        AssertColor("#112233", manager.MatchingBracketPalette[0]);
+        AssertColor("#445566", manager.MatchingBracketPalette[1]);
+    }
+
+    [Fact]
+    public void MatchingBracketPalette_FallsBackWhenThemeArrayMissingEmptyOrInvalid()
+    {
+        var missing = new ThemeManager(new ColorTheme());
+        var empty = new ThemeManager(new ColorTheme { Editor = new EditorColors { MatchingBracketColors = [] } });
+        var invalid = new ThemeManager(new ColorTheme { Editor = new EditorColors { MatchingBracketColors = ["nope"] } });
+
+        AssertDefaultPalette(missing.MatchingBracketPalette);
+        AssertDefaultPalette(empty.MatchingBracketPalette);
+        AssertDefaultPalette(invalid.MatchingBracketPalette);
+    }
+
+    [Fact]
     public void Initialize_RemovesObsoleteBundledThemeFiles()
     {
         string dir = Path.Combine(Path.GetTempPath(), "Volt.Tests.Themes", Guid.NewGuid().ToString("N"));
@@ -111,7 +140,19 @@ public class ThemeManagerSyntaxTests
     private static void AssertBrushColor(string expectedHex, Brush brush)
     {
         var solid = Assert.IsType<SolidColorBrush>(brush);
+        AssertColor(expectedHex, solid.Color);
+    }
+
+    private static void AssertColor(string expectedHex, Color actual)
+    {
         var expected = (Color)ColorConverter.ConvertFromString(expectedHex)!;
-        Assert.Equal(expected, solid.Color);
+        Assert.Equal(expected, actual);
+    }
+
+    private static void AssertDefaultPalette(IReadOnlyList<Color> actual)
+    {
+        Assert.Equal(ThemeManager.DefaultMatchingBracketPalette.Count, actual.Count);
+        for (int i = 0; i < actual.Count; i++)
+            Assert.Equal(ThemeManager.DefaultMatchingBracketPalette[i], actual[i]);
     }
 }

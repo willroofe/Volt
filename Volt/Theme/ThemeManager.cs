@@ -9,6 +9,16 @@ public class ThemeManager
 {
     public event EventHandler? ThemeChanged;
 
+    private static readonly Color[] DefaultMatchingBracketPaletteValues =
+    [
+        Color.FromRgb(0x56, 0x8A, 0xF2),
+        Color.FromRgb(0xD1, 0x9A, 0x66),
+        Color.FromRgb(0x56, 0xB6, 0xC2),
+        Color.FromRgb(0x98, 0xC3, 0x79),
+        Color.FromRgb(0xC6, 0x78, 0xDD),
+        Color.FromRgb(0xE0, 0x6C, 0x75),
+    ];
+
     private ColorTheme _colorTheme = new();
     private List<ColorTheme>? _themeCache;
     private readonly Dictionary<string, Brush> _syntaxBrushes = new(StringComparer.OrdinalIgnoreCase);
@@ -76,8 +86,10 @@ public class ThemeManager
     public Brush FindMatchCurrentBrush { get; private set; } = Brushes.Orange;
     public Brush MatchingBracketBrush { get; private set; } = Brushes.LightGray;
     public Brush MatchingBracketBorderBrush { get; private set; } = Brushes.DodgerBlue;
+    public Color[] MatchingBracketPalette { get; private set; } = DefaultMatchingBracketPaletteValues.ToArray();
     public Brush DiagnosticErrorBrush { get; private set; } = Brushes.Red;
     public TerminalColors TerminalColors => _colorTheme.Terminal;
+    public static IReadOnlyList<Color> DefaultMatchingBracketPalette => DefaultMatchingBracketPaletteValues;
 
     private bool _initialized;
 
@@ -162,12 +174,47 @@ public class ThemeManager
         FindMatchCurrentBrush = ColorTheme.ParseBrush(e.FindMatchCurrent);
         MatchingBracketBrush = ColorTheme.ParseBrush(e.MatchingBracket);
         MatchingBracketBorderBrush = ColorTheme.ParseBrush(e.MatchingBracketBorder);
+        MatchingBracketPalette = ResolveMatchingBracketPalette(e.MatchingBracketColors);
 
         _syntaxBrushes.Clear();
         foreach (var (scope, hex) in _colorTheme.Scopes)
             _syntaxBrushes[scope] = ColorTheme.ParseBrush(hex);
 
         DiagnosticErrorBrush = GetDiagnosticBrush();
+    }
+
+    private static Color[] ResolveMatchingBracketPalette(IEnumerable<string>? hexColors)
+    {
+        if (hexColors == null)
+            return DefaultMatchingBracketPaletteValues.ToArray();
+
+        var colors = new List<Color>();
+        foreach (string hex in hexColors)
+        {
+            if (TryParseColor(hex, out Color color))
+                colors.Add(color);
+        }
+
+        return colors.Count > 0
+            ? colors.ToArray()
+            : DefaultMatchingBracketPaletteValues.ToArray();
+    }
+
+    private static bool TryParseColor(string? hex, out Color color)
+    {
+        if (!string.IsNullOrEmpty(hex))
+        {
+            try
+            {
+                color = (Color)ColorConverter.ConvertFromString(hex);
+                return true;
+            }
+            catch (FormatException) { }
+            catch (NotSupportedException) { }
+        }
+
+        color = default;
+        return false;
     }
 
     public Brush GetSyntaxBrush(LanguageTokenKind kind, string? scope)

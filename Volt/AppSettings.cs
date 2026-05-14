@@ -87,6 +87,8 @@ public class EditorSettings
     public bool WordWrapAtWords { get; set; } = true;
     public bool WordWrapIndent { get; set; } = true;
     public bool FixedWidthTabs { get; set; }
+    public string BracketHighlightMode { get; set; } = AppSettings.BracketHighlightModeColourised;
+    public int? BracketHighlightLevels { get; set; }
     public FontSettings Font { get; set; } = new();
     public CaretSettings Caret { get; set; } = new();
     public FindSettings Find { get; set; } = new();
@@ -245,9 +247,17 @@ public class AppSettings
     public static readonly string[] FontWeightOptions = ["Thin", "ExtraLight", "Light", "Normal", "Medium", "SemiBold", "Bold", "ExtraBold", "Black"];
     public static readonly double[] LineHeightOptions = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2.0];
     public static readonly string[] ExplorerFileIconOptions = ["Full", "Basic", "Off"];
+    public const string BracketHighlightModeColourised = "Colourised";
+    public const string BracketHighlightModeSingleColour = "Single Colour";
+    public const string BracketHighlightModeDisabled = "Disabled";
+    public static readonly string[] BracketHighlightModeOptions =
+        [BracketHighlightModeColourised, BracketHighlightModeSingleColour, BracketHighlightModeDisabled];
+    public static readonly int?[] BracketHighlightLevelOptions = [null, 1, 2, 3, 4, 5, 10];
 
     public void Normalize()
     {
+        Editor.BracketHighlightMode = NormalizeBracketHighlightMode(Editor.BracketHighlightMode);
+        Editor.BracketHighlightLevels = NormalizeBracketHighlightLevels(Editor.BracketHighlightLevels);
         Editor.Explorer.FileIcons = NormalizeExplorerFileIcons(Editor.Explorer.FileIcons);
         if (Editor.Explorer.ShowFileTypeIcons is { } legacyShowFileTypeIcons)
         {
@@ -261,6 +271,15 @@ public class AppSettings
         return ExplorerFileIconOptions.FirstOrDefault(option =>
             string.Equals(option, value, StringComparison.OrdinalIgnoreCase)) ?? "Full";
     }
+
+    public static string NormalizeBracketHighlightMode(string? value)
+    {
+        return BracketHighlightModeOptions.FirstOrDefault(option =>
+            string.Equals(option, value, StringComparison.OrdinalIgnoreCase)) ?? BracketHighlightModeColourised;
+    }
+
+    public static int? NormalizeBracketHighlightLevels(int? value)
+        => value is > 0 ? value : null;
 
     public void Save()
     {
