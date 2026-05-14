@@ -156,6 +156,32 @@ public class EditorControlLargeFileTests
     }
 
     [StaFact]
+    public void RenderWrappedLine_RetainsTextForOffscreenWrapSegments()
+    {
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager())
+        {
+            WordWrap = true
+        };
+        editor.SetContent(new string('x', 20_000));
+
+        var size = new Size(240, 120);
+        editor.Measure(size);
+        editor.Arrange(new Rect(size));
+        editor.UpdateLayout();
+
+        var initialBitmap = new RenderTargetBitmap(240, 120, 96, 96, PixelFormats.Pbgra32);
+        initialBitmap.Render(editor);
+
+        FontManager font = GetPrivateField<FontManager>(editor, "_font");
+        editor.SetVerticalOffset(font.LineHeight * 120);
+
+        var scrolledBitmap = new RenderTargetBitmap(240, 120, 96, 96, PixelFormats.Pbgra32);
+        scrolledBitmap.Render(editor);
+
+        Assert.True(CountNonBackgroundPixels(scrolledBitmap, 80, 2, 230, 80) > 20);
+    }
+
+    [StaFact]
     public void TabOnHugeSelection_UsesPieceBackedUniformIndent()
     {
         const int lineCount = 1_200_000;
@@ -309,5 +335,35 @@ public class EditorControlLargeFileTests
         var method = instance.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(method);
         method.Invoke(instance, args);
+    }
+
+    private static int CountNonBackgroundPixels(BitmapSource bitmap, int x0, int y0, int x1, int y1)
+    {
+        int width = bitmap.PixelWidth;
+        int height = bitmap.PixelHeight;
+        int stride = width * 4;
+        var pixels = new byte[stride * height];
+        bitmap.CopyPixels(pixels, stride, 0);
+
+        int bgIndex = (height - 2) * stride + (width - 2) * 4;
+        byte bgB = pixels[bgIndex];
+        byte bgG = pixels[bgIndex + 1];
+        byte bgR = pixels[bgIndex + 2];
+
+        int count = 0;
+        for (int y = Math.Clamp(y0, 0, height - 1); y < Math.Clamp(y1, 0, height); y++)
+        {
+            for (int x = Math.Clamp(x0, 0, width - 1); x < Math.Clamp(x1, 0, width); x++)
+            {
+                int index = y * stride + x * 4;
+                int diff = Math.Abs(pixels[index] - bgB)
+                    + Math.Abs(pixels[index + 1] - bgG)
+                    + Math.Abs(pixels[index + 2] - bgR);
+                if (diff > 30)
+                    count++;
+            }
+        }
+
+        return count;
     }
 }

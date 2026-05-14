@@ -1792,10 +1792,17 @@ public class EditorControl : FrameworkElement, IScrollInfo
             {
                 int vCount = VisualLineCount(i);
                 int baseCumul = _wrap.CumulOffset(i);
-                // Clamp wrap segment loop to viewport-visible range (critical for very long lines)
-                int visFirst = Math.Max(0, (int)(_offset.Y / _font.LineHeight) - RenderBufferLines - baseCumul);
-                int visLast = Math.Min(vCount - 1,
-                    (int)((_offset.Y + _viewport.Height) / _font.LineHeight) + RenderBufferLines - baseCumul);
+                int visFirst = 0;
+                int visLast = vCount - 1;
+                if (longLine)
+                {
+                    // Extremely long wrapped lines can span thousands of visual
+                    // rows, so keep those clamped to the retained viewport.
+                    visFirst = Math.Max(0, (int)(_offset.Y / _font.LineHeight) - RenderBufferLines - baseCumul);
+                    visLast = Math.Min(vCount - 1,
+                        (int)((_offset.Y + _viewport.Height) / _font.LineHeight) + RenderBufferLines - baseCumul);
+                }
+
                 for (int w = Math.Max(0, visFirst); w <= visLast; w++)
                 {
                     int segStart = WrapColStart(i, w);
