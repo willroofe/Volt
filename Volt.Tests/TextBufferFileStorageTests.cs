@@ -138,6 +138,21 @@ public class TextBufferFileStorageTests : IDisposable
     }
 
     [Fact]
+    public void FileBackedBuffer_UsesIndexedLineLengthsForAsciiFiles()
+    {
+        string path = Write("indexed-line-lengths.txt", "alpha\nlonger line\nomega");
+        TextBuffer.PreparedContent prepared = TextBuffer.PrepareContentFromFile(
+            path,
+            new UTF8Encoding(false),
+            tabSize: 4);
+        File.Delete(path);
+
+        Assert.Equal(5, prepared.Source.GetLineLength(0));
+        Assert.Equal(11, prepared.Source.GetLineLength(1));
+        Assert.Equal(5, prepared.Source.GetLineLength(2));
+    }
+
+    [Fact]
     public void PrepareContentFromFile_IndexesCrlfSplitAcrossReadBufferBoundary()
     {
         string path = Write(

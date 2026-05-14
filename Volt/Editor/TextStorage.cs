@@ -355,8 +355,9 @@ internal sealed class FileTextSource : ITextSource, IFastLiteralMatchCounter, IL
 
     public int GetLineLength(int line)
     {
-        if (_index.LineCount == 1)
-            return _index.MaxLineLength;
+        if (!_index.HasTabs && !_index.HasNonAscii)
+            return _index.GetLineLength(line);
+
         return GetLine(line).Length;
     }
 
@@ -916,11 +917,13 @@ internal sealed class LargeFileLineIndex
 
     private readonly List<long> _checkpoints;
     private readonly List<long> _checkpointCharCounts;
+    private readonly int[] _lineLengths;
     private readonly int _bomLength;
 
     private LargeFileLineIndex(
         List<long> checkpoints,
         List<long> checkpointCharCounts,
+        int[] lineLengths,
         int bomLength,
         int lineCount,
         long charCountWithoutLineEndings,
@@ -931,6 +934,7 @@ internal sealed class LargeFileLineIndex
     {
         _checkpoints = checkpoints;
         _checkpointCharCounts = checkpointCharCounts;
+        _lineLengths = lineLengths;
         _bomLength = bomLength;
         LineCount = lineCount;
         CharCountWithoutLineEndings = charCountWithoutLineEndings;
@@ -973,6 +977,7 @@ internal sealed class LargeFileLineIndex
             int bomLength = DetectUtf8BomLength(buffer.AsSpan(0, read));
             var checkpoints = new List<long> { bomLength };
             var checkpointCharCounts = new List<long> { 0 };
+            var lineLengths = new List<int>();
 
             long lineCount = 1;
             long currentLineLength = 0;
@@ -1018,8 +1023,9 @@ internal sealed class LargeFileLineIndex
                         ? span[index - 1] == (byte)'\r'
                         : previousWasCr;
                     long contentLength = isCrLf ? Math.Max(0, lineLength - 1) : lineLength;
+                    lineLengths.Add(ClampLineLength(contentLength));
                     charCountWithoutLineEndings += contentLength;
-                    maxLineLength = (int)Math.Max(maxLineLength, Math.Min(contentLength, int.MaxValue));
+                    maxLineLength = Math.Max(maxLineLength, ClampLineLength(contentLength));
                     if (isCrLf)
                         crlfCount++;
                     else
@@ -1052,7 +1058,8 @@ internal sealed class LargeFileLineIndex
 
             cancellationToken.ThrowIfCancellationRequested();
             charCountWithoutLineEndings += currentLineLength;
-            maxLineLength = (int)Math.Max(maxLineLength, Math.Min(currentLineLength, int.MaxValue));
+            lineLengths.Add(ClampLineLength(currentLineLength));
+            maxLineLength = Math.Max(maxLineLength, ClampLineLength(currentLineLength));
 
             if (lineCount > int.MaxValue)
                 throw new NotSupportedException($"Volt indexed {lineCount:N0} lines, which exceeds the current editor line-addressing limit.");
@@ -1061,6 +1068,7 @@ internal sealed class LargeFileLineIndex
             return new LargeFileLineIndex(
                 checkpoints,
                 checkpointCharCounts,
+                [.. lineLengths],
                 bomLength,
                 (int)lineCount,
                 charCountWithoutLineEndings,
@@ -1075,6 +1083,14 @@ internal sealed class LargeFileLineIndex
         }
     }
 
+    public int GetLineLength(int line)
+    {
+        if ((uint)line >= (uint)_lineLengths.Length)
+            throw new ArgumentOutOfRangeException(nameof(line));
+
+        return _lineLengths[line];
+    }
+
     public (int line, long offset) GetCheckpointForLine(int line)
     {
         int checkpointIndex = Math.Clamp(line / CheckpointInterval, 0, _checkpoints.Count - 1);
@@ -1087,6 +1103,9 @@ internal sealed class LargeFileLineIndex
         return (checkpointIndex * CheckpointInterval, _checkpoints[checkpointIndex],
             _checkpointCharCounts[checkpointIndex]);
     }
+
+    private static int ClampLineLength(long length) =>
+        length > int.MaxValue ? int.MaxValue : (int)Math.Max(0, length);
 
     private static bool ContainsNonAscii(ReadOnlySpan<byte> span)
     {

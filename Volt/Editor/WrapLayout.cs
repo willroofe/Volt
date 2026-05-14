@@ -16,6 +16,13 @@ internal class WrapLayout
     private int[]? _wrapColStarts;      // starting column for each visual line (word-break mode only)
     private int[]? _wrapIndent;         // indent chars per logical line (wrap-indent mode only)
     private int _totalVisualLines;
+    private bool _hasCurrentLayout;
+    private bool _lastWordWrap;
+    private bool _lastBreakAtWords;
+    private bool _lastWrapIndent;
+    private long _lastBufferGeneration;
+    private int _lastBufferCount;
+    private int _lastCharsPerVisualLine;
 
     private void EnsureArrays(int count)
     {
@@ -42,6 +49,12 @@ internal class WrapLayout
     public void Recalculate(bool wordWrap, bool breakAtWords, bool wrapIndent,
         TextBuffer buffer, double textAreaWidth, double charWidth)
     {
+        int charsPerVisualLine = wordWrap
+            ? Math.Max(1, (int)(textAreaWidth / charWidth))
+            : 0;
+        if (IsCurrent(wordWrap, breakAtWords, wrapIndent, buffer, charsPerVisualLine))
+            return;
+
         if (!wordWrap)
         {
             _wrapLineCount = null;
@@ -49,10 +62,11 @@ internal class WrapLayout
             _wrapColStarts = null;
             _wrapIndent = null;
             _totalVisualLines = buffer.Count;
+            StoreCurrent(wordWrap, breakAtWords, wrapIndent, buffer, charsPerVisualLine);
             return;
         }
 
-        _charsPerVisualLine = Math.Max(1, (int)(textAreaWidth / charWidth));
+        _charsPerVisualLine = charsPerVisualLine;
 
         int count = buffer.Count;
         EnsureArrays(count);
@@ -81,6 +95,38 @@ internal class WrapLayout
             RecalcWordBreak(buffer, count);
         else
             RecalcCharBreak(buffer, count);
+
+        StoreCurrent(wordWrap, breakAtWords, wrapIndent, buffer, charsPerVisualLine);
+    }
+
+    private bool IsCurrent(
+        bool wordWrap,
+        bool breakAtWords,
+        bool wrapIndent,
+        TextBuffer buffer,
+        int charsPerVisualLine) =>
+        _hasCurrentLayout
+        && _lastWordWrap == wordWrap
+        && _lastBreakAtWords == breakAtWords
+        && _lastWrapIndent == wrapIndent
+        && _lastBufferGeneration == buffer.EditGeneration
+        && _lastBufferCount == buffer.Count
+        && _lastCharsPerVisualLine == charsPerVisualLine;
+
+    private void StoreCurrent(
+        bool wordWrap,
+        bool breakAtWords,
+        bool wrapIndent,
+        TextBuffer buffer,
+        int charsPerVisualLine)
+    {
+        _hasCurrentLayout = true;
+        _lastWordWrap = wordWrap;
+        _lastBreakAtWords = breakAtWords;
+        _lastWrapIndent = wrapIndent;
+        _lastBufferGeneration = buffer.EditGeneration;
+        _lastBufferCount = buffer.Count;
+        _lastCharsPerVisualLine = charsPerVisualLine;
     }
 
     private static int MeasureIndent(string line)

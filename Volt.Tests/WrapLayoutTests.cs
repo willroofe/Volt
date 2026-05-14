@@ -280,4 +280,62 @@ public class WrapLayoutTests
         Assert.Equal(100_000, wrap.VisualLineCount(wordWrap: true, 0));
         Assert.Equal(12_340, wrap.WrapColStart(wordWrap: true, 0, 1234));
     }
+
+    [Fact]
+    public void Recalculate_WithSameInputs_ReusesExistingLayout()
+    {
+        var source = new CountingLengthTextSource(lineCount: 1_000, lineLength: 20);
+        var buf = new TextBuffer();
+        buf.SetPreparedContent(new TextBuffer.PreparedContent
+        {
+            Source = source,
+            LineEnding = "\n"
+        });
+        var wrap = new WrapLayout();
+
+        wrap.Recalculate(wordWrap: true, breakAtWords: false, wrapIndent: false, buf, textAreaWidth: 80, charWidth: 8);
+        int firstReadCount = source.LineLengthReads;
+
+        wrap.Recalculate(wordWrap: true, breakAtWords: false, wrapIndent: false, buf, textAreaWidth: 80, charWidth: 8);
+
+        Assert.Equal(1_000, firstReadCount);
+        Assert.Equal(firstReadCount, source.LineLengthReads);
+    }
+
+    private sealed class CountingLengthTextSource : ITextSource
+    {
+        private readonly string _line;
+        private int _lineLengthReads;
+
+        public CountingLengthTextSource(int lineCount, int lineLength)
+        {
+            LineCount = lineCount;
+            _line = new string('x', lineLength);
+        }
+
+        public int LineCount { get; }
+        public int LineLengthReads => _lineLengthReads;
+        public long CharCountWithoutLineEndings => (long)LineCount * _line.Length;
+        public int MaxLineLength => _line.Length;
+
+        public string GetLine(int line) => _line;
+
+        public int GetLineLength(int line)
+        {
+            _lineLengthReads++;
+            return _line.Length;
+        }
+
+        public string GetLineSegment(int line, int startColumn, int length) =>
+            startColumn >= _line.Length ? "" : _line.Substring(startColumn, Math.Min(length, _line.Length - startColumn));
+
+        public IEnumerable<string> EnumerateLines(int startLine, int count, bool cache = true)
+        {
+            for (int i = 0; i < count && startLine + i < LineCount; i++)
+                yield return _line;
+        }
+
+        public int GetMaxLineLength(int startLine, int count) => _line.Length;
+        public long GetCharCountWithoutLineEndings(int startLine, int count) => (long)count * _line.Length;
+    }
 }
