@@ -2084,18 +2084,99 @@ public class EditorControl : FrameworkElement, IScrollInfo
             return;
         }
 
-        if (string.IsNullOrEmpty(e.Text) || e.Text[0] < ' ') return;
+        if (HandleTextInput(e.Text))
+            e.Handled = true;
+    }
+
+    private bool HandleTextInput(string text)
+    {
+        if (string.IsNullOrEmpty(text) || text[0] < ' ') return false;
+
+        if (TryOvertypeAutoPair(text))
+            return true;
 
         ResetPreferredCol();
         var (sl, el) = GetEditRange();
         var scope = BeginEdit(sl, el);
         DeleteSelectionIfPresent();
 
-        _buffer.InsertAt(_caretLine, _caretCol, e.Text);
-        _caretCol += e.Text.Length;
+        InsertTextWithAutoPair(text);
 
         FinishEdit(scope);
-        e.Handled = true;
+        return true;
+    }
+
+    private bool TryOvertypeAutoPair(string text)
+    {
+        if (text.Length != 1 || _selection.HasSelection)
+            return false;
+
+        char ch = text[0];
+        if (!EditorAutoPairs.IsOvertypeCharacter(ch))
+            return false;
+
+        string line = _buffer[_caretLine];
+        if (_caretCol >= line.Length || line[_caretCol] != ch)
+            return false;
+
+        _caretCol++;
+        ResetPreferredCol();
+        _selection.Clear();
+        EnsureCaretVisible();
+        ResetCaret();
+        return true;
+    }
+
+    private void InsertTextWithAutoPair(string text)
+    {
+        if (text.Length == 1 && !IsCaretInsideString(_buffer[_caretLine], _caretCol))
+        {
+            char ch = text[0];
+            if (EditorAutoPairs.TryGetCloser(ch, out char closer))
+            {
+                _buffer.InsertAt(_caretLine, _caretCol, $"{ch}{closer}");
+                _caretCol++;
+                return;
+            }
+
+            if (EditorAutoPairs.IsQuote(ch))
+            {
+                _buffer.InsertAt(_caretLine, _caretCol, $"{ch}{ch}");
+                _caretCol++;
+                return;
+            }
+        }
+
+        _buffer.InsertAt(_caretLine, _caretCol, text);
+        _caretCol += text.Length;
+    }
+
+    private static bool IsCaretInsideString(string line, int caretCol)
+    {
+        char? openQuote = null;
+        int length = Math.Min(caretCol, line.Length);
+
+        for (int i = 0; i < length; i++)
+        {
+            char ch = line[i];
+            if (ch == '\\' && openQuote != null)
+            {
+                i++;
+                continue;
+            }
+
+            if (openQuote == null)
+            {
+                if (EditorAutoPairs.IsQuote(ch))
+                    openQuote = ch;
+            }
+            else if (ch == openQuote)
+            {
+                openQuote = null;
+            }
+        }
+
+        return openQuote != null;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -2242,9 +2323,24 @@ public class EditorControl : FrameworkElement, IScrollInfo
         var indent = currentLine[..(currentLine.Length - currentLine.TrimStart().Length)];
         var rest = _buffer.TruncateAt(_caretLine, _caretCol);
 
-        _caretLine++;
-        _buffer.InsertLine(_caretLine, indent + rest);
-        _caretCol = indent.Length;
+        bool betweenPair = _caretCol > 0
+            && rest.Length > 0
+            && EditorAutoPairs.IsEmptyPair(_buffer[_caretLine][^1], rest[0]);
+
+        if (betweenPair)
+        {
+            string innerIndent = indent + new string(' ', TabSize);
+            _caretLine++;
+            _buffer.InsertLine(_caretLine, innerIndent);
+            _buffer.InsertLine(_caretLine + 1, indent + rest);
+            _caretCol = innerIndent.Length;
+        }
+        else
+        {
+            _caretLine++;
+            _buffer.InsertLine(_caretLine, indent + rest);
+            _caretCol = indent.Length;
+        }
 
         FinishEdit(scope);
     }
@@ -2265,15 +2361,23 @@ public class EditorControl : FrameworkElement, IScrollInfo
         {
             var line = _buffer[_caretLine];
 
-            int leadingSpaces = line.Length - line.TrimStart().Length;
-            int remove = 1;
-            if (_caretCol <= leadingSpaces && line.AsSpan(0, _caretCol).IndexOfAnyExcept(' ') < 0)
+            if (_caretCol < line.Length && EditorAutoPairs.IsEmptyPair(line[_caretCol - 1], line[_caretCol]))
             {
-                int prevStop = (_caretCol - 1) / TabSize * TabSize;
-                remove = _caretCol - prevStop;
+                _buffer.DeleteAt(_caretLine, _caretCol - 1, 2);
+                _caretCol--;
             }
-            _buffer.DeleteAt(_caretLine, _caretCol - remove, remove);
-            _caretCol -= remove;
+            else
+            {
+                int leadingSpaces = line.Length - line.TrimStart().Length;
+                int remove = 1;
+                if (_caretCol <= leadingSpaces && line.AsSpan(0, _caretCol).IndexOfAnyExcept(' ') < 0)
+                {
+                    int prevStop = (_caretCol - 1) / TabSize * TabSize;
+                    remove = _caretCol - prevStop;
+                }
+                _buffer.DeleteAt(_caretLine, _caretCol - remove, remove);
+                _caretCol -= remove;
+            }
         }
         else if (_caretLine > 0)
         {
