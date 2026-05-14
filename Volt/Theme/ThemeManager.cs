@@ -13,7 +13,54 @@ public class ThemeManager
     private List<ColorTheme>? _themeCache;
     private readonly Dictionary<string, Brush> _syntaxBrushes = new(StringComparer.OrdinalIgnoreCase);
 
-    private readonly string _themesDir = AppPaths.ThemesDir;
+    private static readonly string[] ObsoleteBundledThemeFiles =
+    [
+        "atom-one-dark-vivid.json",
+        "atom-one-dark.json",
+        "atom-one-light-vivid.json",
+        "atom-one-light.json",
+        "c-family-2017-dark.json",
+        "c-family-2017-light.json",
+        "c-family-dark.json",
+        "c-family-light.json",
+        "c-cpp-2017-dark.json",
+        "c-cpp-2017-light.json",
+        "c-cpp-dark.json",
+        "c-cpp-light.json",
+        "default-dark.json",
+        "default-light.json",
+        "dracula.json",
+        "forge-dark-colorblind.json",
+        "forge-dark-default.json",
+        "forge-dark-dimmed.json",
+        "forge-dark-high-contrast.json",
+        "forge-dark-legacy.json",
+        "forge-light-colorblind.json",
+        "forge-light-default.json",
+        "forge-light-high-contrast.json",
+        "forge-light-legacy.json",
+        "github-dark-colorblind.json",
+        "github-dark-default.json",
+        "github-dark-dimmed.json",
+        "github-dark-high-contrast.json",
+        "github-dark-legacy.json",
+        "github-light-colorblind.json",
+        "github-light-default.json",
+        "github-light-high-contrast.json",
+        "github-light-legacy.json",
+        "gruvbox-dark.json",
+        "nord.json",
+        "particle-one-dark-vivid.json",
+        "particle-one-dark.json",
+        "particle-one-light-vivid.json",
+        "particle-one-light.json",
+        "polar.json",
+        "powershell-ise.json",
+        "shell-studio.json",
+        "vampire-dark.json",
+    ];
+
+    private readonly string _themesDir;
 
     public string CurrentThemeName => _colorTheme.Name;
 
@@ -36,12 +83,19 @@ public class ThemeManager
 
     public ThemeManager()
     {
+        _themesDir = AppPaths.ThemesDir;
         UpdateEditorColors();
     }
 
     internal ThemeManager(ColorTheme colorTheme)
+        : this(colorTheme, AppPaths.ThemesDir)
+    {
+    }
+
+    internal ThemeManager(ColorTheme colorTheme, string themesDir)
     {
         _colorTheme = colorTheme;
+        _themesDir = themesDir;
         UpdateEditorColors();
     }
 
@@ -211,11 +265,26 @@ public class ThemeManager
 
     private void EnsureDefaultThemes()
     {
+        DeleteObsoleteBundledThemes();
+
         try
         {
             EmbeddedResourceHelper.ExtractAll("Volt.Resources.Themes.", _themesDir);
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
+    }
+
+    private void DeleteObsoleteBundledThemes()
+    {
+        foreach (string fileName in ObsoleteBundledThemeFiles)
+        {
+            try
+            {
+                File.Delete(Path.Combine(_themesDir, fileName));
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
     }
 }
