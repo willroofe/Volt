@@ -30,6 +30,18 @@ public sealed record LanguageToken(TextRange Range, LanguageTokenKind Kind, stri
 
 public sealed record ParseDiagnostic(TextRange Range, DiagnosticSeverity Severity, string Message);
 
+public enum LanguagePairKind
+{
+    Object,
+    Array,
+    String,
+}
+
+public sealed record LanguagePairHighlight(
+    LanguagePairKind Kind,
+    TextRange OpenRange,
+    TextRange CloseRange);
+
 public sealed record SyntaxNode(string Kind, TextRange Range, IReadOnlyList<SyntaxNode> Children, string? Text = null);
 
 public sealed record LanguageSnapshot(
@@ -106,4 +118,9 @@ public interface ILanguageService
         CancellationToken cancellationToken);
     LanguageRenderState GetRenderState(LanguageTextSegment segment, LanguageRenderState initialState);
     IReadOnlyList<LanguageToken> TokenizeForRendering(LanguageTextSegment segment, LanguageRenderState initialState);
+    IReadOnlyList<LanguagePairHighlight> GetMatchingPairs(
+        LanguageSnapshot snapshot,
+        ILanguageTextSource source,
+        TextPosition caret) =>
+        Array.Empty<LanguagePairHighlight>();
 }

@@ -427,11 +427,89 @@ public class JsonLanguageServiceTests
         Assert.Equal(new TextPosition(0, 12), token.Range.End);
     }
 
+    [Fact]
+    public void GetMatchingPairs_CaretInsideArrayString_ReturnsStringAndArrayPairs()
+    {
+        var service = new JsonLanguageService();
+        const string text = """["abc"]""";
+        TextBuffer.LineSnapshot source = CreateSource(text);
+        LanguageSnapshot snapshot = service.Analyze(text, sourceVersion: 1);
+
+        IReadOnlyList<LanguagePairHighlight> pairs = service.GetMatchingPairs(
+            snapshot,
+            source,
+            new TextPosition(0, 3));
+
+        Assert.Collection(pairs,
+            pair => AssertPair(pair, LanguagePairKind.Array, 0, 6),
+            pair => AssertPair(pair, LanguagePairKind.String, 1, 5));
+    }
+
+    [Fact]
+    public void GetMatchingPairs_CaretInsideNestedJson_ReturnsAllContainingPairs()
+    {
+        var service = new JsonLanguageService();
+        const string text = """{ "items": ["abc"] }""";
+        TextBuffer.LineSnapshot source = CreateSource(text);
+        LanguageSnapshot snapshot = service.Analyze(text, sourceVersion: 1);
+
+        IReadOnlyList<LanguagePairHighlight> pairs = service.GetMatchingPairs(
+            snapshot,
+            source,
+            new TextPosition(0, 14));
+
+        Assert.Collection(pairs,
+            pair => AssertPair(pair, LanguagePairKind.Object, 0, 19),
+            pair => AssertPair(pair, LanguagePairKind.Array, 11, 17),
+            pair => AssertPair(pair, LanguagePairKind.String, 12, 16));
+    }
+
+    [Fact]
+    public void GetMatchingPairs_CaretOnDelimiter_ReturnsRelevantPair()
+    {
+        var service = new JsonLanguageService();
+        const string text = """["abc"]""";
+        TextBuffer.LineSnapshot source = CreateSource(text);
+        LanguageSnapshot snapshot = service.Analyze(text, sourceVersion: 1);
+
+        IReadOnlyList<LanguagePairHighlight> pairs = service.GetMatchingPairs(
+            snapshot,
+            source,
+            new TextPosition(0, 1));
+
+        Assert.Collection(pairs,
+            pair => AssertPair(pair, LanguagePairKind.Array, 0, 6),
+            pair => AssertPair(pair, LanguagePairKind.String, 1, 5));
+    }
+
+    [Fact]
+    public void GetMatchingPairs_UnterminatedJson_DoesNotReturnIncompletePairs()
+    {
+        var service = new JsonLanguageService();
+        const string text = "[\"abc]";
+        TextBuffer.LineSnapshot source = CreateSource(text);
+        LanguageSnapshot snapshot = service.Analyze(text, sourceVersion: 1);
+
+        IReadOnlyList<LanguagePairHighlight> pairs = service.GetMatchingPairs(
+            snapshot,
+            source,
+            new TextPosition(0, 3));
+
+        Assert.Empty(pairs);
+    }
+
     private static TextBuffer.LineSnapshot CreateSource(string text)
     {
         var buffer = new TextBuffer();
         buffer.SetContent(text, tabSize: 4);
         return buffer.SnapshotLines(0, buffer.Count);
+    }
+
+    private static void AssertPair(LanguagePairHighlight pair, LanguagePairKind kind, int openColumn, int closeColumn)
+    {
+        Assert.Equal(kind, pair.Kind);
+        Assert.Equal(TextRange.FromBounds(0, openColumn, 0, openColumn + 1), pair.OpenRange);
+        Assert.Equal(TextRange.FromBounds(0, closeColumn, 0, closeColumn + 1), pair.CloseRange);
     }
 
     private sealed class HugeSingleLineJsonSource : ILanguageTextSource

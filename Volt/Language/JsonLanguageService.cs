@@ -49,6 +49,16 @@ public sealed class JsonLanguageService : ILanguageService
         CancellationToken cancellationToken) =>
         JsonDiagnosticsAnalyzer.Analyze(Name, source, sourceVersion, progress, cancellationToken);
 
+    public IReadOnlyList<LanguagePairHighlight> GetMatchingPairs(
+        LanguageSnapshot snapshot,
+        ILanguageTextSource source,
+        TextPosition caret)
+    {
+        var pairs = new List<LanguagePairHighlight>();
+        CollectMatchingPairs(snapshot.Root, source, snapshot.Diagnostics, caret, pairs);
+        return pairs;
+    }
+
     public LanguageRenderState GetRenderState(LanguageTextSegment segment, LanguageRenderState initialState)
     {
         bool inString = IsStringState(initialState);
@@ -230,6 +240,117 @@ public sealed class JsonLanguageService : ILanguageService
         LanguageTokenKind.Invalid => "invalid",
         _ => "operator",
     };
+
+    private static bool CollectMatchingPairs(
+        SyntaxNode node,
+        ILanguageTextSource source,
+        IReadOnlyList<ParseDiagnostic> diagnostics,
+        TextPosition caret,
+        List<LanguagePairHighlight> pairs)
+    {
+        if (!ContainsPosition(node.Range, caret))
+            return false;
+
+        if (TryCreatePair(node, source, diagnostics, out LanguagePairHighlight pair))
+            pairs.Add(pair);
+
+        foreach (SyntaxNode child in node.Children)
+        {
+            if (CollectMatchingPairs(child, source, diagnostics, caret, pairs))
+                break;
+        }
+
+        return true;
+    }
+
+    private static bool TryCreatePair(
+        SyntaxNode node,
+        ILanguageTextSource source,
+        IReadOnlyList<ParseDiagnostic> diagnostics,
+        out LanguagePairHighlight pair)
+    {
+        if (node.Kind == JsonSyntaxKinds.Object && !HasUnterminatedContainerDiagnostic(node, diagnostics))
+        {
+            return TryCreateDelimitedPair(source, node.Range, LanguagePairKind.Object, '{', '}', out pair);
+        }
+
+        if (node.Kind == JsonSyntaxKinds.Array && !HasUnterminatedContainerDiagnostic(node, diagnostics))
+        {
+            return TryCreateDelimitedPair(source, node.Range, LanguagePairKind.Array, '[', ']', out pair);
+        }
+
+        if (node.Kind == JsonSyntaxKinds.String)
+        {
+            return TryCreateDelimitedPair(source, node.Range, LanguagePairKind.String, '"', '"', out pair);
+        }
+
+        pair = default!;
+        return false;
+    }
+
+    private static bool HasUnterminatedContainerDiagnostic(
+        SyntaxNode node,
+        IReadOnlyList<ParseDiagnostic> diagnostics)
+    {
+        if (diagnostics.Count == 0)
+            return false;
+
+        string message = node.Kind == JsonSyntaxKinds.Object
+            ? "Object is not terminated."
+            : "Array is not terminated.";
+
+        return diagnostics.Any(diagnostic =>
+            diagnostic.Range.Start == node.Range.Start
+            && string.Equals(diagnostic.Message, message, StringComparison.Ordinal));
+    }
+
+    private static bool TryCreateDelimitedPair(
+        ILanguageTextSource source,
+        TextRange range,
+        LanguagePairKind kind,
+        char expectedOpen,
+        char expectedClose,
+        out LanguagePairHighlight pair)
+    {
+        pair = default!;
+        TextPosition close = new(range.End.Line, range.End.Column - 1);
+        if (ComparePositions(close, range.Start) <= 0)
+            return false;
+
+        if (!HasCharacter(source, range.Start, expectedOpen)
+            || !HasCharacter(source, close, expectedClose))
+            return false;
+
+        pair = new LanguagePairHighlight(
+            kind,
+            new TextRange(range.Start, new TextPosition(range.Start.Line, range.Start.Column + 1)),
+            new TextRange(close, new TextPosition(close.Line, close.Column + 1)));
+        return true;
+    }
+
+    private static bool HasCharacter(ILanguageTextSource source, TextPosition position, char expected)
+    {
+        if (position.Line < 0 || position.Line >= source.LineCount)
+            return false;
+
+        int lineLength = source.GetLineLength(position.Line);
+        if (position.Column < 0 || position.Column >= lineLength)
+            return false;
+
+        return source.GetLineSegment(position.Line, position.Column, 1) == expected.ToString();
+    }
+
+    private static bool ContainsPosition(TextRange range, TextPosition position) =>
+        ComparePositions(position, range.Start) >= 0
+        && ComparePositions(position, range.End) <= 0;
+
+    private static int ComparePositions(TextPosition left, TextPosition right)
+    {
+        int lineComparison = left.Line.CompareTo(right.Line);
+        return lineComparison != 0
+            ? lineComparison
+            : left.Column.CompareTo(right.Column);
+    }
 
     private static IReadOnlyList<ParseDiagnostic> AnalyzeTokenDiagnostics(
         IReadOnlyList<JsonToken> tokens,

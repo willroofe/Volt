@@ -16,6 +16,8 @@ public class EditorColors
     [JsonPropertyName("currentLine")] public string CurrentLine { get; set; } = "#F0F0F0";
     [JsonPropertyName("findMatch")] public string FindMatch { get; set; } = "#60FFFF00";
     [JsonPropertyName("findMatchCurrent")] public string FindMatchCurrent { get; set; } = "#80FF8C00";
+    [JsonPropertyName("matchingBracket")] public string MatchingBracket { get; set; } = "#DDE4F0";
+    [JsonPropertyName("matchingBracketBorder")] public string MatchingBracketBorder { get; set; } = "#2B6CB0";
 }
 
 public class ChromeColors

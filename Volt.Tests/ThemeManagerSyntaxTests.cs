@@ -56,6 +56,23 @@ public class ThemeManagerSyntaxTests
         Assert.Same(manager.EditorFg, brush);
     }
 
+    [Fact]
+    public void MatchingBracketBrushes_UseEditorThemeColors()
+    {
+        var theme = new ColorTheme
+        {
+            Editor = new EditorColors
+            {
+                MatchingBracket = "#112233",
+                MatchingBracketBorder = "#445566"
+            }
+        };
+        var manager = new ThemeManager(theme);
+
+        AssertBrushColor("#112233", manager.MatchingBracketBrush);
+        AssertBrushColor("#445566", manager.MatchingBracketBorderBrush);
+    }
+
     private static void AssertBrushColor(string expectedHex, Brush brush)
     {
         var solid = Assert.IsType<SolidColorBrush>(brush);

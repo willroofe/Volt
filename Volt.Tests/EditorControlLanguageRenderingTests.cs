@@ -185,6 +185,56 @@ public class EditorControlLanguageRenderingTests
         bitmap.Render(editor);
     }
 
+    [StaFact]
+    public void RenderMatchingPairs_DoesNotCrashForNormalWrappedAndLongLines()
+    {
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
+        editor.SetLanguage(new JsonLanguageService());
+        editor.SetContent("""{ "items": ["abc"] }""");
+        editor.SetCaretPosition(0, 14);
+
+        var size = new Size(320, 180);
+        editor.Measure(size);
+        editor.Arrange(new Rect(size));
+        editor.UpdateLayout();
+
+        var bitmap = new RenderTargetBitmap(320, 180, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(editor);
+
+        editor.WordWrap = true;
+        editor.SetContent("""{ "items": ["abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"] }""");
+        editor.SetCaretPosition(0, 26);
+        bitmap.Render(editor);
+
+        editor.WordWrap = false;
+        editor.SetPreparedContent(new TextBuffer.PreparedContent
+        {
+            Source = new LongJsonStringTextSource(600_000),
+            LineEnding = "\n"
+        });
+        editor.SetCaretPosition(0, 250_000);
+        editor.SetHorizontalOffset(249_500);
+        bitmap.Render(editor);
+    }
+
+    [StaFact]
+    public void MatchingPairs_LargeJsonWithoutFullSyntaxSnapshot_ReturnsEmpty()
+    {
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
+        editor.SetLanguage(new JsonLanguageService());
+        editor.SetPreparedContent(new TextBuffer.PreparedContent
+        {
+            Source = new LongJsonStringTextSource(2_100_000),
+            LineEnding = "\n"
+        });
+        editor.SetCaretPosition(0, 100);
+
+        var pairs = Assert.IsAssignableFrom<IReadOnlyList<LanguagePairHighlight>>(
+            InvokePrivate(editor, "GetMatchingPairsForCaret"));
+
+        Assert.Empty(pairs);
+    }
+
     private static T GetPrivateField<T>(object instance, string name)
     {
         var field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
@@ -199,11 +249,11 @@ public class EditorControlLanguageRenderingTests
         field.SetValue(instance, value);
     }
 
-    private static void InvokePrivate(object instance, string name, params object[] args)
+    private static object? InvokePrivate(object instance, string name, params object[] args)
     {
         var method = instance.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(method);
-        method.Invoke(instance, args);
+        return method.Invoke(instance, args);
     }
 
     private static void AnalyzeDiagnosticsSynchronously(EditorControl editor)

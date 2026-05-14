@@ -197,6 +197,15 @@ public class EditorControl : FrameworkElement, IScrollInfo
     private const int SyntaxRenderContextChars = 512;
     private const int SyntaxStateChunkChars = 16 * 1024;
     private const int MaxEagerWordWrapLines = 1_000_000;
+    private static readonly Color[] MatchingPairPalette =
+    [
+        Color.FromRgb(0x56, 0x8A, 0xF2),
+        Color.FromRgb(0xD1, 0x9A, 0x66),
+        Color.FromRgb(0x56, 0xB6, 0xC2),
+        Color.FromRgb(0x98, 0xC3, 0x79),
+        Color.FromRgb(0xC6, 0x78, 0xDD),
+        Color.FromRgb(0xE0, 0x6C, 0x75),
+    ];
     // Track rendered scroll region for long-line viewport clamping
     private double _renderedScrollX = double.NaN;
     private double _renderedScrollY = double.NaN;
@@ -1363,6 +1372,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
             }
         }
 
+        RenderMatchingPairHighlights(dc);
+
         // For long lines, the rendered region is clamped to the viewport.
         // Re-render when scroll moves beyond the rendered buffer zone.
         bool longLineScrolled = !double.IsNaN(_renderedScrollX)
@@ -1437,6 +1448,110 @@ public class EditorControl : FrameworkElement, IScrollInfo
                          Math.Max(0, x2 - Math.Max(x1, _gutterWidth + GutterPadding)),
                          _font.LineHeight));
         }
+    }
+
+    private void RenderMatchingPairHighlights(DrawingContext dc)
+    {
+        IReadOnlyList<LanguagePairHighlight> pairs = GetMatchingPairsForCaret();
+        if (pairs.Count == 0 || _font.CharWidth <= 0 || _font.LineHeight <= 0)
+            return;
+
+        double textLeft = _gutterWidth + GutterPadding;
+        dc.PushClip(new RectangleGeometry(new Rect(
+            textLeft,
+            0,
+            Math.Max(0, ActualWidth - textLeft),
+            ActualHeight)));
+
+        try
+        {
+            for (int i = 0; i < pairs.Count; i++)
+            {
+                LanguagePairHighlight pair = pairs[i];
+                var paint = CreateMatchingPairPaint(i);
+                DrawPairCellHighlight(dc, pair.OpenRange.Start, paint);
+                DrawPairCellHighlight(dc, pair.CloseRange.Start, paint);
+            }
+        }
+        finally
+        {
+            dc.Pop();
+        }
+    }
+
+    private IReadOnlyList<LanguagePairHighlight> GetMatchingPairsForCaret()
+    {
+        if (_languageService == null)
+            return Array.Empty<LanguagePairHighlight>();
+
+        LanguageSnapshot? snapshot = GetLanguageSnapshot();
+        if (snapshot == null)
+            return Array.Empty<LanguagePairHighlight>();
+
+        TextBuffer.LineSnapshot source = _buffer.SnapshotLines(0, _buffer.Count);
+        return _languageService.GetMatchingPairs(
+            snapshot,
+            source,
+            new TextPosition(_caretLine, _caretCol));
+    }
+
+    private void DrawPairCellHighlight(DrawingContext dc, TextPosition position, MatchingPairPaint paint)
+    {
+        if (position.Line < 0 || position.Line >= _buffer.Count)
+            return;
+
+        int lineLength = LineLength(position.Line);
+        if (position.Column < 0 || position.Column >= lineLength)
+            return;
+
+        Rect rect = GetCharacterCellRect(position.Line, position.Column);
+        if (rect.Width <= 0 || rect.Height <= 0)
+            return;
+
+        dc.DrawRectangle(paint.Fill, null, rect);
+
+        double inset = paint.Border.Thickness / 2;
+        Rect borderRect = Rect.Inflate(rect, -inset, -inset);
+        if (borderRect.Width > 0 && borderRect.Height > 0)
+            dc.DrawRectangle(null, paint.Border, borderRect);
+    }
+
+    private static MatchingPairPaint CreateMatchingPairPaint(int index)
+    {
+        Color color = MatchingPairPalette[index % MatchingPairPalette.Length];
+        var fill = new SolidColorBrush(Color.FromArgb(0x26, color.R, color.G, color.B));
+        var borderBrush = new SolidColorBrush(color);
+        var border = new Pen(borderBrush, 1);
+
+        if (fill.CanFreeze) fill.Freeze();
+        if (borderBrush.CanFreeze) borderBrush.Freeze();
+        if (border.CanFreeze) border.Freeze();
+
+        return new MatchingPairPaint(fill, border);
+    }
+
+    private readonly record struct MatchingPairPaint(Brush Fill, Pen Border);
+
+    private Rect GetCharacterCellRect(int line, int column)
+    {
+        double x;
+        double y;
+        if (!_wordWrap || VisualLineCount(line) <= 1)
+        {
+            x = _gutterWidth + GutterPadding + column * _font.CharWidth - _offset.X;
+            y = GetLineTopY(line) - _offset.Y;
+        }
+        else
+        {
+            int visualLine = LogicalToVisualLine(line, column);
+            int wrapIndex = visualLine - _wrap.CumulOffset(line);
+            int wrapStart = WrapColStart(line, wrapIndex);
+            x = _gutterWidth + GutterPadding + WrapIndentPx(line, wrapIndex)
+                + (column - wrapStart) * _font.CharWidth;
+            y = visualLine * _font.LineHeight - _offset.Y;
+        }
+
+        return new Rect(x, y, _font.CharWidth, _font.LineHeight);
     }
 
     private void RenderTextVisual(int firstLine, int lastLine)

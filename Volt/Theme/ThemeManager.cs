@@ -27,6 +27,8 @@ public class ThemeManager
     public Brush ActiveLineNumberFg { get; private set; } = Brushes.DarkGray;
     public Brush FindMatchBrush { get; private set; } = Brushes.Yellow;
     public Brush FindMatchCurrentBrush { get; private set; } = Brushes.Orange;
+    public Brush MatchingBracketBrush { get; private set; } = Brushes.LightGray;
+    public Brush MatchingBracketBorderBrush { get; private set; } = Brushes.DodgerBlue;
     public Brush DiagnosticErrorBrush { get; private set; } = Brushes.Red;
     public TerminalColors TerminalColors => _colorTheme.Terminal;
 
@@ -104,6 +106,8 @@ public class ThemeManager
         ActiveLineNumberFg = ColorTheme.ParseBrush(e.ActiveLineNumber);
         FindMatchBrush = ColorTheme.ParseBrush(e.FindMatch);
         FindMatchCurrentBrush = ColorTheme.ParseBrush(e.FindMatchCurrent);
+        MatchingBracketBrush = ColorTheme.ParseBrush(e.MatchingBracket);
+        MatchingBracketBorderBrush = ColorTheme.ParseBrush(e.MatchingBracketBorder);
 
         _syntaxBrushes.Clear();
         foreach (var (scope, hex) in _colorTheme.Scopes)
