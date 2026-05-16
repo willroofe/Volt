@@ -68,6 +68,7 @@ public partial class PanelShell : UserControl
         {
             bool openedRegion = !IsRegionVisible(reg.Placement);
             ShowRegion(reg.Placement);
+            _regions[reg.Placement].SetActiveTab(panelId);
             if (openedRegion)
                 PanelLayoutChanged?.Invoke(panelId, reg.Placement, GetRegionSize(reg.Placement));
             return;

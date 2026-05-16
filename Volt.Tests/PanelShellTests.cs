@@ -198,6 +198,24 @@ public class PanelShellTests
     }
 
     [StaFact]
+    public void ShowPanel_AlreadyVisibleInactivePanelActivatesPanel()
+    {
+        var shell = new PanelShell();
+        var first = CreatePanel("first", "First");
+        var second = CreatePanel("second", "Second");
+        shell.RegisterPanel(first, PanelPlacement.Bottom, 240);
+        shell.RegisterPanel(second, PanelPlacement.Bottom, 240);
+        shell.ShowPanel("first");
+        shell.ShowPanel("second");
+
+        shell.ShowPanel("first");
+
+        var layout = shell.GetCurrentLayout();
+        Assert.True(layout.Single(config => config.PanelId == "first").IsActiveTab);
+        Assert.False(layout.Single(config => config.PanelId == "second").IsActiveTab);
+    }
+
+    [StaFact]
     public void MultiplePanels_SameRegion_BothVisible()
     {
         var shell = new PanelShell();

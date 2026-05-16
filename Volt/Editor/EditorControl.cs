@@ -328,7 +328,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
             : Array.Empty<ParseDiagnostic>();
     public int DiagnosticCount => Diagnostics.Count;
     public bool HasMoreDiagnostics => _diagnosticsSnapshot is { IsComplete: true, HasMoreDiagnostics: true };
-    public string CurrentDiagnosticMessage => GetDiagnosticAt(_caretLine, _caretCol)?.Message ?? "";
+    public ParseDiagnostic? CurrentDiagnostic => GetDiagnosticAt(_caretLine, _caretCol);
+    public string CurrentDiagnosticMessage => CurrentDiagnostic?.Message ?? "";
     internal DiagnosticsStatusInfo DiagnosticsStatus => GetDiagnosticsStatusInfo();
     public string DiagnosticsStatusText => DiagnosticsStatus.Text;
 

@@ -94,6 +94,7 @@ public partial class IssuesPanel : UserControl, IPanel
     }
 
     internal IReadOnlyList<IssueRow> Rows => IssueRows;
+    internal IssueRow? SelectedRow => IssuesList.SelectedItem as IssueRow;
     internal string Summary => SummaryText.Text;
     internal string Status => StatusText.Text;
 
@@ -101,6 +102,7 @@ public partial class IssuesPanel : UserControl, IPanel
     {
         IssueRows = [];
         InitializeComponent();
+        IssuesList.ItemsSource = IssueRows;
         Refresh();
     }
 
@@ -125,6 +127,21 @@ public partial class IssuesPanel : UserControl, IPanel
 
     public void RefreshActiveTab()
         => Refresh();
+
+    public void FocusIssuesList()
+        => IssuesList.Focus();
+
+    public bool SelectDiagnostic(ParseDiagnostic diagnostic)
+    {
+        Refresh();
+        IssueRow? row = IssueRows.FirstOrDefault(row => row.Diagnostic == diagnostic);
+        if (row == null)
+            return false;
+
+        IssuesList.SelectedItem = row;
+        IssuesList.ScrollIntoView(row);
+        return true;
+    }
 
     internal void Refresh()
     {

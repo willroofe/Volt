@@ -37,6 +37,30 @@ public class IssuesPanelTests
     }
 
     [StaFact]
+    public void CurrentDiagnostic_ExposesCompletedDiagnosticAtCaret()
+    {
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
+        editor.SetContent("abcdef");
+        var diagnostic = new ParseDiagnostic(
+            TextRange.FromBounds(0, 1, 0, 4),
+            DiagnosticSeverity.Error,
+            "Expected value.");
+        editor.GoToPosition(0, 2);
+
+        SetDiagnostics(editor, [diagnostic], isComplete: false, hasMoreDiagnostics: false);
+
+        Assert.Null(editor.CurrentDiagnostic);
+
+        SetDiagnostics(editor, [diagnostic], isComplete: true, hasMoreDiagnostics: false);
+
+        Assert.Equal(diagnostic, editor.CurrentDiagnostic);
+
+        editor.GoToPosition(0, 4);
+
+        Assert.Null(editor.CurrentDiagnostic);
+    }
+
+    [StaFact]
     public void GoToPosition_ClampsCaretAndCentersViewport()
     {
         var editor = new EditorControl(new ThemeManager(), new LanguageManager());
@@ -162,6 +186,59 @@ public class IssuesPanelTests
         panel.NavigateIssue(panel.Rows[0]);
 
         Assert.Equal(new IssueNavigationRequest(4, 7), request);
+    }
+
+    [StaFact]
+    public void SelectDiagnostic_SelectsMatchingRowWithoutNavigating()
+    {
+        EnsureWpfResources();
+        var panel = new IssuesPanel();
+        var tab = CreateTab();
+        var first = new ParseDiagnostic(
+            TextRange.FromBounds(0, 0, 0, 1),
+            DiagnosticSeverity.Error,
+            "First.");
+        var second = new ParseDiagnostic(
+            TextRange.FromBounds(2, 3, 2, 4),
+            DiagnosticSeverity.Error,
+            "Second.");
+        SetDiagnostics(tab.Editor, [first, second], isComplete: true, hasMoreDiagnostics: false);
+        panel.SetActiveTab(tab);
+
+        bool navigated = false;
+        panel.IssueNavigationRequested += _ => navigated = true;
+
+        Assert.True(panel.SelectDiagnostic(second));
+
+        Assert.Equal(second, panel.SelectedRow?.Diagnostic);
+        Assert.False(navigated);
+
+        var missing = new ParseDiagnostic(
+            TextRange.FromBounds(9, 0, 9, 1),
+            DiagnosticSeverity.Error,
+            "Missing.");
+
+        Assert.False(panel.SelectDiagnostic(missing));
+    }
+
+    [StaFact]
+    public void DiagnosticsStatusSelection_OnlySelectsCurrentDiagnosticForMessageStatus()
+    {
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
+        editor.SetContent("abcdef");
+        var diagnostic = new ParseDiagnostic(
+            TextRange.FromBounds(0, 1, 0, 4),
+            DiagnosticSeverity.Error,
+            "Expected value.");
+        SetDiagnostics(editor, [diagnostic], isComplete: true, hasMoreDiagnostics: false);
+        editor.GoToPosition(0, 2);
+
+        Assert.Null(MainWindow.GetDiagnosticSelectionForStatus(DiagnosticsStatusKind.ErrorSummary, editor));
+        Assert.Equal(
+            diagnostic,
+            MainWindow.GetDiagnosticSelectionForStatus(DiagnosticsStatusKind.Message, editor));
+        Assert.Null(MainWindow.GetDiagnosticSelectionForStatus(DiagnosticsStatusKind.Checking, editor));
+        Assert.Null(MainWindow.GetDiagnosticSelectionForStatus(DiagnosticsStatusKind.Disabled, editor));
     }
 
     [StaFact]

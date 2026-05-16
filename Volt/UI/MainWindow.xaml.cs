@@ -798,7 +798,18 @@ public partial class MainWindow
         }
 
         Shell.ShowPanel("issues");
-        Dispatcher.BeginInvoke(new Action(() => _issuesPanel.Focus()), DispatcherPriority.Input);
+        Dispatcher.BeginInvoke(new Action(() => _issuesPanel.FocusIssuesList()), DispatcherPriority.Input);
+        SyncViewMenuChecks();
+    }
+
+    private void OpenIssuesPanel(ParseDiagnostic? selectedDiagnostic = null)
+    {
+        Shell.ShowPanel("issues");
+        _issuesPanel.RefreshActiveTab();
+        if (selectedDiagnostic != null)
+            _issuesPanel.SelectDiagnostic(selectedDiagnostic);
+
+        Dispatcher.BeginInvoke(new Action(() => _issuesPanel.FocusIssuesList()), DispatcherPriority.Input);
         SyncViewMenuChecks();
     }
 
@@ -1626,6 +1637,20 @@ public partial class MainWindow
             DiagnosticsText.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFg);
         }
     }
+
+    private void OnDiagnosticsStatusClick(object sender, MouseButtonEventArgs e)
+    {
+        ParseDiagnostic? selectedDiagnostic = GetDiagnosticSelectionForStatus(_visibleDiagnosticsStatusKind, Editor);
+        OpenIssuesPanel(selectedDiagnostic);
+        e.Handled = true;
+    }
+
+    internal static ParseDiagnostic? GetDiagnosticSelectionForStatus(
+        DiagnosticsStatusKind statusKind,
+        EditorControl? editor)
+        => statusKind == DiagnosticsStatusKind.Message
+            ? editor?.CurrentDiagnostic
+            : null;
 
     private void ResetDiagnosticsStatus()
     {

@@ -39,7 +39,6 @@
 
         <ListView x:Name="IssuesList"
                   Grid.Row="1"
-                  ItemsSource="{Binding IssueRows, RelativeSource={RelativeSource AncestorType=local:IssuesPanel}}"
                   Background="{DynamicResource ThemeContentBg}"
                   BorderThickness="0"
                   SelectionMode="Single"

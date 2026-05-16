@@ -361,6 +361,8 @@
                             BorderBrush="{DynamicResource ThemeBorderBrush}"
                             BorderThickness="1" CornerRadius="4"
                             VerticalAlignment="Center" ClipToBounds="True"
+                            Cursor="Hand"
+                            MouseLeftButtonDown="OnDiagnosticsStatusClick"
                             Visibility="Collapsed">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock x:Name="DiagnosticsStatusIcon" Text="&#xE895;"
