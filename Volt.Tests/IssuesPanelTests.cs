@@ -165,6 +165,27 @@ public class IssuesPanelTests
     }
 
     [StaFact]
+    public void RefreshActiveTab_UpdatesRowFileNameAfterPathChanges()
+    {
+        EnsureWpfResources();
+        var panel = new IssuesPanel();
+        var tab = CreateTab(@"C:\project\old.json");
+        SetDiagnostics(
+            tab.Editor,
+            [new ParseDiagnostic(TextRange.FromBounds(0, 0, 0, 1), DiagnosticSeverity.Error, "Expected value.")],
+            isComplete: true,
+            hasMoreDiagnostics: false);
+        panel.SetActiveTab(tab);
+
+        Assert.Equal("old.json", panel.Rows[0].FileName);
+
+        tab.FilePath = @"C:\project\new.json";
+        panel.RefreshActiveTab();
+
+        Assert.Equal("new.json", panel.Rows[0].FileName);
+    }
+
+    [StaFact]
     public void MouseSelection_SuppressesRowBringIntoViewUntilInputCompletes()
     {
         EnsureWpfResources();

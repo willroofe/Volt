@@ -409,8 +409,12 @@ public partial class MainWindow
                 }
             }
         }
-        // Also update window title if this is the active tab
-        if (tab == _activeTab) UpdateTitle();
+        // Also update active-tab dependent UI if this is the active tab.
+        if (tab == _activeTab)
+        {
+            UpdateTitle();
+            _issuesPanel.RefreshActiveTab();
+        }
     }
 
     private const string SpinnerTag = "LoadingSpinner";
@@ -785,7 +789,7 @@ public partial class MainWindow
 
     private void ToggleIssuesPanel()
     {
-        if (Shell.IsPanelVisible("issues") && Shell.IsRegionVisible(PanelPlacement.Bottom))
+        if (Shell.IsPanelOpen("issues"))
         {
             Shell.HidePanel("issues");
             FocusEditor();
@@ -2240,7 +2244,7 @@ public partial class MainWindow
         MenuViewRight.IsChecked = Shell.IsRegionVisible(PanelPlacement.Right);
         MenuViewTop.IsChecked = Shell.IsRegionVisible(PanelPlacement.Top);
         MenuViewBottom.IsChecked = Shell.IsRegionVisible(PanelPlacement.Bottom);
-        MenuViewIssues.IsChecked = Shell.IsPanelVisible("issues") && Shell.IsRegionVisible(PanelPlacement.Bottom);
+        MenuViewIssues.IsChecked = Shell.IsPanelOpen("issues");
     }
 
     private void OnAbout(object sender, RoutedEventArgs e)

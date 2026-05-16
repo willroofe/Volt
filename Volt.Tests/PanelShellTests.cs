@@ -74,6 +74,41 @@ public class PanelShellTests
     }
 
     [StaFact]
+    public void IsPanelOpen_UsesPanelCurrentPlacement()
+    {
+        var shell = new PanelShell();
+        var panel = CreatePanel("issues", "Issues");
+        shell.RegisterPanel(panel, PanelPlacement.Bottom, 240);
+        shell.ShowPanel("issues");
+
+        shell.MovePanel("issues", PanelPlacement.Left);
+
+        Assert.True(shell.IsPanelVisible("issues"));
+        Assert.False(shell.IsRegionVisible(PanelPlacement.Bottom));
+        Assert.True(shell.IsRegionVisible(PanelPlacement.Left));
+        Assert.True(shell.IsPanelOpen("issues"));
+    }
+
+    [StaFact]
+    public void IsPanelOpen_ReturnsFalseWhenCurrentPlacementIsCollapsed()
+    {
+        var shell = new PanelShell();
+        var panel = CreatePanel("issues", "Issues");
+        shell.RegisterPanel(panel, PanelPlacement.Bottom, 240);
+        shell.ShowPanel("issues");
+
+        bool collapsed = shell.CollapseRegionIfOnlyVisiblePanel("issues");
+
+        Assert.True(collapsed);
+        Assert.True(shell.IsPanelVisible("issues"));
+        Assert.False(shell.IsPanelOpen("issues"));
+
+        shell.ShowPanel("issues");
+
+        Assert.True(shell.IsPanelOpen("issues"));
+    }
+
+    [StaFact]
     public void GetCurrentLayout_ReturnsAllRegisteredPanels()
     {
         var shell = new PanelShell();

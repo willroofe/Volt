@@ -105,6 +105,13 @@ public partial class PanelShell : UserControl
         return _panels.TryGetValue(panelId, out var reg) && reg.IsVisible;
     }
 
+    public bool IsPanelOpen(string panelId)
+    {
+        return _panels.TryGetValue(panelId, out var reg)
+            && reg.IsVisible
+            && IsRegionVisible(reg.Placement);
+    }
+
     public bool CollapseRegionIfOnlyVisiblePanel(string panelId)
     {
         if (!_panels.TryGetValue(panelId, out var reg)) return false;

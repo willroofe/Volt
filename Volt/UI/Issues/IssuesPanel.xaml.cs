@@ -123,6 +123,9 @@ public partial class IssuesPanel : UserControl, IPanel
         Refresh();
     }
 
+    public void RefreshActiveTab()
+        => Refresh();
+
     internal void Refresh()
     {
         IssueRows.Clear();
