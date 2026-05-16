@@ -3016,6 +3016,14 @@ public class EditorControl : FrameworkElement, IScrollInfo
         try { text = Clipboard.GetText(); }
         catch (System.Runtime.InteropServices.ExternalException) { return; }
 
+        PasteText(text);
+    }
+
+    private void PasteText(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return;
+
         ResetPreferredCol();
         var (sl, el) = GetEditRange();
         var scope = BeginEdit(sl, el);
@@ -3034,23 +3042,22 @@ public class EditorControl : FrameworkElement, IScrollInfo
             for (int pi = 0; pi < pasteLines.Length; pi++)
                 pasteLines[pi] = TextBuffer.ExpandTabs(pasteLines[pi], TabSize);
 
-            if (pasteLines.Length == 1)
+            string line = _buffer[_caretLine];
+            string prefix = line[.._caretCol];
+            string suffix = line[_caretCol..];
+            int finalLine = _caretLine + pasteLines.Length - 1;
+            int finalCol = pasteLines[^1].Length;
+            var replacement = new List<string>(pasteLines.Length)
             {
-                _buffer.InsertAt(_caretLine, _caretCol, pasteLines[0]);
-                _caretCol += pasteLines[0].Length;
-            }
-            else
-            {
-                var after = _buffer.TruncateAt(_caretLine, _caretCol);
-                _buffer.InsertAt(_caretLine, _caretCol, pasteLines[0]);
-                for (int i = 1; i < pasteLines.Length; i++)
-                {
-                    _caretLine++;
-                    _buffer.InsertLine(_caretLine, pasteLines[i]);
-                }
-                _caretCol = LineLength(_caretLine);
-                _buffer.InsertAt(_caretLine, _caretCol, after);
-            }
+                prefix + pasteLines[0]
+            };
+            for (int i = 1; i < pasteLines.Length - 1; i++)
+                replacement.Add(pasteLines[i]);
+            replacement.Add(pasteLines[^1] + suffix);
+
+            _buffer.ReplaceLines(_caretLine, 1, replacement);
+            _caretLine = finalLine;
+            _caretCol = finalCol;
         }
         FinishEdit(scope);
     }
