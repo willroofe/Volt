@@ -75,7 +75,7 @@ public class EditorControlLargeFileTests
     }
 
     [StaFact]
-    public void SetPreparedContent_SuppressesWordWrapForVeryLongLine()
+    public void SetPreparedContent_AllowsWordWrapForVeryLongLine()
     {
         var editor = new EditorControl(new ThemeManager(), new LanguageManager())
         {
@@ -88,7 +88,7 @@ public class EditorControlLargeFileTests
             LineEnding = "\n"
         });
 
-        Assert.False(editor.WordWrap);
+        Assert.True(editor.WordWrap);
     }
 
     [StaFact]

@@ -960,8 +960,9 @@ public class EditorControl : FrameworkElement, IScrollInfo
         return LeadingSpaceRemovalTextSource.CountLeadingSpaces(LineSegment(line, 0, inspect), inspect);
     }
 
+    // Very long physical lines are handled by WrapLayout's arithmetic wrap path.
     private bool ShouldSuppressWordWrap() =>
-        _buffer.Count > MaxEagerWordWrapLines || _buffer.MaxLineLength > LongLineThreshold;
+        _buffer.Count > MaxEagerWordWrapLines;
 
     private void SuppressWordWrapIfNeeded()
     {
