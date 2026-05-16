@@ -327,6 +327,15 @@ public class JsonLanguageServiceTests
     }
 
     [Fact]
+    public void LanguageDiagnosticsProgress_ExposesFractionalPercent()
+    {
+        var progress = new LanguageDiagnosticsProgress(1, 8);
+
+        Assert.Equal(12.5, progress.PercentExact);
+        Assert.Equal(12, progress.Percent);
+    }
+
+    [Fact]
     public void AnalyzeDiagnostics_CapsStoredDiagnostics()
     {
         var service = new JsonLanguageService();

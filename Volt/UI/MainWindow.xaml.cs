@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using Microsoft.Win32;
 
 namespace Volt;
@@ -36,6 +37,12 @@ public partial class MainWindow
     private readonly FileExplorerPanel _explorerPanel = new();
     private readonly TerminalPanel _terminalPanel = new();
     private readonly KeyBindingManager _keyBindingManager = new();
+    private readonly DispatcherTimer _diagnosticsStatusRevealTimer;
+    private DiagnosticsStatusInfo _pendingDiagnosticsStatus = DiagnosticsStatusInfo.None;
+    private EditorControl? _pendingDiagnosticsStatusEditor;
+    private EditorControl? _visibleDiagnosticsStatusEditor;
+    private DiagnosticsStatusKind _visibleDiagnosticsStatusKind = DiagnosticsStatusKind.None;
+    private bool _diagnosticsSpinnerAnimating;
     private static readonly VoltCommand[] TerminalAllowlistedCommands =
     [
         VoltCommand.CommandPalette,
@@ -147,10 +154,14 @@ public partial class MainWindow
     private const int HTBOTTOM = 15;
     private const int HTBOTTOMLEFT = 16;
     private const int HTBOTTOMRIGHT = 17;
+    private const double DiagnosticsProgressTrackWidth = 44;
 
     public MainWindow()
     {
         InitializeComponent();
+
+        _diagnosticsStatusRevealTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+        _diagnosticsStatusRevealTimer.Tick += OnDiagnosticsStatusRevealTimerTick;
 
         // Move editor content from root Grid into PanelShell center
         var rootGrid = (Grid)Content;
@@ -214,6 +225,7 @@ public partial class MainWindow
             ApplyDwmTheme();
             UpdateTabOverflowBrushes();
             UpdateAllTabHeaders();
+            UpdateDiagnosticsStatus();
         };
         _explorerPanel.FileOpenRequested += OnExplorerFileOpen;
         _explorerPanel.SetWorkspaceManager(_workspaceManager);
@@ -1464,14 +1476,14 @@ public partial class MainWindow
         {
             CaretPosText.Text = "Loading...";
             CharCountText.Text = "";
-            DiagnosticsText.Text = "";
+            ResetDiagnosticsStatus();
             return;
         }
         if (_activeTab?.IsSaving == true)
         {
             CaretPosText.Text = "Saving...";
             CharCountText.Text = "";
-            DiagnosticsText.Text = "";
+            ResetDiagnosticsStatus();
             return;
         }
 
@@ -1482,7 +1494,144 @@ public partial class MainWindow
 
     private void UpdateDiagnosticsStatus()
     {
-        DiagnosticsText.Text = Editor?.DiagnosticsStatusText ?? "";
+        EditorControl? editor = Editor;
+        DiagnosticsStatusInfo status = editor?.DiagnosticsStatus ?? DiagnosticsStatusInfo.None;
+
+        if (status.Kind == DiagnosticsStatusKind.Checking)
+        {
+            bool isVisibleForEditor = DiagnosticsStatusHost.Visibility == Visibility.Visible
+                && ReferenceEquals(_visibleDiagnosticsStatusEditor, editor)
+                && _visibleDiagnosticsStatusKind == DiagnosticsStatusKind.Checking;
+
+            if (isVisibleForEditor)
+            {
+                ApplyDiagnosticsStatus(editor, status);
+                return;
+            }
+
+            bool isSamePendingEditor = ReferenceEquals(_pendingDiagnosticsStatusEditor, editor);
+            _pendingDiagnosticsStatusEditor = editor;
+            _pendingDiagnosticsStatus = status;
+            HideVisibleDiagnosticsStatus();
+
+            if (!_diagnosticsStatusRevealTimer.IsEnabled || !isSamePendingEditor)
+            {
+                _diagnosticsStatusRevealTimer.Stop();
+                _diagnosticsStatusRevealTimer.Start();
+            }
+
+            return;
+        }
+
+        _diagnosticsStatusRevealTimer.Stop();
+        _pendingDiagnosticsStatusEditor = null;
+        _pendingDiagnosticsStatus = DiagnosticsStatusInfo.None;
+        ApplyDiagnosticsStatus(editor, status);
+    }
+
+    private void OnDiagnosticsStatusRevealTimerTick(object? sender, EventArgs e)
+    {
+        _diagnosticsStatusRevealTimer.Stop();
+
+        EditorControl? editor = _pendingDiagnosticsStatusEditor;
+        DiagnosticsStatusInfo status = _pendingDiagnosticsStatus;
+        _pendingDiagnosticsStatusEditor = null;
+        _pendingDiagnosticsStatus = DiagnosticsStatusInfo.None;
+
+        if (editor == null
+            || status.Kind != DiagnosticsStatusKind.Checking
+            || !ReferenceEquals(Editor, editor))
+        {
+            return;
+        }
+
+        ApplyDiagnosticsStatus(editor, status);
+    }
+
+    private void ApplyDiagnosticsStatus(EditorControl? editor, DiagnosticsStatusInfo status)
+    {
+        if (status.Kind == DiagnosticsStatusKind.None || string.IsNullOrEmpty(status.Text))
+        {
+            HideVisibleDiagnosticsStatus();
+            return;
+        }
+
+        DiagnosticsText.Text = status.Text;
+        DiagnosticsStatusHost.Visibility = Visibility.Visible;
+        _visibleDiagnosticsStatusEditor = editor;
+        _visibleDiagnosticsStatusKind = status.Kind;
+
+        bool isChecking = status.Kind == DiagnosticsStatusKind.Checking;
+        DiagnosticsStatusIcon.Visibility = isChecking ? Visibility.Visible : Visibility.Collapsed;
+        if (isChecking)
+            StartDiagnosticsSpinnerAnimation();
+        else
+            StopDiagnosticsSpinnerAnimation();
+
+        if (isChecking && status.Percent.HasValue)
+        {
+            double percent = Math.Clamp(status.Percent.Value, 0, 100);
+            DiagnosticsProgressFill.Width = DiagnosticsProgressTrackWidth * percent / 100.0;
+            DiagnosticsProgressTrack.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            DiagnosticsProgressFill.Width = 0;
+            DiagnosticsProgressTrack.Visibility = Visibility.Collapsed;
+        }
+
+        if (status.Kind == DiagnosticsStatusKind.Disabled)
+        {
+            DiagnosticsText.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFgMuted);
+        }
+        else if (status.Kind is DiagnosticsStatusKind.Message or DiagnosticsStatusKind.ErrorSummary)
+        {
+            DiagnosticsText.Foreground = ThemeManager.DiagnosticErrorBrush;
+        }
+        else
+        {
+            DiagnosticsText.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFg);
+        }
+    }
+
+    private void ResetDiagnosticsStatus()
+    {
+        _diagnosticsStatusRevealTimer.Stop();
+        _pendingDiagnosticsStatusEditor = null;
+        _pendingDiagnosticsStatus = DiagnosticsStatusInfo.None;
+        HideVisibleDiagnosticsStatus();
+    }
+
+    private void HideVisibleDiagnosticsStatus()
+    {
+        DiagnosticsStatusHost.Visibility = Visibility.Collapsed;
+        DiagnosticsText.Text = "";
+        DiagnosticsStatusIcon.Visibility = Visibility.Collapsed;
+        DiagnosticsProgressTrack.Visibility = Visibility.Collapsed;
+        DiagnosticsProgressFill.Width = 0;
+        _visibleDiagnosticsStatusEditor = null;
+        _visibleDiagnosticsStatusKind = DiagnosticsStatusKind.None;
+        StopDiagnosticsSpinnerAnimation();
+    }
+
+    private void StartDiagnosticsSpinnerAnimation()
+    {
+        if (_diagnosticsSpinnerAnimating)
+            return;
+
+        var animation = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(1))
+        {
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+        DiagnosticsSpinnerTransform.BeginAnimation(RotateTransform.AngleProperty, animation);
+        _diagnosticsSpinnerAnimating = true;
+    }
+
+    private void StopDiagnosticsSpinnerAnimation()
+    {
+        DiagnosticsSpinnerTransform.BeginAnimation(RotateTransform.AngleProperty, null);
+        DiagnosticsSpinnerTransform.Angle = 0;
+        _diagnosticsSpinnerAnimating = false;
     }
 
     private string GetEncodingLabel()

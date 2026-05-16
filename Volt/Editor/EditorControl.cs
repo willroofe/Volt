@@ -9,6 +9,23 @@ using System.Windows.Threading;
 
 namespace Volt;
 
+internal enum DiagnosticsStatusKind
+{
+    None,
+    Checking,
+    Disabled,
+    Message,
+    ErrorSummary
+}
+
+internal readonly record struct DiagnosticsStatusInfo(
+    DiagnosticsStatusKind Kind,
+    string Text,
+    double? Percent)
+{
+    public static DiagnosticsStatusInfo None { get; } = new(DiagnosticsStatusKind.None, "", null);
+}
+
 public class EditorControl : FrameworkElement, IScrollInfo
 {
     private const long AutomaticJsonDiagnosticsCharLimit = 50L * 1024 * 1024;
@@ -307,7 +324,8 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public long CharCount => _buffer.CharCount;
     public int DiagnosticCount => _diagnosticsSnapshot?.Diagnostics.Count ?? 0;
     public string CurrentDiagnosticMessage => GetDiagnosticAt(_caretLine, _caretCol)?.Message ?? "";
-    public string DiagnosticsStatusText => GetDiagnosticsStatusText();
+    internal DiagnosticsStatusInfo DiagnosticsStatus => GetDiagnosticsStatusInfo();
+    public string DiagnosticsStatusText => DiagnosticsStatus.Text;
 
     // ── Mouse drag ───────────────────────────────────────────────────
     private bool _isDragging;
@@ -1181,35 +1199,52 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
     }
 
-    private string GetDiagnosticsStatusText()
+    private DiagnosticsStatusInfo GetDiagnosticsStatusInfo()
     {
         if (!string.IsNullOrEmpty(_diagnosticsDisabledMessage))
-            return _diagnosticsDisabledMessage;
+            return new DiagnosticsStatusInfo(DiagnosticsStatusKind.Disabled, _diagnosticsDisabledMessage, null);
 
         if (_languageService == null || _diagnosticsSnapshot == null)
-            return "";
+            return DiagnosticsStatusInfo.None;
 
         if (!_diagnosticsSnapshot.IsComplete)
         {
-            int? percent = _diagnosticsProgress?.Percent;
-            return percent.HasValue
-                ? $"Checking {_diagnosticsSnapshot.LanguageName}... {percent.Value}%"
-                : $"Checking {_diagnosticsSnapshot.LanguageName}...";
+            double? percent = _diagnosticsProgress?.PercentExact;
+            string checkingText = percent.HasValue
+                ? $"Checking {_diagnosticsSnapshot.LanguageName} {FormatDiagnosticsPercent(percent.Value)}"
+                : $"Checking {_diagnosticsSnapshot.LanguageName}";
+
+            return new DiagnosticsStatusInfo(DiagnosticsStatusKind.Checking, checkingText, percent);
         }
 
         if (_diagnosticsSnapshot.Diagnostics.Count == 0)
-            return "";
+            return DiagnosticsStatusInfo.None;
 
         string currentMessage = CurrentDiagnosticMessage;
         if (!string.IsNullOrEmpty(currentMessage))
-            return currentMessage;
+            return new DiagnosticsStatusInfo(DiagnosticsStatusKind.Message, currentMessage, null);
 
         if (_diagnosticsSnapshot.HasMoreDiagnostics)
-            return $"{_diagnosticsSnapshot.Diagnostics.Count}+ {_diagnosticsSnapshot.LanguageName} errors";
+        {
+            return new DiagnosticsStatusInfo(
+                DiagnosticsStatusKind.ErrorSummary,
+                $"{_diagnosticsSnapshot.Diagnostics.Count}+ {_diagnosticsSnapshot.LanguageName} errors",
+                null);
+        }
 
-        return _diagnosticsSnapshot.Diagnostics.Count == 1
+        string summaryText = _diagnosticsSnapshot.Diagnostics.Count == 1
             ? $"1 {_diagnosticsSnapshot.LanguageName} error"
             : $"{_diagnosticsSnapshot.Diagnostics.Count} {_diagnosticsSnapshot.LanguageName} errors";
+
+        return new DiagnosticsStatusInfo(DiagnosticsStatusKind.ErrorSummary, summaryText, null);
+    }
+
+    private static string FormatDiagnosticsPercent(double percent)
+    {
+        double clamped = Math.Clamp(percent, 0, 100);
+        return clamped >= 99.95
+            ? "100%"
+            : clamped.ToString("0.0", CultureInfo.CurrentCulture) + "%";
     }
 
     private void DisableDiagnostics(string message)

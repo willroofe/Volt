@@ -80,10 +80,15 @@ internal interface ILanguageTextStreamSource
 
 public sealed record LanguageDiagnosticsProgress(long CharactersProcessed, long TotalCharacters)
 {
-    public int? Percent =>
+    public double? PercentExact =>
         TotalCharacters <= 0
             ? null
-            : (int)Math.Clamp(CharactersProcessed * 100 / TotalCharacters, 0, 100);
+            : Math.Clamp(CharactersProcessed * 100.0 / TotalCharacters, 0, 100);
+
+    public int? Percent =>
+        PercentExact is not { } percent
+            ? null
+            : (int)percent;
 }
 
 public sealed record LanguageDiagnosticsSnapshot(

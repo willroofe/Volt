@@ -1473,10 +1473,10 @@ internal sealed class JsonParser
 
 internal static class JsonDiagnosticsAnalyzer
 {
-    private const int SegmentSize = 1 * 1024 * 1024;
+    private const int SegmentSize = 256 * 1024;
     private const int MaxDiagnostics = 1000;
-    private const long ProgressReportInterval = 16 * 1024 * 1024;
-    private static readonly TimeSpan ProgressReportMinimumInterval = TimeSpan.FromMilliseconds(100);
+    private const long ProgressReportInterval = 256 * 1024;
+    private static readonly TimeSpan ProgressReportMinimumInterval = TimeSpan.FromMilliseconds(50);
 
     public static LanguageDiagnosticsSnapshot Analyze(
         string languageName,
