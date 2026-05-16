@@ -322,7 +322,12 @@ public class EditorControl : FrameworkElement, IScrollInfo
     public int CaretLine => _caretLine;
     public int CaretCol => _caretCol;
     public long CharCount => _buffer.CharCount;
-    public int DiagnosticCount => _diagnosticsSnapshot?.Diagnostics.Count ?? 0;
+    public IReadOnlyList<ParseDiagnostic> Diagnostics =>
+        _diagnosticsSnapshot is { IsComplete: true } snapshot
+            ? snapshot.Diagnostics
+            : Array.Empty<ParseDiagnostic>();
+    public int DiagnosticCount => Diagnostics.Count;
+    public bool HasMoreDiagnostics => _diagnosticsSnapshot is { IsComplete: true, HasMoreDiagnostics: true };
     public string CurrentDiagnosticMessage => GetDiagnosticAt(_caretLine, _caretCol)?.Message ?? "";
     internal DiagnosticsStatusInfo DiagnosticsStatus => GetDiagnosticsStatusInfo();
     public string DiagnosticsStatusText => DiagnosticsStatus.Text;
@@ -2125,15 +2130,16 @@ public class EditorControl : FrameworkElement, IScrollInfo
     // ──────────────────────────────────────────────────────────────────
 
     public void GoToLine(int line)
+        => GoToPosition(line, 0);
+
+    public void GoToPosition(int line, int column)
     {
+        if (_buffer.Count == 0) return;
         _selection.Clear();
         _caretLine = Math.Clamp(line, 0, _buffer.Count - 1);
-        _caretCol = 0;
+        _caretCol = Math.Clamp(column, 0, LineLength(_caretLine));
         ResetPreferredCol();
-        // Centre the target line in the viewport
-        double caretTop = GetVisualY(_caretLine, _caretCol);
-        double target = caretTop - (_viewport.Height - _font.LineHeight) / 2;
-        SetVerticalOffset(Math.Max(0, target));
+        CentreLineInViewport(_caretLine);
         ResetCaret();
         _textVisualDirty = true;
         InvalidateVisual();

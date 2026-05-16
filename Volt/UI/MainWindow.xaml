@@ -336,6 +336,8 @@
                     <MenuItem x:Name="MenuViewRight" Header="_Right Panel" IsCheckable="True" Click="OnToggleRightPanel"/>
                     <MenuItem x:Name="MenuViewTop" Header="_Top Panel" IsCheckable="True" Click="OnToggleTopPanel"/>
                     <MenuItem x:Name="MenuViewBottom" Header="_Bottom Panel" IsCheckable="True" Click="OnToggleBottomPanel"/>
+                    <Separator/>
+                    <MenuItem x:Name="MenuViewIssues" Header="_Issues" IsCheckable="True" Click="OnToggleIssuesPanel"/>
                 </MenuItem>
             </Menu>
 

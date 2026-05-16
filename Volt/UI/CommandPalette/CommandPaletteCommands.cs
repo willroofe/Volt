@@ -47,6 +47,7 @@ internal record CommandPaletteContext(
     Action OpenRecent,
     Action<string?> SetLanguage,
     TerminalActions Terminal,
+    Action ToggleIssues,
     Action SyncTerminalFromActiveEditor,
     EditorSplitActions EditorSplit);
 
@@ -229,6 +230,8 @@ internal static class CommandPaletteCommands
             new("Terminal: Toggle", Action: ctx.Terminal.Toggle),
 
             new("Terminal: New Session", Action: ctx.Terminal.NewSession),
+
+            new("Issues: Toggle", Action: ctx.ToggleIssues),
 
             new("Editor: Split Group", Action: ctx.EditorSplit.ToggleSplit),
 

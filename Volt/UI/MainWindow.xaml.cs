@@ -36,6 +36,7 @@ public partial class MainWindow
     private readonly TabHeaderFactory _tabHeaderFactory = new();
     private readonly FileExplorerPanel _explorerPanel = new();
     private readonly TerminalPanel _terminalPanel = new();
+    private readonly IssuesPanel _issuesPanel = new();
     private readonly KeyBindingManager _keyBindingManager = new();
     private readonly DispatcherTimer _diagnosticsStatusRevealTimer;
     private DiagnosticsStatusInfo _pendingDiagnosticsStatus = DiagnosticsStatusInfo.None;
@@ -52,6 +53,7 @@ public partial class MainWindow
         VoltCommand.Settings,
         VoltCommand.ToggleLeftPanel,
         VoltCommand.ToggleTerminal,
+        VoltCommand.ToggleIssues,
     ];
 
     internal TerminalPanel TerminalPanel => _terminalPanel;
@@ -202,6 +204,7 @@ public partial class MainWindow
         // Register explorer panel with shell
         Shell.RegisterPanel(_explorerPanel, PanelPlacement.Left, 250);
         Shell.RegisterPanel(_terminalPanel, PanelPlacement.Bottom, 240);
+        Shell.RegisterPanel(_issuesPanel, PanelPlacement.Bottom, 240);
         _terminalPanel.LastSessionClosed += OnTerminalLastSessionClosed;
         RestorePanelLayout();
         SyncViewMenuChecks();
@@ -235,6 +238,7 @@ public partial class MainWindow
         _explorerPanel.CloseFolderRequested += CloseFolderInExplorer;
         _explorerPanel.FileRenamed += OnExplorerFileRenamed;
         _explorerPanel.FileDeleted += OnExplorerFileDeleted;
+        _issuesPanel.IssueNavigationRequested += OnIssueNavigationRequested;
         Shell.PanelLayoutChanged += OnPanelLayoutChanged;
         SourceInitialized += (_, _) =>
         {
@@ -321,6 +325,7 @@ public partial class MainWindow
         tab.Editor.DirtyChanged += OnActiveDirtyChanged;
         tab.Editor.CaretMoved += OnActiveCaretMoved;
         tab.Editor.DiagnosticsChanged += OnActiveDiagnosticsChanged;
+        _issuesPanel.SetActiveTab(tab);
 
         using (VoltProfiler.Span("MainWindow.UpdateActiveTabHooks.FindBar"))
         {
@@ -776,6 +781,30 @@ public partial class MainWindow
         }
         Shell.ShowPanel("file-explorer");
         _explorerPanel.FocusSearch();
+    }
+
+    private void ToggleIssuesPanel()
+    {
+        if (Shell.IsPanelVisible("issues") && Shell.IsRegionVisible(PanelPlacement.Bottom))
+        {
+            Shell.HidePanel("issues");
+            FocusEditor();
+            SyncViewMenuChecks();
+            return;
+        }
+
+        Shell.ShowPanel("issues");
+        Dispatcher.BeginInvoke(new Action(() => _issuesPanel.Focus()), DispatcherPriority.Input);
+        SyncViewMenuChecks();
+    }
+
+    private void OnIssueNavigationRequested(IssueNavigationRequest request)
+    {
+        if (Editor is not { } editor)
+            return;
+
+        editor.GoToPosition(request.Line, request.Column);
+        Keyboard.Focus(editor);
     }
 
     private void RestorePanelLayout()
@@ -2202,12 +2231,16 @@ public partial class MainWindow
         SyncViewMenuChecks();
     }
 
+    private void OnToggleIssuesPanel(object sender, RoutedEventArgs e)
+        => ToggleIssuesPanel();
+
     private void SyncViewMenuChecks()
     {
         MenuViewLeft.IsChecked = Shell.IsRegionVisible(PanelPlacement.Left);
         MenuViewRight.IsChecked = Shell.IsRegionVisible(PanelPlacement.Right);
         MenuViewTop.IsChecked = Shell.IsRegionVisible(PanelPlacement.Top);
         MenuViewBottom.IsChecked = Shell.IsRegionVisible(PanelPlacement.Bottom);
+        MenuViewIssues.IsChecked = Shell.IsPanelVisible("issues") && Shell.IsRegionVisible(PanelPlacement.Bottom);
     }
 
     private void OnAbout(object sender, RoutedEventArgs e)
@@ -2346,6 +2379,7 @@ public partial class MainWindow
             case VoltCommand.GoToLine: OpenGoToLine(); break;
             case VoltCommand.FocusExplorer: FocusExplorer(); break;
             case VoltCommand.ToggleTerminal: ToggleTerminalPanel(); break;
+            case VoltCommand.ToggleIssues: ToggleIssuesPanel(); break;
             case VoltCommand.ToggleEditorSplit: ToggleEditorSplitFromCommand(); break;
             case VoltCommand.JoinEditorSplit: JoinEditorWithSibling(); break;
             case VoltCommand.JoinEditorFlattenAll: JoinEditorFlattenAll(); break;
@@ -2410,6 +2444,7 @@ public partial class MainWindow
                     Shell.ShowPanel("terminal");
                     _terminalPanel.NewSession();
                 }),
+            () => ToggleIssuesPanel(),
             () => _terminalPanel.SyncEditorAppearanceFromSettings(),
             new EditorSplitActions(
                 ToggleEditorSplitFromCommand,
@@ -2431,6 +2466,7 @@ public partial class MainWindow
         MenuViewRight.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleRightPanel);
         MenuViewTop.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleTopPanel);
         MenuViewBottom.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleBottomPanel);
+        MenuViewIssues.InputGestureText = _keyBindingManager.GetGestureText(VoltCommand.ToggleIssues);
     }
 
     private void StepFontSize(int direction)

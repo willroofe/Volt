@@ -372,6 +372,7 @@ public partial class MainWindow
             tab.Editor.DirtyChanged -= OnActiveDirtyChanged;
             tab.Editor.CaretMoved -= OnActiveCaretMoved;
             tab.Editor.DiagnosticsChanged -= OnActiveDiagnosticsChanged;
+            _issuesPanel.SetActiveTab(null);
             _activeTab = null;
         }
 
@@ -570,6 +571,7 @@ public partial class MainWindow
 
         _editorLayoutRoot = new EditorLeafNode();
         _focusedLeafId = ((EditorLeafNode)_editorLayoutRoot).Id;
+        _issuesPanel.SetActiveTab(null);
         _activeTab = null;
         RebuildEditorLayoutUi();
         RefreshEditorTabSplitDragHost();
