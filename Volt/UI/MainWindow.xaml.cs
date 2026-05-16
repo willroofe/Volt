@@ -1642,14 +1642,17 @@ public partial class MainWindow
 
         if (status.Kind == DiagnosticsStatusKind.Disabled)
         {
+            DiagnosticsStatusHost.SetResourceReference(Border.BackgroundProperty, ThemeResourceKeys.ButtonHover);
             DiagnosticsText.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFgMuted);
         }
         else if (status.Kind is DiagnosticsStatusKind.Message or DiagnosticsStatusKind.ErrorSummary)
         {
-            DiagnosticsText.Foreground = ThemeManager.DiagnosticErrorBrush;
+            DiagnosticsStatusHost.SetResourceReference(Border.BackgroundProperty, ThemeResourceKeys.DiagnosticErrorBg);
+            DiagnosticsText.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.DiagnosticErrorFg);
         }
         else
         {
+            DiagnosticsStatusHost.SetResourceReference(Border.BackgroundProperty, ThemeResourceKeys.ButtonHover);
             DiagnosticsText.SetResourceReference(TextBlock.ForegroundProperty, ThemeResourceKeys.TextFg);
         }
     }

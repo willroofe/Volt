@@ -87,8 +87,24 @@
                                    FontFamily="{x:Static local:Codicons.Font}"
                                    FontSize="13"
                                    VerticalAlignment="Center"
-                                   HorizontalAlignment="Center"
-                                   Foreground="{Binding SeverityBrush}"/>
+                                   HorizontalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource ThemeDiagnosticInfoFg}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SeverityKind}" Value="{x:Static local:DiagnosticSeverity.Error}">
+                                            <Setter Property="Foreground" Value="{DynamicResource ThemeDiagnosticErrorFg}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding SeverityKind}" Value="{x:Static local:DiagnosticSeverity.Warning}">
+                                            <Setter Property="Foreground" Value="{DynamicResource ThemeDiagnosticWarningFg}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding SeverityKind}" Value="{x:Static local:DiagnosticSeverity.Information}">
+                                            <Setter Property="Foreground" Value="{DynamicResource ThemeDiagnosticInfoFg}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
                         <TextBlock Grid.Column="1"
                                    Text="{Binding FileName}"
                                    FontFamily="Segoe UI"

@@ -406,6 +406,9 @@ public class IssuesPanelTests
             resources["ThemeTextFgMuted"] = Brushes.Gray;
             resources["ThemeExplorerItemHover"] = Brushes.Gainsboro;
             resources["ThemeExplorerItemSelected"] = Brushes.LightGray;
+            resources["ThemeDiagnosticErrorFg"] = Brushes.DarkRed;
+            resources["ThemeDiagnosticWarningFg"] = Brushes.DarkGoldenrod;
+            resources["ThemeDiagnosticInfoFg"] = Brushes.DarkCyan;
         }
     }
 

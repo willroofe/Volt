@@ -49,6 +49,10 @@
     "explorerItemSelected": "#141C2A",
     "explorerDropTarget": "#1A3458",
     "inputSelection": "#802A4A7A",
+    "diagnosticErrorForeground": "#F09A88",
+    "diagnosticErrorBackground": "#2A1216",
+    "diagnosticWarningForeground": "#F5D280",
+    "diagnosticInfoForeground": "#70C0E8",
     "iconPrimary": "#DAE2F0",
     "iconSecondary": "#3D4A5C",
     "iconAccent": "#5B9EF0"

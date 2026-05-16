@@ -53,6 +53,10 @@ public class ChromeColors
     [JsonPropertyName("explorerItemSelected")] public string ExplorerItemSelected { get; set; } = "#D0D0D0";
     [JsonPropertyName("explorerDropTarget")] public string ExplorerDropTarget { get; set; } = "#B8D4E8";
     [JsonPropertyName("inputSelection")] public string InputSelection { get; set; } = "#80339900";
+    [JsonPropertyName("diagnosticErrorForeground")] public string DiagnosticErrorForeground { get; set; } = "#9F2F2F";
+    [JsonPropertyName("diagnosticErrorBackground")] public string DiagnosticErrorBackground { get; set; } = "#F4E1E4";
+    [JsonPropertyName("diagnosticWarningForeground")] public string DiagnosticWarningForeground { get; set; } = "#7A6020";
+    [JsonPropertyName("diagnosticInfoForeground")] public string DiagnosticInfoForeground { get; set; } = "#1888B0";
 
     /// <summary>When empty in JSON, ThemeManager falls back to text foreground.</summary>
     [JsonPropertyName("iconPrimary")] public string IconPrimary { get; set; } = "";

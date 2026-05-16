@@ -35,6 +35,10 @@
         <SolidColorBrush x:Key="ThemeExplorerItemSelected" Color="#D0D0D0"/>
         <SolidColorBrush x:Key="ThemeExplorerDropTarget" Color="#B8D4E8"/>
         <SolidColorBrush x:Key="ThemeInputSelection" Color="#80339900"/>
+        <SolidColorBrush x:Key="ThemeDiagnosticErrorFg" Color="#9F2F2F"/>
+        <SolidColorBrush x:Key="ThemeDiagnosticErrorBg" Color="#F4E1E4"/>
+        <SolidColorBrush x:Key="ThemeDiagnosticWarningFg" Color="#7A6020"/>
+        <SolidColorBrush x:Key="ThemeDiagnosticInfoFg" Color="#1888B0"/>
         <SolidColorBrush x:Key="ThemeIconPrimary" Color="#111111"/>
         <SolidColorBrush x:Key="ThemeIconSecondary" Color="#888888"/>
         <SolidColorBrush x:Key="ThemeIconAccent" Color="#222222"/>

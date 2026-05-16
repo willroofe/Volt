@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
 
 namespace Volt;
 
@@ -33,36 +32,17 @@ public sealed class IssueRow
             DiagnosticSeverity.Information => Codicons.Info,
             _ => Codicons.Info
         };
-        SeverityBrush = diagnostic.Severity switch
-        {
-            DiagnosticSeverity.Error => ErrorBrush,
-            DiagnosticSeverity.Warning => WarningBrush,
-            DiagnosticSeverity.Information => InfoBrush,
-            _ => InfoBrush
-        };
     }
-
-    private static readonly Brush ErrorBrush = CreateBrush(Color.FromRgb(224, 82, 82));
-    private static readonly Brush WarningBrush = CreateBrush(Color.FromRgb(209, 154, 102));
-    private static readonly Brush InfoBrush = CreateBrush(Color.FromRgb(86, 182, 194));
 
     public ParseDiagnostic Diagnostic { get; }
     public DiagnosticSeverity SeverityKind { get; }
     public string Severity { get; }
     public string SeverityGlyph { get; }
-    public Brush SeverityBrush { get; }
     public string FileName { get; }
     public string Location { get; }
     public string Message { get; }
     public int Line { get; }
     public int Column { get; }
-
-    private static SolidColorBrush CreateBrush(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
-    }
 }
 
 public partial class IssuesPanel : UserControl, IPanel

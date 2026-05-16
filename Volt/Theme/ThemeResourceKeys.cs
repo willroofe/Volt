@@ -38,6 +38,10 @@ internal static class ThemeResourceKeys
     public const string ExplorerDropTarget = "ThemeExplorerDropTarget";
     public const string InputSelection = "ThemeInputSelection";
     public const string OverlayBg = "ThemeOverlayBg";
+    public const string DiagnosticErrorFg = "ThemeDiagnosticErrorFg";
+    public const string DiagnosticErrorBg = "ThemeDiagnosticErrorBg";
+    public const string DiagnosticWarningFg = "ThemeDiagnosticWarningFg";
+    public const string DiagnosticInfoFg = "ThemeDiagnosticInfoFg";
 
     /// <summary>Main vector icon fill/stroke (multi-layer icons).</summary>
     public const string IconPrimary = "ThemeIconPrimary";

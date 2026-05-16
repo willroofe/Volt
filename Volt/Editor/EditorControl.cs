@@ -2168,9 +2168,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
 
         double underlineThickness = GetDiagnosticUnderlineThickness(_font.LineHeight);
-        Pen underlineGlowPen = CreateDiagnosticUnderlinePen(
-            CloneWithOpacity(ThemeManager.DiagnosticErrorBrush, 0.24),
-            underlineThickness + 1.75);
+        Pen? underlineGlowPen = ShouldDrawDiagnosticUnderlineGlow(ThemeManager.EditorBg)
+            ? CreateDiagnosticUnderlinePen(
+                CloneWithOpacity(ThemeManager.DiagnosticErrorBrush, 0.24),
+                underlineThickness + 1.75)
+            : null;
         Pen underlinePen = CreateDiagnosticUnderlinePen(
             ThemeManager.DiagnosticErrorBrush,
             underlineThickness);
@@ -2204,7 +2206,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
     private void DrawDiagnosticUnderline(
         DrawingContext dc,
-        Pen glowPen,
+        Pen? glowPen,
         Pen pen,
         int line,
         int startColumn,
@@ -2272,7 +2274,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
         return Math.Clamp(lineHeight * 0.15, 2.8, 4.6);
     }
 
-    private static void DrawWavyUnderline(DrawingContext dc, Pen glowPen, Pen pen, double x1, double x2, double y)
+    private static void DrawWavyUnderline(DrawingContext dc, Pen? glowPen, Pen pen, double x1, double x2, double y)
     {
         if (x2 <= x1)
             return;
@@ -2300,8 +2302,20 @@ public class EditorControl : FrameworkElement, IScrollInfo
         }
 
         if (geometry.CanFreeze) geometry.Freeze();
-        dc.DrawGeometry(null, glowPen, geometry);
+        if (glowPen != null)
+            dc.DrawGeometry(null, glowPen, geometry);
+
         dc.DrawGeometry(null, pen, geometry);
+    }
+
+    private static bool ShouldDrawDiagnosticUnderlineGlow(Brush backgroundBrush)
+    {
+        if (backgroundBrush is not SolidColorBrush solid)
+            return true;
+
+        Color color = solid.Color;
+        double luminance = (0.2126 * color.R + 0.7152 * color.G + 0.0722 * color.B) / 255.0;
+        return luminance < 0.5;
     }
 
     private void RenderGutterVisual(int firstLine, int lastLine)
