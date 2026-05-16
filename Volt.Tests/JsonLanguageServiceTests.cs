@@ -327,6 +327,24 @@ public class JsonLanguageServiceTests
     }
 
     [Fact]
+    public void AnalyzeDiagnostics_ReportsIntermediateProgressForLargeSources()
+    {
+        var service = new JsonLanguageService();
+        var source = new HugeSingleLineJsonSource(900_000, segmentDelay: TimeSpan.FromMilliseconds(60));
+        var values = new List<LanguageDiagnosticsProgress>();
+
+        service.AnalyzeDiagnostics(
+            source,
+            sourceVersion: 1,
+            progress: new CapturingProgress(values),
+            CancellationToken.None);
+
+        Assert.Contains(values, value =>
+            value.CharactersProcessed > 0
+            && value.CharactersProcessed < source.CharCountWithoutLineEndings);
+    }
+
+    [Fact]
     public void LanguageDiagnosticsProgress_ExposesFractionalPercent()
     {
         var progress = new LanguageDiagnosticsProgress(1, 8);
@@ -591,10 +609,12 @@ public class JsonLanguageServiceTests
         private const string Prefix = "{\"padding\":\"";
         private const string Suffix = "\",\"bad\": truX}";
         private readonly int _paddingLength;
+        private readonly TimeSpan _segmentDelay;
 
-        public HugeSingleLineJsonSource(int paddingLength)
+        public HugeSingleLineJsonSource(int paddingLength, TimeSpan segmentDelay = default)
         {
             _paddingLength = paddingLength;
+            _segmentDelay = segmentDelay;
         }
 
         public int LineCount => 1;
@@ -606,6 +626,9 @@ public class JsonLanguageServiceTests
 
         public string GetLineSegment(int line, int startColumn, int length)
         {
+            if (_segmentDelay > TimeSpan.Zero)
+                Thread.Sleep(_segmentDelay);
+
             SegmentRequestCount++;
             MaxRequestedSegmentLength = Math.Max(MaxRequestedSegmentLength, length);
             int lineLength = GetLineLength(line);

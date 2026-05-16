@@ -152,12 +152,39 @@ public class EditorControlLanguageRenderingTests
         WaitUntil(() => editor.DiagnosticCount > 0);
 
         Assert.True(changedCount > 0);
+        Assert.Equal(DiagnosticsStatusKind.ErrorSummary, editor.DiagnosticsStatus.Kind);
         Assert.Contains("JSON error", editor.DiagnosticsStatusText);
 
         editor.SetCaretPosition(0, 9);
 
+        Assert.Equal(DiagnosticsStatusKind.Message, editor.DiagnosticsStatus.Kind);
         Assert.Contains("Expected ':'", editor.CurrentDiagnosticMessage);
         Assert.Contains("Expected ':'", editor.DiagnosticsStatusText);
+    }
+
+    [StaFact]
+    public void Diagnostics_CheckingStatus_UsesFractionalPercent()
+    {
+        var editor = new EditorControl(new ThemeManager(), new LanguageManager());
+        editor.SetLanguage(new JsonLanguageService());
+        var progress = new LanguageDiagnosticsProgress(1, 8);
+        var snapshot = new LanguageDiagnosticsSnapshot(
+            "JSON",
+            SourceVersion: 1,
+            Diagnostics: Array.Empty<ParseDiagnostic>(),
+            IsComplete: false,
+            Progress: progress,
+            HasMoreDiagnostics: false);
+
+        SetPrivateField(editor, "_diagnosticsSnapshot", snapshot);
+        SetPrivateField(editor, "_diagnosticsProgress", progress);
+
+        DiagnosticsStatusInfo status = editor.DiagnosticsStatus;
+
+        Assert.Equal(DiagnosticsStatusKind.Checking, status.Kind);
+        Assert.Equal(12.5, status.Percent.GetValueOrDefault());
+        Assert.Equal("Checking JSON 12.5%", status.Text);
+        Assert.Equal(status.Text, editor.DiagnosticsStatusText);
     }
 
     [StaFact]
@@ -197,6 +224,7 @@ public class EditorControlLanguageRenderingTests
 
         Assert.Equal(0, service.AnalyzeDiagnosticsCalls);
         Assert.Equal(0, editor.DiagnosticCount);
+        Assert.Equal(DiagnosticsStatusKind.Disabled, editor.DiagnosticsStatus.Kind);
         Assert.Contains("disabled", editor.DiagnosticsStatusText);
         Assert.Contains("50 MiB", editor.DiagnosticsStatusText);
     }
