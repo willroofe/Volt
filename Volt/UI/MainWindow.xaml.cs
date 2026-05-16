@@ -804,14 +804,30 @@ public partial class MainWindow
 
     private void OpenIssuesPanel(ParseDiagnostic? selectedDiagnostic = null)
     {
-        Shell.ShowPanel("issues");
-        _issuesPanel.RefreshActiveTab();
-        if (selectedDiagnostic != null)
-            _issuesPanel.SelectDiagnostic(selectedDiagnostic);
-
+        OpenIssuesPanelCore(Shell, _issuesPanel, selectedDiagnostic);
         Dispatcher.BeginInvoke(new Action(() => _issuesPanel.FocusIssuesList()), DispatcherPriority.Input);
         SyncViewMenuChecks();
     }
+
+    internal static bool OpenIssuesPanelCore(
+        PanelShell shell,
+        IssuesPanel issuesPanel,
+        ParseDiagnostic? selectedDiagnostic)
+    {
+        shell.ShowPanel("issues");
+        issuesPanel.RefreshActiveTab();
+        return selectedDiagnostic != null && issuesPanel.SelectDiagnostic(selectedDiagnostic, refresh: false);
+    }
+
+    internal static bool OpenIssuesPanelForDiagnosticsStatus(
+        PanelShell shell,
+        IssuesPanel issuesPanel,
+        DiagnosticsStatusKind statusKind,
+        EditorControl? editor)
+        => OpenIssuesPanelCore(
+            shell,
+            issuesPanel,
+            GetDiagnosticSelectionForStatus(statusKind, editor));
 
     private void OnIssueNavigationRequested(IssueNavigationRequest request)
     {

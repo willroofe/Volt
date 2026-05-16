@@ -131,9 +131,11 @@ public partial class IssuesPanel : UserControl, IPanel
     public void FocusIssuesList()
         => IssuesList.Focus();
 
-    public bool SelectDiagnostic(ParseDiagnostic diagnostic)
+    public bool SelectDiagnostic(ParseDiagnostic diagnostic, bool refresh = true)
     {
-        Refresh();
+        if (refresh)
+            Refresh();
+
         IssueRow? row = IssueRows.FirstOrDefault(row => row.Diagnostic == diagnostic);
         if (row == null)
             return false;

@@ -242,6 +242,59 @@ public class IssuesPanelTests
     }
 
     [StaFact]
+    public void OpenIssuesPanelForDiagnosticsStatus_SummaryOpensWithoutSelection()
+    {
+        EnsureWpfResources();
+        var shell = new PanelShell();
+        var panel = new IssuesPanel();
+        var tab = CreateTab();
+        var diagnostic = new ParseDiagnostic(
+            TextRange.FromBounds(0, 0, 0, 1),
+            DiagnosticSeverity.Error,
+            "Expected value.");
+        SetDiagnostics(tab.Editor, [diagnostic], isComplete: true, hasMoreDiagnostics: false);
+        panel.SetActiveTab(tab);
+        shell.RegisterPanel(panel, PanelPlacement.Bottom, 240);
+
+        bool selected = MainWindow.OpenIssuesPanelForDiagnosticsStatus(
+            shell,
+            panel,
+            DiagnosticsStatusKind.ErrorSummary,
+            tab.Editor);
+
+        Assert.False(selected);
+        Assert.True(shell.IsPanelOpen("issues"));
+        Assert.Null(panel.SelectedRow);
+    }
+
+    [StaFact]
+    public void OpenIssuesPanelForDiagnosticsStatus_MessageOpensAndSelectsCurrentDiagnostic()
+    {
+        EnsureWpfResources();
+        var shell = new PanelShell();
+        var panel = new IssuesPanel();
+        var tab = CreateTab();
+        var diagnostic = new ParseDiagnostic(
+            TextRange.FromBounds(0, 0, 0, 1),
+            DiagnosticSeverity.Error,
+            "Expected value.");
+        SetDiagnostics(tab.Editor, [diagnostic], isComplete: true, hasMoreDiagnostics: false);
+        tab.Editor.GoToPosition(0, 0);
+        panel.SetActiveTab(tab);
+        shell.RegisterPanel(panel, PanelPlacement.Bottom, 240);
+
+        bool selected = MainWindow.OpenIssuesPanelForDiagnosticsStatus(
+            shell,
+            panel,
+            DiagnosticsStatusKind.Message,
+            tab.Editor);
+
+        Assert.True(selected);
+        Assert.True(shell.IsPanelOpen("issues"));
+        Assert.Equal(diagnostic, panel.SelectedRow?.Diagnostic);
+    }
+
+    [StaFact]
     public void RefreshActiveTab_UpdatesRowFileNameAfterPathChanges()
     {
         EnsureWpfResources();
