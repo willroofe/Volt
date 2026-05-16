@@ -2124,8 +2124,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
             return;
         }
 
-        var pen = new Pen(ThemeManager.DiagnosticErrorBrush, 1.25);
-        if (pen.CanFreeze) pen.Freeze();
+        double underlineThickness = GetDiagnosticUnderlineThickness(_font.LineHeight);
+        Pen underlineGlowPen = CreateDiagnosticUnderlinePen(
+            CloneWithOpacity(ThemeManager.DiagnosticErrorBrush, 0.24),
+            underlineThickness + 1.75);
+        Pen underlinePen = CreateDiagnosticUnderlinePen(
+            ThemeManager.DiagnosticErrorBrush,
+            underlineThickness);
 
         foreach (ParseDiagnostic diagnostic in _diagnosticsSnapshot.Diagnostics)
         {
@@ -2146,7 +2151,7 @@ public class EditorControl : FrameworkElement, IScrollInfo
                     ? Math.Clamp(diagnostic.Range.End.Column, 0, lineLength)
                     : lineLength;
 
-                DrawDiagnosticUnderline(dc, pen, line, startColumn, endColumn);
+                DrawDiagnosticUnderline(dc, underlineGlowPen, underlinePen, line, startColumn, endColumn);
             }
         }
 
@@ -2154,7 +2159,13 @@ public class EditorControl : FrameworkElement, IScrollInfo
         _diagnosticsRenderedLastLine = drawLast;
     }
 
-    private void DrawDiagnosticUnderline(DrawingContext dc, Pen pen, int line, int startColumn, int endColumn)
+    private void DrawDiagnosticUnderline(
+        DrawingContext dc,
+        Pen glowPen,
+        Pen pen,
+        int line,
+        int startColumn,
+        int endColumn)
     {
         int lineLength = LineLength(line);
         int start = Math.Clamp(startColumn, 0, lineLength);
@@ -2166,10 +2177,11 @@ public class EditorControl : FrameworkElement, IScrollInfo
 
         if (!_wordWrap || VisualLineCount(line) <= 1)
         {
-            double y = GetLineTopY(line) - _textYBias + _font.LineHeight - 2;
+            double y = GetLineTopY(line) - _textYBias + _font.LineHeight
+                - GetDiagnosticUnderlineOffset(_font.LineHeight);
             double x1 = _gutterWidth + GutterPadding + start * _font.CharWidth - _textXBias;
             double x2 = _gutterWidth + GutterPadding + end * _font.CharWidth - _textXBias;
-            DrawWavyUnderline(dc, pen, x1, x2, y);
+            DrawWavyUnderline(dc, glowPen, pen, x1, x2, y);
             return;
         }
 
@@ -2188,34 +2200,64 @@ public class EditorControl : FrameworkElement, IScrollInfo
                 + (current - wrapStart) * _font.CharWidth - _textXBias;
             double x2 = _gutterWidth + GutterPadding + WrapIndentPx(line, wrapIndex)
                 + (segmentEnd - wrapStart) * _font.CharWidth - _textXBias;
-            double y = visualLine * _font.LineHeight - _textYBias + _font.LineHeight - 2;
-            DrawWavyUnderline(dc, pen, x1, x2, y);
+            double y = visualLine * _font.LineHeight - _textYBias + _font.LineHeight
+                - GetDiagnosticUnderlineOffset(_font.LineHeight);
+            DrawWavyUnderline(dc, glowPen, pen, x1, x2, y);
             current = segmentEnd;
         }
     }
 
-    private static void DrawWavyUnderline(DrawingContext dc, Pen pen, double x1, double x2, double y)
+    private static Pen CreateDiagnosticUnderlinePen(Brush brush, double thickness)
+    {
+        var pen = new Pen(brush, thickness)
+        {
+            StartLineCap = PenLineCap.Round,
+            EndLineCap = PenLineCap.Round,
+            LineJoin = PenLineJoin.Round
+        };
+        if (pen.CanFreeze) pen.Freeze();
+        return pen;
+    }
+
+    private static double GetDiagnosticUnderlineThickness(double lineHeight)
+    {
+        return Math.Clamp(lineHeight / 12.0, 1.25, 1.8);
+    }
+
+    private static double GetDiagnosticUnderlineOffset(double lineHeight)
+    {
+        return Math.Clamp(lineHeight * 0.15, 2.8, 4.6);
+    }
+
+    private static void DrawWavyUnderline(DrawingContext dc, Pen glowPen, Pen pen, double x1, double x2, double y)
     {
         if (x2 <= x1)
             return;
 
-        const double step = 4;
-        const double amplitude = 2;
+        double targetHalfWave = Math.Clamp(pen.Thickness * 3.2, 4.2, 5.8);
+        double amplitude = Math.Clamp(pen.Thickness * 1.2, 1.4, 2.1);
+        double width = x2 - x1;
+        int segmentCount = Math.Max(1, (int)Math.Ceiling(width / targetHalfWave));
+        double halfWave = width / segmentCount;
+
         var geometry = new StreamGeometry();
         using (StreamGeometryContext context = geometry.Open())
         {
             context.BeginFigure(new Point(x1, y), isFilled: false, isClosed: false);
-            bool high = false;
-            for (double x = x1 + step; x < x2; x += step)
+            double x = x1;
+            for (int i = 0; i < segmentCount; i++)
             {
-                context.LineTo(new Point(x, y + (high ? -amplitude : amplitude)), isStroked: true, isSmoothJoin: false);
-                high = !high;
+                double nextX = i == segmentCount - 1 ? x2 : x + halfWave;
+                double controlX = x + (nextX - x) / 2.0;
+                double direction = i % 2 == 0 ? 1.0 : -1.0;
+                var control = new Point(controlX, y + direction * amplitude);
+                context.BezierTo(control, control, new Point(nextX, y), isStroked: true, isSmoothJoin: true);
+                x = nextX;
             }
-
-            context.LineTo(new Point(x2, y + (high ? -amplitude : amplitude)), isStroked: true, isSmoothJoin: false);
         }
 
         if (geometry.CanFreeze) geometry.Freeze();
+        dc.DrawGeometry(null, glowPen, geometry);
         dc.DrawGeometry(null, pen, geometry);
     }
 
